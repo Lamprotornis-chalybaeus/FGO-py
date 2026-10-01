@@ -196,6 +196,7 @@ class XDetectBase(metaclass=logMeta(logger)):
 class XDetectCN(XDetectBase):
     tmpl=IMG_CN
     ocr=OCR.ZHS
+    def isBattleContinue(self):return self._compare(self.tmpl.BATTLECONTINUE,(455,85,835,144))
     @classmethod
     def saveWeeklyMission(cls):
         result=[]
