@@ -1,6 +1,6 @@
 import os,sys,time,platform
 from threading import Thread
-from PySide6.QtCore import Qt,QLocale,QTranslator,QTimer,Signal
+from PySide6.QtCore import Qt,QLocale,QTranslator,QTimer,Signal,QSignalBlocker
 from PySide6.QtGui import QAction,QIcon
 from PySide6.QtWidgets import QApplication,QInputDialog,QMainWindow,QMenu,QMessageBox,QSystemTrayIcon,QSpinBox,QComboBox,QCheckBox
 from matplotlib import pyplot
@@ -45,11 +45,12 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self._dailyScanPending=False
         self.chapter=sorted({i[:2]for i in quest})
         self._chapterData=[fgoQuickQuest.DAILY_CATEGORY]
-        self.CBB_CHAPTER.addItem('每日任务',fgoQuickQuest.DAILY_CATEGORY)
-        for chapter in self.chapter:
-            self.CBB_CHAPTER.addItem(QApplication.translate('quest','-'.join(str(j)for j in chapter)),chapter)
-            self._chapterData.append(chapter)
-        if len(self._chapterData)>1:self.CBB_CHAPTER.setCurrentIndex(1)
+        with QSignalBlocker(self.CBB_CHAPTER):
+            self.CBB_CHAPTER.addItem('每日任务',fgoQuickQuest.DAILY_CATEGORY)
+            for chapter in self.chapter:
+                self.CBB_CHAPTER.addItem(QApplication.translate('quest','-'.join(str(j)for j in chapter)),chapter)
+                self._chapterData.append(chapter)
+            if len(self._chapterData)>1:self.CBB_CHAPTER.setCurrentIndex(1)
         self.CBB_CHAPTER.currentIndexChanged.connect(self.chapterChanged)
         self.BTN_DAILY_REFRESH.clicked.connect(self.refreshDailyQuests)
         self.worker=Thread()
@@ -87,8 +88,8 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.timer=QTimer(self)
         self.timer.timeout.connect(self.flush)
         self.notifier=[]
-        self.connectDevice()
-        self.chapterChanged(self.CBB_CHAPTER.currentIndex())
+        self.LBL_DEVICE.setText(self.tr('未连接'))
+        self.chapterChanged(self.CBB_CHAPTER.currentIndex(),autoScan=False)
     def keyPressEvent(self,key):
         if self.MENU_CONTROL_MAPKEY.isChecked()and not key.modifiers()&~Qt.KeyboardModifier.KeypadModifier:
             try:fgoDevice.device.press(chr(key.nativeVirtualKey()))
@@ -111,7 +112,7 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         return True
     def isDeviceAvailable(self):
         if not fgoDevice.device.available:
-            self.LBL_DEVICE.clear()
+            self.LBL_DEVICE.setText(self.tr('未连接'))
             QMessageBox.critical(self,'FGO-py',self.tr('未连接设备'))
             return False
         return True
@@ -229,19 +230,60 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
 ''')
         self.flush()
         self.MENU_SETTINGS_SPECIALDROP.setChecked(fgoKernel.schedule._Schedule__stopOnSpecialDropCount>0)
+    def _connectDevice(self,text):
+        previous=fgoDevice.device
+        try:
+            candidate=fgoDevice.Device(text)
+            if not candidate.available:raise RuntimeError('Device is not available')
+        except Exception:
+            # Device construction installs its screenshot source; keep the old
+            # detector and connection when the replacement cannot be used.
+            fgoDevice.setup(previous)
+            raise
+        fgoDevice.device=candidate
+        self.LBL_DEVICE.setText(candidate.name)
+        self.MENU_CONTROL_MAPKEY.setChecked(False)
+        self.statusBar().clearMessage()
+    def initializeDevice(self):
+        saved=self.config.device.strip()
+        if not saved:
+            self.LBL_DEVICE.setText(self.tr('未连接'))
+            self.statusBar().showMessage(self.tr('未保存设备，请点击“更改”选择设备'))
+            return False
+        try:self._connectDevice(saved)
+        except Exception:
+            logger.exception('Auto connection to saved device failed: %s',saved)
+            self.LBL_DEVICE.setText(self.tr('未连接'))
+            self.statusBar().showMessage(self.tr('自动连接设备失败，请点击“更改”重新选择设备'))
+            return False
+        logger.info('Auto connected to saved device: %s',saved)
+        return True
     def connectDevice(self):
-        dialog=QInputDialog(self,Qt.WindowType.WindowStaysOnTopHint)
+        dialog=QInputDialog(self)
+        dialog.setWindowModality(Qt.WindowModality.WindowModal)
         dialog.setWindowTitle('FGO-py')
         dialog.setLabelText(self.tr('选择或填写一个设备'))
-        dialog.setComboBoxItems(fgoDevice.Device.enumDevices())
+        saved=self.config.device
+        try:devices=list(fgoDevice.Device.enumDevices())
+        except Exception:
+            logger.exception('Device enumeration failed')
+            devices=[]
+        if saved and saved not in devices:devices.insert(0,saved)
+        dialog.setComboBoxItems(devices)
         dialog.setComboBoxEditable(True)
-        dialog.setTextValue(self.config.device)
-        if not dialog.exec():return
+        dialog.setTextValue(saved)
+        if not dialog.exec():return False
         text=dialog.textValue().replace(' ','')
+        if not text:
+            self.statusBar().showMessage(self.tr('设备不能为空，请点击“更改”重新选择设备'))
+            return False
+        try:self._connectDevice(text)
+        except Exception:
+            logger.exception('Device connection failed: %s',text)
+            self.statusBar().showMessage(self.tr('连接设备失败，请点击“更改”重新选择设备'))
+            return False
         self.config.device=text
-        fgoDevice.device=fgoDevice.Device(text)
-        self.LBL_DEVICE.setText(fgoDevice.device.name)
-        self.MENU_CONTROL_MAPKEY.setChecked(False)
+        return True
     def quickModeChanged(self,index):
         mode=fgoQuickFarm.modeName(index)
         self.config['quickFarmMode']=mode
@@ -260,7 +302,7 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         mode=self.CBB_EVENT_STORYMODE.itemData(index) or fgoEventProgress.EVENT_STORY_PAUSE
         self.config['eventStoryMode']=mode
         self.CBB_EVENT_STORYMODE.setStatusTip('默认模式：检测到剧情立即暂停，请阅读后返回活动地图再启动。' if mode==fgoEventProgress.EVENT_STORY_PAUSE else '只有 OCR 唯一识别 SKIP/跳过按钮及确认弹窗后才会操作；识别失败就停止。')
-    def chapterChanged(self,index):
+    def chapterChanged(self,index,autoScan=True):
         if index<0:return
         self.CBB_QUEST.clear()
         data=self._chapterData[index]
@@ -269,7 +311,7 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.CBB_QUEST.setEnabled(not isDaily)
         if isDaily:
             self.populateDailyQuests()
-            if not self.dailyEntries and not self._dailyScanPending:QTimer.singleShot(0,self.refreshDailyQuests)
+            if autoScan and not self.dailyEntries and not self._dailyScanPending:QTimer.singleShot(0,self.refreshDailyQuests)
         else:
             self.quest=[item for item in quest if item[:2]==data]
             self.CBB_QUEST.addItems(QApplication.translate('quest','-'.join(str(j)for j in item))for item in self.quest)
@@ -445,4 +487,5 @@ def main(config):
     app.installTranslator(translator)
     myWin=MainWindow(config)
     myWin.show()
+    QTimer.singleShot(0,myWin.initializeDevice)
     sys.exit(app.exec())
