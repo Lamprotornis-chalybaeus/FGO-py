@@ -27,7 +27,7 @@ class Ui_fgoMainWindow(object):
         if not fgoMainWindow.objectName():
             fgoMainWindow.setObjectName(u"fgoMainWindow")
         fgoMainWindow.setFocusPolicy(Qt.StrongFocus)
-        fgoMainWindow.setStyleSheet(u"QWidget{font-family:\"Microsoft YaHei UI Light\";font-size:15px}")
+        fgoMainWindow.setStyleSheet(u"QWidget{font-family:\"Microsoft YaHei UI\";font-size:14px}")
         self.MENU_ABOUT_ABOUT = QAction(fgoMainWindow)
         self.MENU_ABOUT_ABOUT.setObjectName(u"MENU_ABOUT_ABOUT")
         self.MENU_FILE_EXPLORER = QAction(fgoMainWindow)
@@ -310,6 +310,37 @@ class Ui_fgoMainWindow(object):
 
         self.LAYOUT_INFO.setLayout(2, QFormLayout.ItemRole.FieldRole, self.LAYOUT_DEVICE)
 
+        self.LBL_FRIENDPOLICY = QLabel(self.widget)
+        self.LBL_FRIENDPOLICY.setObjectName(u"LBL_FRIENDPOLICY")
+
+        self.LAYOUT_INFO.setWidget(3, QFormLayout.ItemRole.LabelRole, self.LBL_FRIENDPOLICY)
+
+        self.CBB_FRIENDPOLICY = QComboBox(self.widget)
+        self.CBB_FRIENDPOLICY.addItem("")
+        self.CBB_FRIENDPOLICY.addItem("")
+        self.CBB_FRIENDPOLICY.addItem("")
+        self.CBB_FRIENDPOLICY.setObjectName(u"CBB_FRIENDPOLICY")
+
+        self.LAYOUT_INFO.setWidget(3, QFormLayout.ItemRole.FieldRole, self.CBB_FRIENDPOLICY)
+
+        self.LBL_FRIENDREFRESH = QLabel(self.widget)
+        self.LBL_FRIENDREFRESH.setObjectName(u"LBL_FRIENDREFRESH")
+
+        self.LAYOUT_INFO.setWidget(4, QFormLayout.ItemRole.LabelRole, self.LBL_FRIENDREFRESH)
+
+        self.TXT_FRIENDREFRESH = QSpinBox(self.widget)
+        self.TXT_FRIENDREFRESH.setObjectName(u"TXT_FRIENDREFRESH")
+        self.TXT_FRIENDREFRESH.setAlignment(Qt.AlignRight|Qt.AlignTrailing|Qt.AlignVCenter)
+        self.TXT_FRIENDREFRESH.setMaximum(10)
+        self.TXT_FRIENDREFRESH.setValue(2)
+
+        self.LAYOUT_INFO.setWidget(4, QFormLayout.ItemRole.FieldRole, self.TXT_FRIENDREFRESH)
+
+        self.BTN_FRIENDTEMPLATES = QPushButton(self.widget)
+        self.BTN_FRIENDTEMPLATES.setObjectName(u"BTN_FRIENDTEMPLATES")
+
+        self.LAYOUT_INFO.setWidget(5, QFormLayout.ItemRole.SpanningRole, self.BTN_FRIENDTEMPLATES)
+
 
         self.LAYOUT_LAUNCH.addLayout(self.LAYOUT_INFO)
 
@@ -417,7 +448,10 @@ class Ui_fgoMainWindow(object):
         QWidget.setTabOrder(self.TXT_TEAM, self.CKB_TEAM)
         QWidget.setTabOrder(self.CKB_TEAM, self.CBB_APPLE)
         QWidget.setTabOrder(self.CBB_APPLE, self.TXT_APPLE)
-        QWidget.setTabOrder(self.TXT_APPLE, self.BTN_CONNECT)
+        QWidget.setTabOrder(self.TXT_APPLE, self.CBB_FRIENDPOLICY)
+        QWidget.setTabOrder(self.CBB_FRIENDPOLICY, self.TXT_FRIENDREFRESH)
+        QWidget.setTabOrder(self.TXT_FRIENDREFRESH, self.BTN_FRIENDTEMPLATES)
+        QWidget.setTabOrder(self.BTN_FRIENDTEMPLATES, self.BTN_CONNECT)
         QWidget.setTabOrder(self.BTN_CONNECT, self.BTN_QUESTLOAD)
         QWidget.setTabOrder(self.BTN_QUESTLOAD, self.BTN_MAIN)
         QWidget.setTabOrder(self.BTN_MAIN, self.BTN_BATTLE)
@@ -458,6 +492,7 @@ class Ui_fgoMainWindow(object):
 
         self.retranslateUi(fgoMainWindow)
         self.BTN_CLASSIC.clicked.connect(fgoMainWindow.runClassic)
+        self.BTN_FRIENDTEMPLATES.clicked.connect(fgoMainWindow.openFriendTemplates)
         self.BTN_MAIN.clicked.connect(fgoMainWindow.quickFarm)
         self.BTN_SCREENSHOT.clicked.connect(fgoMainWindow.screenshot)
         self.BTN_PAUSE.clicked["bool"].connect(fgoMainWindow.pause)
@@ -569,7 +604,7 @@ class Ui_fgoMainWindow(object):
 #if QT_CONFIG(statustip)
         self.TXT_BATTLELIMIT.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"0 \u8868\u793a\u4e0d\u8bbe\u7f6e\u573a\u6570\u4e0a\u9650\uff0c\u76f4\u5230 AP \u4e0d\u8db3\uff1b1 \u5230 N \u8868\u793a\u5b8c\u6210\u5bf9\u5e94\u573a\u6570\u540e\u505c\u6b62\u3002", None))
 #endif // QT_CONFIG(statustip)
-        self.LBL_QUICK_HINT.setText(QCoreApplication.translate("fgoMainWindow", u"\u628a\u6e38\u620f\u505c\u5728\u76ee\u6807\u5173\u5361\u5217\u8868\uff0c\u5e76\u786e\u4fdd\u76ee\u6807\u5173\u5361\u4f4d\u4e8e\u5f53\u524d\u5217\u8868\u7b2c\u4e00\u4e2a\u3002\u9002\u7528\u4e8e\u6d3b\u52a8\u53ca\u672a\u52a0\u5165\u5143\u6570\u636e\u7684\u5173\u5361\u3002", None))
+        self.LBL_QUICK_HINT.setText(QCoreApplication.translate("fgoMainWindow", u"\u628a\u6e38\u620f\u505c\u5728\u76ee\u6807\u5173\u5361\u5217\u8868\uff0c\u5e76\u8ba9\u76ee\u6807\u5173\u5361\u6392\u5728\u9996\u4f4d\u3002\u6bcf\u65e5\u4efb\u52a1\u8bf7\u5148\u624b\u52a8\u9009\u62e9\u79cd\u7c7b\u548c\u96be\u5ea6\u3002", None))
         self.LBL_TEAM.setText(QCoreApplication.translate("fgoMainWindow", u"\u7f16\u961f", None))
 #if QT_CONFIG(statustip)
         self.TXT_TEAM.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u6240\u9009\u7f16\u961f\u5728\u961f\u4f0d\u7f16\u6210\u754c\u9762\u7684\u4f4d\u7f6e,\u4ece\u5de6\u5230\u53f31-10,0\u4e3a\u4e0d\u5207\u6362\u7f16\u961f", None))
@@ -593,6 +628,19 @@ class Ui_fgoMainWindow(object):
         self.BTN_CONNECT.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u8fde\u63a5\u5230\u8bbe\u5907", None))
 #endif // QT_CONFIG(statustip)
         self.BTN_CONNECT.setText(QCoreApplication.translate("fgoMainWindow", u"\u66f4\u6539", None))
+        self.LBL_FRIENDPOLICY.setText(QCoreApplication.translate("fgoMainWindow", u"\u52a9\u6218\u7b56\u7565", None))
+        self.CBB_FRIENDPOLICY.setItemText(0, QCoreApplication.translate("fgoMainWindow", u"\u4efb\u610f\uff08\u9996\u4f4d\uff09", None))
+        self.CBB_FRIENDPOLICY.setItemText(1, QCoreApplication.translate("fgoMainWindow", u"\u6a21\u677f\u4f18\u5148", None))
+        self.CBB_FRIENDPOLICY.setItemText(2, QCoreApplication.translate("fgoMainWindow", u"\u6a21\u677f\u4e25\u683c", None))
+
+        self.LBL_FRIENDREFRESH.setText(QCoreApplication.translate("fgoMainWindow", u"\u5237\u65b0\u4e0a\u9650", None))
+#if QT_CONFIG(statustip)
+        self.TXT_FRIENDREFRESH.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"0 \u8868\u793a\u53ea\u626b\u63cf\u5f53\u524d\u52a9\u6218\u5217\u8868\uff0c\u4e0d\u4e3b\u52a8\u5237\u65b0\uff1b\u6700\u5927\u4e3a 10 \u6b21\u3002", None))
+#endif // QT_CONFIG(statustip)
+#if QT_CONFIG(statustip)
+        self.BTN_FRIENDTEMPLATES.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u6253\u5f00\u672c\u673a\u52a9\u6218\u6a21\u677f\u6587\u4ef6\u5939\u3002\u56fe\u7247\u53ea\u4fdd\u5b58\u5728\u672c\u673a\u3002", None))
+#endif // QT_CONFIG(statustip)
+        self.BTN_FRIENDTEMPLATES.setText(QCoreApplication.translate("fgoMainWindow", u"\u6253\u5f00\u52a9\u6218\u6a21\u677f\u76ee\u5f55", None))
 #if QT_CONFIG(statustip)
         self.BTN_MAIN.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u5f53\u524d\u5173\u5361\u6a21\u5f0f\u4e0b\uff0c\u5468\u56de\u6e38\u620f\u5f53\u524d\u5173\u5361\u5217\u8868\u4e2d\u7684\u7b2c\u4e00\u4e2a\u5173\u5361\uff1b\u8ba1\u5212\u961f\u5217\u6a21\u5f0f\u53ea\u6267\u884c\u5df2\u5217\u51fa\u7684\u4efb\u52a1\u3002", None))
 #endif // QT_CONFIG(statustip)

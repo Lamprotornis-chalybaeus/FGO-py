@@ -204,14 +204,14 @@ class XDetectCN(XDetectBase):
         mission=''
         malformed=0
         for i in(i for i in lines if'完成'not in i and'进行'not in i and'获得'not in i and'举办'not in i):
-            if mission and i[0].isdigit():
+            if mission and i and i[0].isdigit():
                 if'『'in mission:
                     try:count=(lambda x:int(x[1])-int(x[0]))(i.split('/')if'/'in i else(i[:len(i)>>1],i[len(i)+1>>1:]))
                     except(ValueError,IndexError):malformed+=1
                     else:result.append((re.findall('『(.*?)』',mission),'从者'not in mission,count))
                 mission=''
             else:mission+=i
-        return{'lines':lines,'tasks':result,'explicitCompleted':sum('完成'in i for i in lines),'malformed':malformed}
+        return{'lines':lines,'tasks':result,'explicitCompleted':sum('已完成'in i or i.strip() in ('完成','-完成-') for i in lines),'malformed':malformed}
     @classmethod
     def saveWeeklyMission(cls):
         return[i for i in cls.saveWeeklyMissionDetailed()['tasks']if i[2]]

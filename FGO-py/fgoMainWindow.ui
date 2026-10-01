@@ -10,7 +10,7 @@
    <string>FGO-py - hgjazhgj</string>
   </property>
   <property name="styleSheet">
-   <string notr="true">QWidget{font-family:&quot;Microsoft YaHei UI Light&quot;;font-size:15px}</string>
+   <string notr="true">QWidget{font-family:&quot;Microsoft YaHei UI&quot;;font-size:14px}</string>
   </property>
   <widget class="QWidget" name="widget">
    <layout class="QVBoxLayout" name="verticalLayout">
@@ -182,7 +182,7 @@
            <item row="2" column="0" colspan="2">
             <widget class="QLabel" name="LBL_QUICK_HINT">
              <property name="wordWrap"><bool>true</bool></property>
-             <property name="text"><string>把游戏停在目标关卡列表，并确保目标关卡位于当前列表第一个。适用于活动及未加入元数据的关卡。</string></property>
+             <property name="text"><string>把游戏停在目标关卡列表，并让目标关卡排在首位。每日任务请先手动选择种类和难度。</string></property>
             </widget>
            </item>
           </layout>
@@ -341,7 +341,30 @@
             </item>
            </layout>
           </item>
-         </layout>
+         <item row="3" column="0"><widget class="QLabel" name="LBL_FRIENDPOLICY"><property name="text"><string>助战策略</string></property></widget></item>
+         <item row="3" column="1">
+          <widget class="QComboBox" name="CBB_FRIENDPOLICY">
+           <item><property name="text"><string>任意（首位）</string></property></item>
+           <item><property name="text"><string>模板优先</string></property></item>
+           <item><property name="text"><string>模板严格</string></property></item>
+          </widget>
+         </item>
+         <item row="4" column="0"><widget class="QLabel" name="LBL_FRIENDREFRESH"><property name="text"><string>刷新上限</string></property></widget></item>
+         <item row="4" column="1">
+          <widget class="QSpinBox" name="TXT_FRIENDREFRESH">
+           <property name="statusTip"><string>0 表示只扫描当前助战列表，不主动刷新；最大为 10 次。</string></property>
+           <property name="alignment"><set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set></property>
+           <property name="maximum"><number>10</number></property>
+           <property name="value"><number>2</number></property>
+          </widget>
+         </item>
+         <item row="5" column="0" colspan="2">
+          <widget class="QPushButton" name="BTN_FRIENDTEMPLATES">
+           <property name="statusTip"><string>打开本机助战模板文件夹。图片只保存在本机。</string></property>
+           <property name="text"><string>打开助战模板目录</string></property>
+          </widget>
+         </item>
+       </layout>
         </item>
         <item>
          <widget class="QPushButton" name="BTN_MAIN">
@@ -675,6 +698,9 @@
   <tabstop>CKB_TEAM</tabstop>
   <tabstop>CBB_APPLE</tabstop>
   <tabstop>TXT_APPLE</tabstop>
+  <tabstop>CBB_FRIENDPOLICY</tabstop>
+  <tabstop>TXT_FRIENDREFRESH</tabstop>
+  <tabstop>BTN_FRIENDTEMPLATES</tabstop>
   <tabstop>BTN_CONNECT</tabstop>
   <tabstop>BTN_QUESTLOAD</tabstop>
   <tabstop>BTN_MAIN</tabstop>
@@ -692,6 +718,12 @@
    <signal>clicked()</signal>
    <receiver>fgoMainWindow</receiver>
    <slot>runClassic()</slot>
+  </connection>
+  <connection>
+   <sender>BTN_FRIENDTEMPLATES</sender>
+   <signal>clicked()</signal>
+   <receiver>fgoMainWindow</receiver>
+   <slot>openFriendTemplates()</slot>
   </connection>
   <connection>
    <sender>BTN_MAIN</sender>
@@ -869,6 +901,7 @@
   </connection>
  </connections>
  <slots>
+  <slot>openFriendTemplates()</slot>
   <slot>quickFarm()</slot>
   <slot>about()</slot>
   <slot>bench()</slot>

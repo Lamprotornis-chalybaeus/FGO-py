@@ -22,6 +22,7 @@ __version__=VERSION
 __author__='hgjazhgj'
 import logging,numpy,pulp,random,re,time,threading
 import fgoDevice
+import fgoFriendPolicy
 from itertools import permutations
 from functools import wraps
 from fgoDetect import Detect,XDetect
@@ -501,10 +502,12 @@ class Battle:
 class Main:
     teamIndex=0
     autoFormation=False
-    def __init__(self,appleTotal=0,appleKind=0,battleClass=Battle):
+    def __init__(self,appleTotal=0,appleKind=0,battleClass=Battle,friendPolicy=None,friendMaxRefresh=2):
         self.appleTotal=appleTotal
         self.appleKind=appleKind
         self.battleClass=battleClass
+        self.friendPolicy=friendPolicy
+        self.friendMaxRefresh=friendMaxRefresh
     @serialize(mutex)
     def __call__(self,questIndex=0,battleTotal=None):
         self.prepare()
@@ -581,34 +584,50 @@ class Main:
         return self.appleTotal+1
     @logit(logger,logging.INFO)
     def chooseFriend(self):
-        refresh=False
-        while not Detect(0,.3).isChooseFriend():
-            if Detect.cache.isNoFriend():
-                if refresh:schedule.sleep(10)
-                fgoDevice.device.perform('\xBAK',(500,1000))
-                refresh=True
-                continue
-            if Detect.cache.isBattleFormation():return
-        if not friendImg.flush():return fgoDevice.device.press('8')
+        policy=self.friendPolicy or 'prefer'  # CLI retains template-first behavior, now with a finite bound.
+        maxRefresh=max(0,min(10,int(self.friendMaxRefresh)))
+        hasTemplates=bool(friendImg.flush())
+        if not fgoFriendPolicy.canStart(policy,hasTemplates):
+            raise ScriptStop('助战严格模式已启用，但助战模板目录中没有 PNG 模板')
+        refreshes=0
+        nextRefreshAt=0
+        deadline=time.time()+180
         while True:
-            timer=time.time()
             while True:
-                for i in(i for i,j in friendImg.items()if(lambda pos:pos and(fgoDevice.device.touch(pos),True)[-1])(Detect.cache.findFriend(j))):
-                    ClassicTurn.friendInfo=(lambda r:(lambda p:[
-                        [[-1 if p[i*4+j]=='X'else int(p[i*4+j],16)for j in range(4)]for i in range(3)],
-                        [-1 if p[i+12]=='X'else int(p[i+12],16)for i in range(2)],
-                    ])(r.group())if r else[[[-1,-1,-1,-1],[-1,-1,-1,-1],[-1,-1,-1,-1]],[-1,-1]])(re.match('([0-9X]{3}[0-9A-FX]){3}[0-9X][0-9A-FX]$',i.replace('-','')[-14:].upper()))
-                    return i
+                if time.time()>deadline:raise ScriptStop('等待助战列表超时，请检查游戏界面')
+                detect=Detect(0,.3)
+                if detect.isChooseFriend():break
+                if detect.isBattleFormation():return
+                if detect.isNoFriend():
+                    if refreshes>=maxRefresh:raise ScriptStop(f'助战列表为空，已达到最大刷新次数 {maxRefresh}')
+                    schedule.sleep(max(0,nextRefreshAt-time.time()))
+                    fgoDevice.device.perform('\xBAK',(500,1000))
+                    refreshes+=1
+                    nextRefreshAt=time.time()+10
+            action=fgoFriendPolicy.decision(policy,False,hasTemplates,refreshes,maxRefresh)
+            if action=='first':return fgoDevice.device.press('8')
+            if action=='stop':raise ScriptStop(f'严格助战模式在 {refreshes} 次刷新后仍未找到模板匹配')
+            matched=False
+            while True:
+                if time.time()>deadline:raise ScriptStop('扫描助战列表超时')
+                for name,img in sorted(friendImg.items()):
+                    if pos:=Detect.cache.findFriend(img):
+                        fgoDevice.device.touch(pos)
+                        ClassicTurn.friendInfo=(lambda r:(lambda p:[
+                            [[-1 if p[i*4+j]=='X'else int(p[i*4+j],16)for j in range(4)]for i in range(3)],
+                            [-1 if p[i+12]=='X'else int(p[i+12],16)for i in range(2)],
+                        ])(r.group())if r else[[[-1,-1,-1,-1],[-1,-1,-1,-1],[-1,-1,-1,-1]],[-1,-1]])(re.match('([0-9X]{3}[0-9A-FX]){3}[0-9X][0-9A-FX]$',name.replace('-','')[-14:].upper()))
+                        return name
                 if Detect.cache.isFriendListEnd():break
                 fgoDevice.device.swipe((400,600),(400,200))
                 Detect(.4)
-            if refresh:schedule.sleep(max(0,timer+10-time.time()))
+            action=fgoFriendPolicy.decision(policy,matched,hasTemplates,refreshes,maxRefresh)
+            if action=='first':return fgoDevice.device.press('8')
+            if action=='stop':raise ScriptStop(f'严格助战模式在 {refreshes} 次刷新后仍未找到模板匹配')
+            schedule.sleep(max(0,nextRefreshAt-time.time()))
             fgoDevice.device.perform('\xBAK',(500,1000))
-            refresh=True
-            while not Detect(.2).isChooseFriend():
-                if Detect.cache.isNoFriend():
-                    schedule.sleep(10)
-                    fgoDevice.device.perform('\xBAK',(500,1000))
+            refreshes+=1
+            nextRefreshAt=time.time()+10
 class Operation(list,Main):
     apLookup={i:j for i,j in zip(missionQuest,missionMat[0])}
     def __init__(self,data=(),*args,wait=True,**kwargs):
