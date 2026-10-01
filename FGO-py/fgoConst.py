@@ -14,6 +14,9 @@ CONFIG={
 'quickFarmBattleLimit':1,
 'friendPolicy':'first',
 'friendMaxRefresh':2,
+'eventStoryMode':'pause',
+'eventAutoClaimRewards':False,
+'eventProgressLimit':1,
 }
 KEYMAP={
 '\x70':(465,50),'\x71':(490,50),'\x72':(515,50),'\x73':(540,50),'\x74':(565,50),'\x75':(590,50),'\x76':(615,50),'\x77':(640,50),'\x78':(665,50),'\x79':(690,50),'\x7A':(715,50),'\x7B':(740,50),'\x7C':(765,50),'\x7D':(790,50),'\x7E':(815,50), # VK_F1..15

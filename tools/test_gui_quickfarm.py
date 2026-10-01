@@ -80,6 +80,9 @@ class QuickFarmTests(unittest.TestCase):
             self.assertEqual(config.quickFarmBattleLimit,1)
             self.assertEqual(config.friendPolicy,'first')
             self.assertEqual(config.friendMaxRefresh,2)
+            self.assertEqual(config.eventStoryMode,'pause')
+            self.assertFalse(config.eventAutoClaimRewards)
+            self.assertEqual(config.eventProgressLimit,1)
     def test_generated_ui_import_and_setup(self):
         from PySide6.QtWidgets import QApplication,QMainWindow
         from fgoMainWindow import Ui_fgoMainWindow

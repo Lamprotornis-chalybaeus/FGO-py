@@ -130,6 +130,11 @@ class Ui_fgoMainWindow(object):
 
         self.LAYOUT_QUEST.addLayout(self.LAYOUT_QUESTSELECT)
 
+        self.BTN_DAILY_REFRESH = QPushButton(self.widget)
+        self.BTN_DAILY_REFRESH.setObjectName(u"BTN_DAILY_REFRESH")
+
+        self.LAYOUT_QUEST.addWidget(self.BTN_DAILY_REFRESH)
+
         self.LAYOUT_QUESTADD = QHBoxLayout()
         self.LAYOUT_QUESTADD.setObjectName(u"LAYOUT_QUESTADD")
         self.BTN_QUESTADD = QPushButton(self.widget)
@@ -221,6 +226,48 @@ class Ui_fgoMainWindow(object):
         self.LBL_QUICK_HINT.setWordWrap(True)
 
         self.LAYOUT_QUICKFARM.setWidget(2, QFormLayout.ItemRole.SpanningRole, self.LBL_QUICK_HINT)
+
+        self.BTN_MAIN = QPushButton(self.GRP_QUICKFARM)
+        self.BTN_MAIN.setObjectName(u"BTN_MAIN")
+        self.BTN_MAIN.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+
+        self.LAYOUT_QUICKFARM.setWidget(3, QFormLayout.ItemRole.SpanningRole, self.BTN_MAIN)
+
+        self.LBL_EVENT_STORYMODE = QLabel(self.GRP_QUICKFARM)
+        self.LBL_EVENT_STORYMODE.setObjectName(u"LBL_EVENT_STORYMODE")
+
+        self.LAYOUT_QUICKFARM.setWidget(4, QFormLayout.ItemRole.LabelRole, self.LBL_EVENT_STORYMODE)
+
+        self.CBB_EVENT_STORYMODE = QComboBox(self.GRP_QUICKFARM)
+        self.CBB_EVENT_STORYMODE.addItem("")
+        self.CBB_EVENT_STORYMODE.addItem("")
+        self.CBB_EVENT_STORYMODE.setObjectName(u"CBB_EVENT_STORYMODE")
+
+        self.LAYOUT_QUICKFARM.setWidget(4, QFormLayout.ItemRole.FieldRole, self.CBB_EVENT_STORYMODE)
+
+        self.LBL_EVENT_LIMIT = QLabel(self.GRP_QUICKFARM)
+        self.LBL_EVENT_LIMIT.setObjectName(u"LBL_EVENT_LIMIT")
+
+        self.LAYOUT_QUICKFARM.setWidget(5, QFormLayout.ItemRole.LabelRole, self.LBL_EVENT_LIMIT)
+
+        self.TXT_EVENT_LIMIT = QSpinBox(self.GRP_QUICKFARM)
+        self.TXT_EVENT_LIMIT.setObjectName(u"TXT_EVENT_LIMIT")
+        self.TXT_EVENT_LIMIT.setMinimum(1)
+        self.TXT_EVENT_LIMIT.setMaximum(100)
+        self.TXT_EVENT_LIMIT.setValue(1)
+
+        self.LAYOUT_QUICKFARM.setWidget(5, QFormLayout.ItemRole.FieldRole, self.TXT_EVENT_LIMIT)
+
+        self.CKB_EVENT_REWARD = QCheckBox(self.GRP_QUICKFARM)
+        self.CKB_EVENT_REWARD.setObjectName(u"CKB_EVENT_REWARD")
+
+        self.LAYOUT_QUICKFARM.setWidget(6, QFormLayout.ItemRole.SpanningRole, self.CKB_EVENT_REWARD)
+
+        self.LBL_EVENT_STATUS = QLabel(self.GRP_QUICKFARM)
+        self.LBL_EVENT_STATUS.setObjectName(u"LBL_EVENT_STATUS")
+        self.LBL_EVENT_STATUS.setWordWrap(True)
+
+        self.LAYOUT_QUICKFARM.setWidget(7, QFormLayout.ItemRole.SpanningRole, self.LBL_EVENT_STATUS)
 
 
         self.LAYOUT_LAUNCH.addWidget(self.GRP_QUICKFARM)
@@ -344,12 +391,6 @@ class Ui_fgoMainWindow(object):
 
         self.LAYOUT_LAUNCH.addLayout(self.LAYOUT_INFO)
 
-        self.BTN_MAIN = QPushButton(self.widget)
-        self.BTN_MAIN.setObjectName(u"BTN_MAIN")
-        self.BTN_MAIN.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-
-        self.LAYOUT_LAUNCH.addWidget(self.BTN_MAIN)
-
         self.LAYOUT_FUNC = QHBoxLayout()
         self.LAYOUT_FUNC.setObjectName(u"LAYOUT_FUNC")
         self.LAYOUT_FUNCBATTLE = QVBoxLayout()
@@ -436,7 +477,8 @@ class Ui_fgoMainWindow(object):
         self.STATUS.setObjectName(u"STATUS")
         fgoMainWindow.setStatusBar(self.STATUS)
         QWidget.setTabOrder(self.CBB_CHAPTER, self.CBB_QUEST)
-        QWidget.setTabOrder(self.CBB_QUEST, self.TXT_TIMES)
+        QWidget.setTabOrder(self.CBB_QUEST, self.BTN_DAILY_REFRESH)
+        QWidget.setTabOrder(self.BTN_DAILY_REFRESH, self.TXT_TIMES)
         QWidget.setTabOrder(self.TXT_TIMES, self.BTN_QUESTADD)
         QWidget.setTabOrder(self.BTN_QUESTADD, self.BTN_QUESTREMOVE)
         QWidget.setTabOrder(self.BTN_QUESTREMOVE, self.BTN_QUESTUP)
@@ -444,7 +486,11 @@ class Ui_fgoMainWindow(object):
         QWidget.setTabOrder(self.BTN_QUESTDOWN, self.BTN_QUESTCLEAR)
         QWidget.setTabOrder(self.BTN_QUESTCLEAR, self.CBB_QUICKMODE)
         QWidget.setTabOrder(self.CBB_QUICKMODE, self.TXT_BATTLELIMIT)
-        QWidget.setTabOrder(self.TXT_BATTLELIMIT, self.TXT_TEAM)
+        QWidget.setTabOrder(self.TXT_BATTLELIMIT, self.BTN_MAIN)
+        QWidget.setTabOrder(self.BTN_MAIN, self.CBB_EVENT_STORYMODE)
+        QWidget.setTabOrder(self.CBB_EVENT_STORYMODE, self.TXT_EVENT_LIMIT)
+        QWidget.setTabOrder(self.TXT_EVENT_LIMIT, self.CKB_EVENT_REWARD)
+        QWidget.setTabOrder(self.CKB_EVENT_REWARD, self.TXT_TEAM)
         QWidget.setTabOrder(self.TXT_TEAM, self.CKB_TEAM)
         QWidget.setTabOrder(self.CKB_TEAM, self.CBB_APPLE)
         QWidget.setTabOrder(self.CBB_APPLE, self.TXT_APPLE)
@@ -453,8 +499,7 @@ class Ui_fgoMainWindow(object):
         QWidget.setTabOrder(self.TXT_FRIENDREFRESH, self.BTN_FRIENDTEMPLATES)
         QWidget.setTabOrder(self.BTN_FRIENDTEMPLATES, self.BTN_CONNECT)
         QWidget.setTabOrder(self.BTN_CONNECT, self.BTN_QUESTLOAD)
-        QWidget.setTabOrder(self.BTN_QUESTLOAD, self.BTN_MAIN)
-        QWidget.setTabOrder(self.BTN_MAIN, self.BTN_BATTLE)
+        QWidget.setTabOrder(self.BTN_QUESTLOAD, self.BTN_BATTLE)
         QWidget.setTabOrder(self.BTN_BATTLE, self.BTN_CLASSIC)
         QWidget.setTabOrder(self.BTN_CLASSIC, self.BTN_PAUSE)
         QWidget.setTabOrder(self.BTN_PAUSE, self.BTN_STOP)
@@ -566,11 +611,18 @@ class Ui_fgoMainWindow(object):
 #if QT_CONFIG(statustip)
         self.LBL_QUEUE_TITLE.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u8fd9\u91cc\u53ea\u5217\u51fa\u7531\u7ae0\u8282/\u5173\u5361\u9009\u62e9\u5668\u6216\u6bcf\u5468\u4efb\u52a1\u5206\u6790\u52a0\u5165\u7684\u8ba1\u5212\u4efb\u52a1\u3002", None))
 #endif // QT_CONFIG(statustip)
-        self.LBL_CHAPTER.setText(QCoreApplication.translate("fgoMainWindow", u"\u7ae0\u8282", None))
+#if QT_CONFIG(statustip)
+        self.CBB_CHAPTER.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u666e\u901a\u7ae0\u8282\u53ea\u5305\u542b\u5df2\u89e3\u9501\u5730\u56fe\u4e0a\u7684\u81ea\u7531\u5173\u5361\uff0c\u4e0d\u4f1a\u81ea\u52a8\u63a8\u8fdb\u4e3b\u7ebf\u5267\u60c5\u3002", None))
+#endif // QT_CONFIG(statustip)
+        self.LBL_CHAPTER.setText(QCoreApplication.translate("fgoMainWindow", u"\u7ae0\u8282 / \u5206\u7c7b", None))
         self.LBL_QUEST.setText(QCoreApplication.translate("fgoMainWindow", u"\u5173\u5361", None))
         self.LBL_TIMES.setText(QCoreApplication.translate("fgoMainWindow", u"\u6b21\u6570", None))
 #if QT_CONFIG(statustip)
         self.TXT_TIMES.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u52a0\u5165\u5173\u5361\u961f\u5217\u540e\u751f\u6548,0\u4e3a\u4e0d\u9650\u5236\u6b21\u6570", None))
+#endif // QT_CONFIG(statustip)
+        self.BTN_DAILY_REFRESH.setText(QCoreApplication.translate("fgoMainWindow", u"\u5237\u65b0\u6bcf\u65e5\u4efb\u52a1\u5217\u8868", None))
+#if QT_CONFIG(statustip)
+        self.BTN_DAILY_REFRESH.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u53ea\u626b\u63cf\u5f53\u524d\u56fd\u670d\u6bcf\u65e5\u4efb\u52a1\u5361\u7247\u6807\u9898\uff1b\u6700\u591a\u5411\u4e0b\u6eda\u52a8 10 \u6b21\uff0c\u4e0d\u4f1a\u8fdb\u5165\u5173\u5361\u3002", None))
 #endif // QT_CONFIG(statustip)
 #if QT_CONFIG(statustip)
         self.BTN_QUESTADD.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u65b0\u589e", None))
@@ -596,15 +648,32 @@ class Ui_fgoMainWindow(object):
         self.LBL_WEEKLY_STATUS.setText("")
         self.GRP_QUICKFARM.setTitle(QCoreApplication.translate("fgoMainWindow", u"\u5feb\u901f\u5468\u56de", None))
         self.LBL_QUICKMODE.setText(QCoreApplication.translate("fgoMainWindow", u"\u6a21\u5f0f", None))
-        self.CBB_QUICKMODE.setItemText(0, QCoreApplication.translate("fgoMainWindow", u"\u5f53\u524d\u5173\u5361 / \u6d3b\u52a8\u5173\u5361", None))
-        self.CBB_QUICKMODE.setItemText(1, QCoreApplication.translate("fgoMainWindow", u"\u6bcf\u65e5\u4efb\u52a1\u9875", None))
-        self.CBB_QUICKMODE.setItemText(2, QCoreApplication.translate("fgoMainWindow", u"\u4e3b\u7ebf / Free \u672c\u961f\u5217", None))
+        self.CBB_QUICKMODE.setItemText(0, QCoreApplication.translate("fgoMainWindow", u"\u5f53\u524d\u5173\u5361\u5468\u56de", None))
+        self.CBB_QUICKMODE.setItemText(1, QCoreApplication.translate("fgoMainWindow", u"\u8ba1\u5212\u5173\u5361\u961f\u5217", None))
+        self.CBB_QUICKMODE.setItemText(2, QCoreApplication.translate("fgoMainWindow", u"\u6d3b\u52a8\u63a8\u8fdb", None))
 
         self.LBL_BATTLELIMIT.setText(QCoreApplication.translate("fgoMainWindow", u"\u573a\u6570\u4e0a\u9650", None))
 #if QT_CONFIG(statustip)
         self.TXT_BATTLELIMIT.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"0 \u8868\u793a\u4e0d\u8bbe\u7f6e\u573a\u6570\u4e0a\u9650\uff0c\u76f4\u5230 AP \u4e0d\u8db3\uff1b1 \u5230 N \u8868\u793a\u5b8c\u6210\u5bf9\u5e94\u573a\u6570\u540e\u505c\u6b62\u3002", None))
 #endif // QT_CONFIG(statustip)
         self.LBL_QUICK_HINT.setText(QCoreApplication.translate("fgoMainWindow", u"\u628a\u6e38\u620f\u505c\u5728\u76ee\u6807\u5173\u5361\u5217\u8868\uff0c\u5e76\u8ba9\u76ee\u6807\u5173\u5361\u6392\u5728\u9996\u4f4d\u3002\u6bcf\u65e5\u4efb\u52a1\u8bf7\u5148\u624b\u52a8\u9009\u62e9\u79cd\u7c7b\u548c\u96be\u5ea6\u3002", None))
+#if QT_CONFIG(statustip)
+        self.BTN_MAIN.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u6309\u6240\u9009\u6a21\u5f0f\u5f00\u59cb\u667a\u80fd\u5468\u56de\u6216\u5b89\u5168\u6d3b\u52a8\u63a8\u8fdb\u3002", None))
+#endif // QT_CONFIG(statustip)
+        self.BTN_MAIN.setText(QCoreApplication.translate("fgoMainWindow", u"\u5f00\u59cb\u667a\u80fd\u5468\u56de", None))
+        self.LBL_EVENT_STORYMODE.setText(QCoreApplication.translate("fgoMainWindow", u"\u5267\u60c5\u5904\u7406", None))
+        self.CBB_EVENT_STORYMODE.setItemText(0, QCoreApplication.translate("fgoMainWindow", u"\u9047\u5230\u5267\u60c5\u6682\u505c", None))
+        self.CBB_EVENT_STORYMODE.setItemText(1, QCoreApplication.translate("fgoMainWindow", u"\u81ea\u52a8\u8df3\u8fc7\u5267\u60c5", None))
+
+        self.LBL_EVENT_LIMIT.setText(QCoreApplication.translate("fgoMainWindow", u"\u63a8\u8fdb\u4e0a\u9650", None))
+#if QT_CONFIG(statustip)
+        self.TXT_EVENT_LIMIT.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u6700\u591a\u63a8\u8fdb 1 \u5230 100 \u4e2a\u5267\u60c5\u8282\u70b9\uff1b\u4e0d\u5141\u8bb8\u65e0\u9650\u63a8\u8fdb\u3002", None))
+#endif // QT_CONFIG(statustip)
+        self.CKB_EVENT_REWARD.setText(QCoreApplication.translate("fgoMainWindow", u"\u81ea\u52a8\u9886\u53d6\u5df2\u5b8c\u6210\u6d3b\u52a8\u4efb\u52a1\u5956\u52b1", None))
+#if QT_CONFIG(statustip)
+        self.CKB_EVENT_REWARD.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u4ec5\u5728 OCR \u660e\u786e\u786e\u8ba4\u4efb\u52a1\u5df2\u5b8c\u6210\u4e14\u6309\u94ae\u4e3a\u9886\u53d6\u65f6\u64cd\u4f5c\uff1b\u4e0d\u8d2d\u4e70\u3001\u4e0d\u5151\u6362\u3001\u4e0d\u5904\u7406\u9009\u62e9\u5956\u52b1\u3002", None))
+#endif // QT_CONFIG(statustip)
+        self.LBL_EVENT_STATUS.setText("")
         self.LBL_TEAM.setText(QCoreApplication.translate("fgoMainWindow", u"\u7f16\u961f", None))
 #if QT_CONFIG(statustip)
         self.TXT_TEAM.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u6240\u9009\u7f16\u961f\u5728\u961f\u4f0d\u7f16\u6210\u754c\u9762\u7684\u4f4d\u7f6e,\u4ece\u5de6\u5230\u53f31-10,0\u4e3a\u4e0d\u5207\u6362\u7f16\u961f", None))
@@ -641,10 +710,6 @@ class Ui_fgoMainWindow(object):
         self.BTN_FRIENDTEMPLATES.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u6253\u5f00\u672c\u673a\u52a9\u6218\u6a21\u677f\u6587\u4ef6\u5939\u3002\u56fe\u7247\u53ea\u4fdd\u5b58\u5728\u672c\u673a\u3002", None))
 #endif // QT_CONFIG(statustip)
         self.BTN_FRIENDTEMPLATES.setText(QCoreApplication.translate("fgoMainWindow", u"\u6253\u5f00\u52a9\u6218\u6a21\u677f\u76ee\u5f55", None))
-#if QT_CONFIG(statustip)
-        self.BTN_MAIN.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u5f53\u524d\u5173\u5361\u6a21\u5f0f\u4e0b\uff0c\u5468\u56de\u6e38\u620f\u5f53\u524d\u5173\u5361\u5217\u8868\u4e2d\u7684\u7b2c\u4e00\u4e2a\u5173\u5361\uff1b\u8ba1\u5212\u961f\u5217\u6a21\u5f0f\u53ea\u6267\u884c\u5df2\u5217\u51fa\u7684\u4efb\u52a1\u3002", None))
-#endif // QT_CONFIG(statustip)
-        self.BTN_MAIN.setText(QCoreApplication.translate("fgoMainWindow", u"\u5f00\u59cb\u667a\u80fd\u5468\u56de", None))
 #if QT_CONFIG(statustip)
         self.BTN_BATTLE.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u5b8c\u6210\u5f53\u524d\u6218\u6597", None))
 #endif // QT_CONFIG(statustip)

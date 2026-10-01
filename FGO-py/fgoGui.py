@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QApplication,QInputDialog,QMainWindow,QMenu,QMessa
 from matplotlib import pyplot
 import fgoDevice
 import fgoKernel
-import fgoQuickFarm,fgoQuickQuest,fgoFriendPolicy
+import fgoQuickFarm,fgoQuickQuest,fgoFriendPolicy,fgoEventProgress,fgoGuiOperation
 from fgoMainWindow import Ui_fgoMainWindow
 from fgoGuiTeamup import Teamup
 from fgoMetadata import quest
@@ -41,10 +41,27 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.signalFuncBegin.connect(self.funcBegin)
         self.signalFuncEnd.connect(self.funcEnd)
         self.operation=fgoKernel.Operation()
+        self.dailyEntries=[]
+        self._dailyScanPending=False
         self.chapter=sorted({i[:2]for i in quest})
-        self.CBB_CHAPTER.addItems(QApplication.translate('quest','-'.join(str(j)for j in i))for i in self.chapter)
+        self._chapterData=[fgoQuickQuest.DAILY_CATEGORY]
+        self.CBB_CHAPTER.addItem('每日任务',fgoQuickQuest.DAILY_CATEGORY)
+        for chapter in self.chapter:
+            self.CBB_CHAPTER.addItem(QApplication.translate('quest','-'.join(str(j)for j in chapter)),chapter)
+            self._chapterData.append(chapter)
+        if len(self._chapterData)>1:self.CBB_CHAPTER.setCurrentIndex(1)
+        self.CBB_CHAPTER.currentIndexChanged.connect(self.chapterChanged)
+        self.BTN_DAILY_REFRESH.clicked.connect(self.refreshDailyQuests)
         self.worker=Thread()
         self.config=config
+        self.CBB_EVENT_STORYMODE.setItemData(0,fgoEventProgress.EVENT_STORY_PAUSE)
+        self.CBB_EVENT_STORYMODE.setItemData(1,fgoEventProgress.EVENT_STORY_SKIP)
+        self.CBB_EVENT_STORYMODE.setCurrentIndex(1 if self.config.get('eventStoryMode','pause')=='skip' else 0)
+        self.CBB_EVENT_STORYMODE.currentIndexChanged.connect(self.eventStoryModeChanged)
+        self.CKB_EVENT_REWARD.setChecked(bool(self.config.get('eventAutoClaimRewards',False)))
+        self.CKB_EVENT_REWARD.toggled.connect(lambda value:self.config.__setitem__('eventAutoClaimRewards',value))
+        self.TXT_EVENT_LIMIT.setValue(max(1,min(100,int(self.config.get('eventProgressLimit',1)))))
+        self.TXT_EVENT_LIMIT.valueChanged.connect(lambda value:self.config.__setitem__('eventProgressLimit',value))
         for key,ui,callback in(
             ('teamIndex',self.TXT_TEAM,lambda x:setattr(fgoKernel.Main,'teamIndex',x)),
             (False,self.CKB_TEAM,lambda x:setattr(fgoKernel.Main,'autoFormation',x)),
@@ -71,6 +88,7 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.timer.timeout.connect(self.flush)
         self.notifier=[]
         self.connectDevice()
+        self.chapterChanged(self.CBB_CHAPTER.currentIndex())
     def keyPressEvent(self,key):
         if self.MENU_CONTROL_MAPKEY.isChecked()and not key.modifiers()&~Qt.KeyboardModifier.KeypadModifier:
             try:fgoDevice.device.press(chr(key.nativeVirtualKey()))
@@ -123,7 +141,19 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.TXT_APPLE.setValue(self.operation.appleTotal)
         cur=self.LST_QUEST.currentRow()
         self.LST_QUEST.clear()
-        self.LST_QUEST.addItems(f'{i:2}.{k:5}× {QApplication.translate("quest","-".join(str(m)for m in j[:2]))}=={QApplication.translate("quest","-".join(str(m)for m in j))}'for i,(j,k)in enumerate(self.operation))
+        rows=[]
+        for index,task in enumerate(self.operation,1):
+            if isinstance(task,fgoGuiOperation.QuestTask):
+                target,times=task.target,task.repetitions
+                if task.type=='daily':chapter='每日任务';title=target.title
+                elif task.type=='metadata':chapter=QApplication.translate('quest','-'.join(str(part)for part in target[:2]));title=QApplication.translate('quest','-'.join(str(part)for part in target))
+                else:chapter=task.type;title=str(target)
+            else:
+                target,times=task
+                chapter=QApplication.translate('quest','-'.join(str(part)for part in target[:2]))
+                title=QApplication.translate('quest','-'.join(str(part)for part in target))
+            rows.append(f'{index}. {times}× {chapter} == {title}')
+        self.LST_QUEST.addItems(rows)
         self.LST_QUEST.setCurrentRow(cur)
     def funcBegin(self):
         self.BTN_MAIN.setEnabled(False)
@@ -134,6 +164,9 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.BTN_STOP.setEnabled(True)
         self.BTN_STOPLATER.setEnabled(True)
         self.BTN_QUESTLOAD.setEnabled(False)
+        self.BTN_DAILY_REFRESH.setEnabled(False)
+        self.CBB_CHAPTER.setEnabled(False)
+        self.CBB_QUEST.setEnabled(False)
         self.MENU_SCRIPT.setEnabled(False)
         self.timer.start(500)
     def funcEnd(self,msg):
@@ -145,16 +178,29 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.BTN_STOPLATER.setChecked(False)
         self.BTN_STOPLATER.setEnabled(False)
         self.BTN_QUESTLOAD.setEnabled(True)
+        self.BTN_DAILY_REFRESH.setEnabled(True)
+        self.CBB_CHAPTER.setEnabled(True)
+        self.CBB_QUEST.setEnabled(self.CBB_CHAPTER.currentData()!=fgoQuickQuest.DAILY_CATEGORY or bool(self.dailyEntries))
         self.MENU_SCRIPT.setEnabled(True)
         self.timer.stop()
+        if self._dailyScanPending:
+            self._dailyScanPending=False
+            if isinstance(self.result,dict) and self.result.get('type')=='DailyQuestScan':
+                self.dailyEntries=list(self.result['entries'])
+                if self.CBB_CHAPTER.currentData()==fgoQuickQuest.DAILY_CATEGORY:self.populateDailyQuests()
+                status=f'发现 {len(self.dailyEntries)} 项每日任务；扫描 {self.result["screens"]} 屏。'
+                if not self.result['complete']:status+='已达 10 次滚动上限或未能确认列表末端，结果可能不完整。'
+                self.LBL_WEEKLY_STATUS.setText(status)
+            elif msg[0]!='Done':self.LBL_WEEKLY_STATUS.setText(msg[0])
         if self.LBL_WEEKLY_STATUS.text()=='正在读取每周任务……' and not(isinstance(self.result,dict)and self.result.get('type')=='WeeklyMission'):
             self.LBL_WEEKLY_STATUS.setText('每周任务读取未完成，请查看诊断日志。')
         QApplication.alert(self)
         self.TRAY.showMessage('FGO-py',*msg)
         match self.result:
-            case{'type':'DailyPage'}:
-                self.LBL_WEEKLY_STATUS.setText('每日任务页已打开。请在游戏中点选当天目标关卡，再切换到当前关卡 / 活动关卡模式周回。')
-                QMessageBox.information(self,'FGO-py','每日任务页已打开。请手动点选当天目标关卡，再切换到“当前关卡 / 活动关卡”模式周回。')
+            case{'type':'EventProgress'}:
+                self.LBL_EVENT_STATUS.setText(self.result.get('message','活动状态已更新。'))
+                if self.result.get('state') in ('story_paused','mission_blocked','blocked','combat_ready','start_confirmation','battle_defeated'):
+                    QMessageBox.information(self,'FGO-py',self.result.get('message','活动推进已暂停。'))
             case{'type':'WeeklyMission'}:
                 feedback=fgoQuickFarm.weeklyMissionFeedback(self.result)
                 self.LBL_WEEKLY_STATUS.setText(feedback)
@@ -199,32 +245,61 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
     def quickModeChanged(self,index):
         mode=fgoQuickFarm.modeName(index)
         self.config['quickFarmMode']=mode
-        labels={
-            'current':('周回当前关卡','把游戏停在目标关卡列表，并让目标位于首位。适用于活动、每日任务、限时 Free 本及未加入元数据的关卡。'),
-            'daily':('打开每日任务页','仅适配简体中文：打开迦勒底之门的每日任务页。请在游戏中手动选择当天目标，再切换到当前关卡模式周回。'),
-            'plan':('开始计划关卡队列','只执行左侧计划关卡队列；队列为空时不会启动当前关卡周回。'),
-        }[mode]
-        self.BTN_MAIN.setText(labels[0])
-        self.BTN_MAIN.setStatusTip(labels[1])
-        self.LBL_QUICK_HINT.setText(labels[1])
+        eventMode=mode=='event'
+        self.BTN_MAIN.setText('开始活动推进' if eventMode else '开始智能周回')
+        self.BTN_MAIN.setStatusTip('只沿活动主线推进；遇到剧情默认暂停。' if eventMode else '按“当前关卡周回”或左侧“计划关卡队列”开始智能周回。')
+        self.LBL_QUICK_HINT.setText({
+            'current':'将游戏停在目标 Free Quest 列表；当前首位可见关卡为周回目标。',
+            'plan':'只执行左侧计划队列。普通章节仅包含已解锁地图的 Free Quest，不会推进主线剧情。',
+            'event':'通用 OCR 活动推进；默认遇到剧情暂停，不随机刷 Free Quest。',
+        }[mode])
+        self.LBL_BATTLELIMIT.setVisible(not eventMode)
+        self.TXT_BATTLELIMIT.setVisible(not eventMode)
+        for widget in (self.LBL_EVENT_STORYMODE,self.CBB_EVENT_STORYMODE,self.LBL_EVENT_LIMIT,self.TXT_EVENT_LIMIT,self.CKB_EVENT_REWARD,self.LBL_EVENT_STATUS):widget.setVisible(eventMode)
+    def eventStoryModeChanged(self,index):
+        mode=self.CBB_EVENT_STORYMODE.itemData(index) or fgoEventProgress.EVENT_STORY_PAUSE
+        self.config['eventStoryMode']=mode
+        self.CBB_EVENT_STORYMODE.setStatusTip('默认模式：检测到剧情立即暂停，请阅读后返回活动地图再启动。' if mode==fgoEventProgress.EVENT_STORY_PAUSE else '只有 OCR 唯一识别 SKIP/跳过按钮及确认弹窗后才会操作；识别失败就停止。')
+    def chapterChanged(self,index):
+        if index<0:return
+        self.CBB_QUEST.clear()
+        data=self._chapterData[index]
+        isDaily=data==fgoQuickQuest.DAILY_CATEGORY
+        self.BTN_DAILY_REFRESH.setVisible(isDaily)
+        self.CBB_QUEST.setEnabled(not isDaily)
+        if isDaily:
+            self.populateDailyQuests()
+            if not self.dailyEntries and not self._dailyScanPending:QTimer.singleShot(0,self.refreshDailyQuests)
+        else:
+            self.quest=[item for item in quest if item[:2]==data]
+            self.CBB_QUEST.addItems(QApplication.translate('quest','-'.join(str(j)for j in item))for item in self.quest)
+    def populateDailyQuests(self):
+        self.CBB_QUEST.clear()
+        for entry in self.dailyEntries:self.CBB_QUEST.addItem(entry.title,entry)
+        self.CBB_QUEST.setEnabled(bool(self.dailyEntries) and not self._dailyScanPending)
+    def refreshDailyQuests(self):
+        if self._dailyScanPending or not self.isDeviceAvailable():return
+        self._dailyScanPending=True
+        self.CBB_QUEST.setEnabled(False)
+        self.LBL_WEEKLY_STATUS.setText('正在从顶部 OCR 扫描每日任务标题（最多向下滚动 10 次）……')
+        self.runFunc(fgoQuickQuest.scanDailyQuestsCN)
     def quickFarm(self):
         if not self.isDeviceAvailable():return
         mode=fgoQuickFarm.modeName(self.CBB_QUICKMODE.currentIndex())
-        if mode=='daily':
-            self.LBL_WEEKLY_STATUS.setText('正在打开每日任务页……')
-            self.runFunc(fgoQuickQuest.openDailyPageCN)
+        self.operation.friendPolicy=self.config.get('friendPolicy','first')
+        self.operation.friendMaxRefresh=self.TXT_FRIENDREFRESH.value()
+        if mode=='event':
+            self.LBL_EVENT_STATUS.setText('正在识别当前活动状态……')
+            self.runFunc(lambda:fgoEventProgress.progress(self.TXT_EVENT_LIMIT.value(),self.CBB_EVENT_STORYMODE.currentData() or 'pause',self.CKB_EVENT_REWARD.isChecked(),self.operation.friendPolicy,self.operation.friendMaxRefresh))
             return
+        fgoQuickFarm.applyBattleLimit(fgoKernel.schedule,self.TXT_BATTLELIMIT.value())
         if mode=='current':
-            operation=fgoKernel.Operation(appleTotal=self.operation.appleTotal,appleKind=self.operation.appleKind,battleClass=fgoKernel.Battle)
+            operation=fgoKernel.Operation(appleTotal=self.operation.appleTotal,appleKind=self.operation.appleKind,battleClass=fgoKernel.Battle,friendPolicy=self.operation.friendPolicy,friendMaxRefresh=self.operation.friendMaxRefresh)
         else:
             if not self.operation:
-                QMessageBox.information(self,'FGO-py','计划关卡队列为空。请先添加关卡，或选择“当前关卡 / 活动关卡”模式。')
+                QMessageBox.information(self,'FGO-py','计划关卡队列为空。请先添加关卡。')
                 return
-            operation=self.operation
-            operation.battleClass=fgoKernel.Battle
-        operation.friendPolicy=self.config.get('friendPolicy','first')
-        operation.friendMaxRefresh=self.TXT_FRIENDREFRESH.value()
-        fgoQuickFarm.applyBattleLimit(fgoKernel.schedule,self.TXT_BATTLELIMIT.value())
+            operation=fgoGuiOperation.GuiQueueOperation(self.operation,self.operation)
         self.runFunc(operation)
     def friendPolicyChanged(self,index):
         policy=fgoFriendPolicy.policyName(index)
@@ -238,12 +313,14 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
     def openFriendTemplates(self):os.startfile(os.path.abspath('fgoImage/friend'))
     def runMain(self):
         self.operation.battleClass=fgoKernel.Battle
-        self.runFunc(self.operation)
+        if self.operation:self.runFunc(fgoGuiOperation.GuiQueueOperation(self.operation,self.operation,self.operation.battleClass))
+        else:self.runFunc(fgoKernel.Main(self.operation.appleTotal,self.operation.appleKind,fgoKernel.Battle,self.operation.friendPolicy,self.operation.friendMaxRefresh))
     def runBattle(self):self.runFunc(fgoKernel.Battle())
     def runClassic(self):
         if not Teamup(self).exec():return
-        self.operation.battleClass=lambda:fgoKernel.Battle(fgoKernel.ClassicTurn)
-        self.runFunc(self.operation)
+        battleClass=lambda:fgoKernel.Battle(fgoKernel.ClassicTurn)
+        if self.operation:self.runFunc(fgoGuiOperation.GuiQueueOperation(self.operation,self.operation,battleClass))
+        else:self.runFunc(fgoKernel.Main(self.operation.appleTotal,self.operation.appleKind,battleClass,self.operation.friendPolicy,self.operation.friendMaxRefresh))
     def pause(self,x):
         if not x and not self.isDeviceAvailable():return self.BTN_PAUSE.setChecked(True)
         fgoKernel.schedule.pause()
@@ -296,12 +373,19 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         if QMessageBox.information(self,'FGO-py',s,QMessageBox.StandardButton.Ok|QMessageBox.StandardButton.Cancel)!=QMessageBox.StandardButton.Ok:return
         try:exec(s)
         except BaseException as e:logger.exception(e)
-    def questQuery(self,index):
-        self.quest=[i for i in quest if i[:2]==self.chapter[index]]
-        self.CBB_QUEST.clear()
-        self.CBB_QUEST.addItems(QApplication.translate('quest','-'.join(str(j)for j in i))for i in self.quest)
+    def questQuery(self,index):self.chapterChanged(index)
     def questAdd(self):
-        self.operation.append((self.quest[self.CBB_QUEST.currentIndex()],self.TXT_TIMES.value()))
+        index=self.CBB_QUEST.currentIndex()
+        if index<0:return
+        times=self.TXT_TIMES.value()
+        if self._chapterData[self.CBB_CHAPTER.currentIndex()]==fgoQuickQuest.DAILY_CATEGORY:
+            entry=self.CBB_QUEST.currentData()
+            if entry is None:
+                QMessageBox.information(self,'FGO-py','每日任务尚未扫描。请先刷新列表。')
+                return
+            task=fgoGuiOperation.QuestTask.daily(entry,times)
+        else:task=fgoGuiOperation.QuestTask.metadata(self.quest[index],times)
+        self.operation.append(task)
         self.flush()
     def questRemove(self):
         if(cur:=self.LST_QUEST.currentRow())>=len(self.operation):return
@@ -324,7 +408,9 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.LBL_WEEKLY_STATUS.setText('正在读取每周任务……')
         def load():
             report=fgoKernel.weeklyMissionDetailed()
-            report['entries']=fgoQuickFarm.appendWeeklyQuests(self.operation,report)
+            tasks=[fgoGuiOperation.QuestTask.metadata(quest,times) for quest,times in report.get('quests',())]
+            self.operation.extend(tasks)
+            report['entries']=len(tasks)
             return report
         self.runFunc(load)
     def about(self):QMessageBox.about(self,'FGO-py - About',f'''

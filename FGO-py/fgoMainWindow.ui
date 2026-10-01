@@ -30,12 +30,12 @@
            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
           </property>
           <item row="0" column="1">
-           <widget class="QComboBox" name="CBB_CHAPTER"/>
+           <widget class="QComboBox" name="CBB_CHAPTER"><property name="statusTip"><string>普通章节只包含已解锁地图上的自由关卡，不会自动推进主线剧情。</string></property></widget>
           </item>
           <item row="0" column="0">
            <widget class="QLabel" name="LBL_CHAPTER">
             <property name="text">
-             <string>章节</string>
+             <string>章节 / 分类</string>
             </property>
            </widget>
           </item>
@@ -76,6 +76,12 @@
            </widget>
           </item>
          </layout>
+        </item>
+        <item>
+         <widget class="QPushButton" name="BTN_DAILY_REFRESH">
+          <property name="text"><string>刷新每日任务列表</string></property>
+          <property name="statusTip"><string>只扫描当前国服每日任务卡片标题；最多向下滚动 10 次，不会进入关卡。</string></property>
+         </widget>
         </item>
         <item>
          <layout class="QHBoxLayout" name="LAYOUT_QUESTADD">
@@ -165,9 +171,9 @@
            <item row="0" column="0"><widget class="QLabel" name="LBL_QUICKMODE"><property name="text"><string>模式</string></property></widget></item>
            <item row="0" column="1">
             <widget class="QComboBox" name="CBB_QUICKMODE">
-             <item><property name="text"><string>当前关卡 / 活动关卡</string></property></item>
-             <item><property name="text"><string>每日任务页</string></property></item>
-             <item><property name="text"><string>主线 / Free 本队列</string></property></item>
+             <item><property name="text"><string>当前关卡周回</string></property></item>
+             <item><property name="text"><string>计划关卡队列</string></property></item>
+             <item><property name="text"><string>活动推进</string></property></item>
             </widget>
            </item>
            <item row="1" column="0"><widget class="QLabel" name="LBL_BATTLELIMIT"><property name="text"><string>场数上限</string></property></widget></item>
@@ -185,6 +191,38 @@
              <property name="text"><string>把游戏停在目标关卡列表，并让目标关卡排在首位。每日任务请先手动选择种类和难度。</string></property>
             </widget>
            </item>
+            <item row="3" column="0" colspan="2">
+             <widget class="QPushButton" name="BTN_MAIN">
+              <property name="cursor"><cursorShape>PointingHandCursor</cursorShape></property>
+              <property name="statusTip"><string>按所选模式开始智能周回或安全活动推进。</string></property>
+              <property name="text"><string>开始智能周回</string></property>
+             </widget>
+            </item>
+            <item row="4" column="0"><widget class="QLabel" name="LBL_EVENT_STORYMODE"><property name="text"><string>剧情处理</string></property></widget></item>
+            <item row="4" column="1">
+             <widget class="QComboBox" name="CBB_EVENT_STORYMODE">
+              <item><property name="text"><string>遇到剧情暂停</string></property></item>
+              <item><property name="text"><string>自动跳过剧情</string></property></item>
+             </widget>
+            </item>
+            <item row="5" column="0"><widget class="QLabel" name="LBL_EVENT_LIMIT"><property name="text"><string>推进上限</string></property></widget></item>
+            <item row="5" column="1">
+             <widget class="QSpinBox" name="TXT_EVENT_LIMIT">
+              <property name="statusTip"><string>最多推进 1 到 100 个剧情节点；不允许无限推进。</string></property>
+              <property name="minimum"><number>1</number></property>
+              <property name="maximum"><number>100</number></property>
+              <property name="value"><number>1</number></property>
+             </widget>
+            </item>
+            <item row="6" column="0" colspan="2">
+             <widget class="QCheckBox" name="CKB_EVENT_REWARD">
+              <property name="text"><string>自动领取已完成活动任务奖励</string></property>
+              <property name="statusTip"><string>仅在 OCR 明确确认任务已完成且按钮为领取时操作；不购买、不兑换、不处理选择奖励。</string></property>
+             </widget>
+            </item>
+            <item row="7" column="0" colspan="2">
+             <widget class="QLabel" name="LBL_EVENT_STATUS"><property name="wordWrap"><bool>true</bool></property><property name="text"><string/></property></widget>
+            </item>
           </layout>
          </widget>
         </item>
@@ -366,20 +404,7 @@
          </item>
        </layout>
         </item>
-        <item>
-         <widget class="QPushButton" name="BTN_MAIN">
-          <property name="cursor">
-           <cursorShape>PointingHandCursor</cursorShape>
-          </property>
-          <property name="statusTip">
-           <string>当前关卡模式下，周回游戏当前关卡列表中的第一个关卡；计划队列模式只执行已列出的任务。</string>
-          </property>
-          <property name="text">
-           <string>开始智能周回</string>
-          </property>
-         </widget>
-        </item>
-        <item>
+<item>
          <layout class="QHBoxLayout" name="LAYOUT_FUNC">
           <item>
            <layout class="QVBoxLayout" name="LAYOUT_FUNCBATTLE">
@@ -686,6 +711,7 @@
  <tabstops>
   <tabstop>CBB_CHAPTER</tabstop>
   <tabstop>CBB_QUEST</tabstop>
+  <tabstop>BTN_DAILY_REFRESH</tabstop>
   <tabstop>TXT_TIMES</tabstop>
   <tabstop>BTN_QUESTADD</tabstop>
   <tabstop>BTN_QUESTREMOVE</tabstop>
@@ -694,6 +720,10 @@
   <tabstop>BTN_QUESTCLEAR</tabstop>
   <tabstop>CBB_QUICKMODE</tabstop>
   <tabstop>TXT_BATTLELIMIT</tabstop>
+  <tabstop>BTN_MAIN</tabstop>
+  <tabstop>CBB_EVENT_STORYMODE</tabstop>
+  <tabstop>TXT_EVENT_LIMIT</tabstop>
+  <tabstop>CKB_EVENT_REWARD</tabstop>
   <tabstop>TXT_TEAM</tabstop>
   <tabstop>CKB_TEAM</tabstop>
   <tabstop>CBB_APPLE</tabstop>
@@ -703,7 +733,6 @@
   <tabstop>BTN_FRIENDTEMPLATES</tabstop>
   <tabstop>BTN_CONNECT</tabstop>
   <tabstop>BTN_QUESTLOAD</tabstop>
-  <tabstop>BTN_MAIN</tabstop>
   <tabstop>BTN_BATTLE</tabstop>
   <tabstop>BTN_CLASSIC</tabstop>
   <tabstop>BTN_PAUSE</tabstop>

@@ -1,4 +1,4 @@
-MODES=('current','daily','plan')
+MODES=('current','plan','event')
 
 def modeIndex(mode):
     try:return MODES.index(mode)
