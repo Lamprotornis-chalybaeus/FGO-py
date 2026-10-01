@@ -8,6 +8,8 @@ from fgoSchedule import ScriptStop,schedule
 DAILY_CATEGORY='daily'
 DAILY_SCROLL_LIMIT=10
 DAILY_RESTORE_SCROLL_LIMIT=20
+DAILY_NAVIGATION_LIMIT=20
+DAILY_NAV_CLOSE_LIMIT=3
 DAILY_TITLE_REGION=(620,120,1120,675)
 DAILY_VIEWPORT=(620,140,1120,675)
 DIFFICULTIES=('极级','超级','上级','中级','初级')
@@ -139,15 +141,72 @@ def _scrollToTop(maxScrolls=DAILY_SCROLL_LIMIT):
 
 def _isDailyPage(detect):return _dailyHeader(detect) or bool(_dailyEntriesAt(detect))
 
+def _navigationLabels(detect):
+    return [(_clean_text(item.text),_span_rect(item)) for item in OCR.ZHS.detect_and_ocr(detect.im,drop_score=.5)]
+
+def _navigationLabel(labels,text,region):
+    x0,y0,x1,y1=region
+    matches=[rect for title,rect in labels if _title_key(title)==_title_key(text) and x0<=(rect[0]+rect[2])/2<x1 and y0<=(rect[1]+rect[3])/2<y1]
+    if len(matches)!=1:return None
+    rect=matches[0]
+    return ((rect[0]+rect[2])//2,(rect[1]+rect[3])//2)
+
+def dailyNavigationAction(labels):
+    """Choose only navigation controls on a positively identified CN page."""
+    header=(900,0,1280,95);cards=(640,95,1230,600);back=(0,0,200,95)
+    # A visible confirmation must not be treated as a navigable background.
+    if any(350<=(r[0]+r[2])/2<1100 and 180<=(r[1]+r[3])/2<650 and (_title_key(t) in ('取消','确定','确认','开始','ok','cancel') or '是否' in t) for t,r in labels):return ('blocked',None)
+    if _navigationLabel(labels,'每日任务',header):return ('ready',None)
+    if _navigationLabel(labels,'迦勒底之门',header):
+        position=_navigationLabel(labels,'每日任务',cards)
+        return ('daily',position) if position else ('scroll',None)
+    close=_navigationLabel(labels,'关闭',back)
+    listHeader=any(r[0]>=900 and r[1]<95 and len(_title_key(t))>=2 for t,r in labels)
+    listTimer=any('关卡举办时间' in _title_key(t) and r[0]>=640 for t,r in labels)
+    if close and (listHeader or listTimer):return ('close',close)
+    if _navigationLabel(labels,'通知',back):
+        position=_navigationLabel(labels,'迦勒底之门',cards)
+        return ('gate',position) if position else ('scroll',None)
+    return ('blocked',None)
+
 def openDailyPageCN():
     """Open the CN daily-quest list without selecting or starting a battle."""
     if XDetect.region!='CN':raise ScriptStop('每日任务快捷入口仅适配简体中文服务器')
-    if not Detect(0,1).isMainInterface():raise ScriptStop('请先将游戏返回主界面，再打开每日任务页')
-    if Detect.cache.im.shape[:2]!=(720,1280):raise ScriptStop('每日任务快捷入口仅支持 1280x720 横屏')
-    _open_chapter((0,))
-    _open_chapter((0,0))
-    if not _isDailyPage(Detect(.2)):raise ScriptStop('进入章节后未确认每日任务页，未继续操作')
-    return {'type':'DailyPage'}
+    closes=scrolls=unchanged=transitionWaits=0;lastTap=None
+    for _ in range(DAILY_NAVIGATION_LIMIT):
+        detect=Detect(.3)
+        if detect.im.shape[:2]!=(720,1280):raise ScriptStop('每日任务快捷入口仅支持 1280x720 横屏')
+        action,position=dailyNavigationAction(_navigationLabels(detect)) if detect.isMainInterface() else ('blocked',None)
+        if action=='ready':return {'type':'DailyPage'}
+        if action=='blocked':
+            # Navigation animations can temporarily hide both the menu and its title.
+            # Only wait after a verified navigation tap; never act on the unknown frame.
+            if lastTap is not None and transitionWaits<3:
+                transitionWaits+=1
+                schedule.sleep(.5)
+                continue
+            raise ScriptStop('未能唯一确认每日任务导航入口，或存在确认弹窗；请关闭弹窗或返回主界面后刷新')
+        transitionWaits=0
+        if action in ('gate','daily') and lastTap==(action,position):
+            unchanged+=1
+            if unchanged>=3:raise ScriptStop('点击导航入口后页面未变化，已停止重复点击')
+            schedule.sleep(.3)
+            continue
+        unchanged=0
+        if action=='scroll':
+            if scrolls>=DAILY_SCROLL_LIMIT:raise ScriptStop('每日任务入口导航达到 10 次滚动上限；未选择任何关卡')
+            scrolls+=1
+            after,moved=_swipe(detect,True)
+            if not moved:raise ScriptStop('已到导航列表顶部，但未唯一识别迦勒底之门/每日任务入口')
+            lastTap=None
+        else:
+            if action=='close':
+                if closes>=DAILY_NAV_CLOSE_LIMIT:raise ScriptStop('返回主界面超过 3 层导航上限，已停止')
+                closes+=1
+            fgoDevice.device.touch(position)
+            lastTap=(action,position)
+            schedule.sleep(.6)
+    raise ScriptStop('每日任务导航超过有限步骤上限；未选择任何关卡')
 
 def _open_chapter(chapter):
     for _ in range(30):
@@ -174,7 +233,6 @@ def scanDailyQuestsCN(maxScrolls=DAILY_SCROLL_LIMIT):
     maxScrolls=max(0,min(DAILY_SCROLL_LIMIT,int(maxScrolls)))
     detect=Detect(.2)
     if not _isDailyPage(detect):
-        if not detect.isMainInterface():raise ScriptStop('请返回游戏主界面后再刷新每日任务列表')
         openDailyPageCN()
         detect=Detect(.3)
     top,atTop=_scrollToTop(maxScrolls)
@@ -202,7 +260,6 @@ def gotoDailyEntry(entry,maxScrolls=DAILY_SCROLL_LIMIT):
     if XDetect.region!='CN':raise ScriptStop('每日任务定位仅适配简体中文服务器')
     detect=Detect(.2)
     if not _isDailyPage(detect):
-        if not detect.isMainInterface():raise ScriptStop('执行每日任务前请先返回游戏主界面')
         openDailyPageCN()
     detect,atTop=_scrollToTop(maxScrolls)
     if not atTop:raise ScriptStop('无法确认每日任务列表顶部，已停止定位')
