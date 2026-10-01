@@ -6,6 +6,7 @@ from PySide6.QtWidgets import QApplication,QInputDialog,QMainWindow,QMenu,QMessa
 from matplotlib import pyplot
 import fgoDevice
 import fgoKernel
+import fgoQuickFarm,fgoQuickQuest
 from fgoMainWindow import Ui_fgoMainWindow
 from fgoGuiTeamup import Teamup
 from fgoMetadata import quest
@@ -53,11 +54,15 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
             ('stayOnTop',self.MENU_CONTROL_STAYONTOP,lambda x:(self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint,x),self.show())),
             ('notifyEnable',self.MENU_CONTROL_NOTIFY,None),
             (0,self.CBB_APPLE,lambda x:setattr(self.operation,'appleKind',x)),
+            ('quickFarmBattleLimit',self.TXT_BATTLELIMIT,None),
             (0,self.TXT_APPLE,lambda x:setattr(self.operation,'appleTotal',x)),
         ):
             value=self.config.get(key,key)
             getattr(ui,{QAction:'toggled',QCheckBox:'toggled',QSpinBox:'valueChanged',QComboBox:'currentIndexChanged'}[type(ui)])[type(value)].connect(lambda x,task=((lambda x,key=key:self.config.__setitem__(key,x),)if key else())+((lambda x,callback=callback:callback(x),)if callable(callback)else()):[i(x)for i in task])
             getattr(ui,{QAction:'setChecked',QCheckBox:'setChecked',QSpinBox:'setValue',QComboBox:'setCurrentIndex'}[type(ui)])(value)
+        self.CBB_QUICKMODE.setCurrentIndex(fgoQuickFarm.modeIndex(self.config.get('quickFarmMode','current')))
+        self.CBB_QUICKMODE.currentIndexChanged.connect(self.quickModeChanged)
+        self.quickModeChanged(self.CBB_QUICKMODE.currentIndex())
         self.timer=QTimer(self)
         self.timer.timeout.connect(self.flush)
         self.notifier=[]
@@ -141,6 +146,9 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         QApplication.alert(self)
         self.TRAY.showMessage('FGO-py',*msg)
         match self.result:
+            case{'type':'DailyPage'}:
+                self.LBL_WEEKLY_STATUS.setText('每日任务页已打开。请在游戏中点选当天目标关卡，再切换到当前关卡 / 活动关卡模式周回。')
+                QMessageBox.information(self,'FGO-py','每日任务页已打开。请手动点选当天目标关卡，再切换到“当前关卡 / 活动关卡”模式周回。')
             case{'type':'Battle'}:QMessageBox.information(self,'FGO-py',f'''
 <h2>{msg[0].split(':',1)[0]}</h2>
 {self.color(0x006400)}{self.result['turn']}</font>{self.tr('回合完成战斗')},{self.tr('用时')}{self.color(0x006400)}{self.result['time']//3600:.0f}:{self.result['time']//60%60:02.0f}:{self.result['time']%60:02.0f}</font><br/>
@@ -178,6 +186,34 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         fgoDevice.device=fgoDevice.Device(text)
         self.LBL_DEVICE.setText(fgoDevice.device.name)
         self.MENU_CONTROL_MAPKEY.setChecked(False)
+    def quickModeChanged(self,index):
+        mode=fgoQuickFarm.modeName(index)
+        self.config['quickFarmMode']=mode
+        labels={
+            'current':('周回当前关卡','把游戏停在目标关卡列表，并确保目标关卡位于当前列表第一个。适用于活动、每日、限时 Free 本及未加入元数据的关卡。'),
+            'daily':('打开每日任务页','仅适配简体中文：打开迦勒底之门的每日任务页。请在游戏中手动选择当天目标，再切换到当前关卡模式周回。'),
+            'plan':('开始计划关卡队列','只执行左侧计划关卡队列；队列为空时不会启动当前关卡周回。'),
+        }[mode]
+        self.BTN_MAIN.setText(labels[0])
+        self.BTN_MAIN.setStatusTip(labels[1])
+        self.LBL_QUICK_HINT.setText(labels[1])
+    def quickFarm(self):
+        if not self.isDeviceAvailable():return
+        mode=fgoQuickFarm.modeName(self.CBB_QUICKMODE.currentIndex())
+        if mode=='daily':
+            self.LBL_WEEKLY_STATUS.setText('正在打开每日任务页……')
+            self.runFunc(fgoQuickQuest.openDailyPageCN)
+            return
+        if mode=='current':
+            operation=fgoKernel.Operation(appleTotal=self.operation.appleTotal,appleKind=self.operation.appleKind,battleClass=fgoKernel.Battle)
+        else:
+            if not self.operation:
+                QMessageBox.information(self,'FGO-py','计划关卡队列为空。请先添加关卡，或选择“当前关卡 / 活动关卡”模式。')
+                return
+            operation=self.operation
+            operation.battleClass=fgoKernel.Battle
+        fgoQuickFarm.applyBattleLimit(fgoKernel.schedule,self.TXT_BATTLELIMIT.value())
+        self.runFunc(operation)
     def runMain(self):
         self.operation.battleClass=fgoKernel.Battle
         self.runFunc(self.operation)

@@ -19,6 +19,12 @@
       <item>
        <layout class="QVBoxLayout" name="LAYOUT_QUEST">
         <item>
+         <widget class="QLabel" name="LBL_QUEUE_TITLE">
+          <property name="text"><string>计划关卡队列</string></property>
+          <property name="statusTip"><string>这里只列出由章节/关卡选择器或每周任务分析加入的计划任务。</string></property>
+        </widget>
+        </item>
+        <item>
          <layout class="QFormLayout" name="LAYOUT_QUESTSELECT">
           <property name="labelAlignment">
            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -138,14 +144,50 @@
            </sizepolicy>
           </property>
           <property name="text">
-           <string>从每周任务载入</string>
+           <string>分析每周任务并加入队列</string>
           </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="LBL_WEEKLY_STATUS">
+          <property name="wordWrap"><bool>true</bool></property>
+          <property name="text"><string/></property>
          </widget>
         </item>
        </layout>
       </item>
       <item>
        <layout class="QVBoxLayout" name="LAYOUT_LAUNCH">
+        <item>
+         <widget class="QGroupBox" name="GRP_QUICKFARM">
+          <property name="title"><string>快速周回</string></property>
+          <layout class="QFormLayout" name="LAYOUT_QUICKFARM">
+           <item row="0" column="0"><widget class="QLabel" name="LBL_QUICKMODE"><property name="text"><string>模式</string></property></widget></item>
+           <item row="0" column="1">
+            <widget class="QComboBox" name="CBB_QUICKMODE">
+             <item><property name="text"><string>当前关卡 / 活动关卡</string></property></item>
+             <item><property name="text"><string>每日任务页</string></property></item>
+             <item><property name="text"><string>主线 / Free 本队列</string></property></item>
+            </widget>
+           </item>
+           <item row="1" column="0"><widget class="QLabel" name="LBL_BATTLELIMIT"><property name="text"><string>场数上限</string></property></widget></item>
+           <item row="1" column="1">
+            <widget class="QSpinBox" name="TXT_BATTLELIMIT">
+             <property name="statusTip"><string>0 表示不设置场数上限，直到 AP 不足；1 到 N 表示完成对应场数后停止。</string></property>
+             <property name="alignment"><set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set></property>
+             <property name="maximum"><number>1000</number></property>
+             <property name="value"><number>1</number></property>
+            </widget>
+           </item>
+           <item row="2" column="0" colspan="2">
+            <widget class="QLabel" name="LBL_QUICK_HINT">
+             <property name="wordWrap"><bool>true</bool></property>
+             <property name="text"><string>把游戏停在目标关卡列表，并确保目标关卡位于当前列表第一个。适用于活动及未加入元数据的关卡。</string></property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
         <item>
          <layout class="QFormLayout" name="LAYOUT_INFO">
           <property name="labelAlignment">
@@ -307,10 +349,10 @@
            <cursorShape>PointingHandCursor</cursorShape>
           </property>
           <property name="statusTip">
-           <string>在关卡列表界面将要刷的关卡置于第一个来清空体力,或是依次执行关卡队列中的关卡</string>
+           <string>当前关卡模式下，周回游戏当前关卡列表中的第一个关卡；计划队列模式只执行已列出的任务。</string>
           </property>
           <property name="text">
-           <string>肝!</string>
+           <string>开始智能周回</string>
           </property>
          </widget>
         </item>
@@ -627,6 +669,8 @@
   <tabstop>BTN_QUESTUP</tabstop>
   <tabstop>BTN_QUESTDOWN</tabstop>
   <tabstop>BTN_QUESTCLEAR</tabstop>
+  <tabstop>CBB_QUICKMODE</tabstop>
+  <tabstop>TXT_BATTLELIMIT</tabstop>
   <tabstop>TXT_TEAM</tabstop>
   <tabstop>CKB_TEAM</tabstop>
   <tabstop>CBB_APPLE</tabstop>
@@ -653,7 +697,7 @@
    <sender>BTN_MAIN</sender>
    <signal>clicked()</signal>
    <receiver>fgoMainWindow</receiver>
-   <slot>runMain()</slot>
+   <slot>quickFarm()</slot>
   </connection>
   <connection>
    <sender>BTN_SCREENSHOT</sender>
@@ -825,6 +869,7 @@
   </connection>
  </connections>
  <slots>
+  <slot>quickFarm()</slot>
   <slot>about()</slot>
   <slot>bench()</slot>
   <slot>connectDevice()</slot>
