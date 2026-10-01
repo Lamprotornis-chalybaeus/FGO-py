@@ -171,8 +171,7 @@ def goto(quest):
         fgoDevice.device.swipe((1000,200),(1000,600))
     while not Detect(.4).isQuestFreeContains(quest[0]):fgoDevice.device.swipe((1000,600),(1000,200))
     while not Detect(.4).isQuestFreeFirst(quest[0]):fgoDevice.device.swipe((1000,395),(1000,300))
-@serialize(mutex)
-def weeklyMission():
+def _weeklyMissionDetailed():
     while not Detect(0,1).isMainInterface():pass
     fgoDevice.device.perform('B',(800,))
     while not Detect(.4).isWeeklyMission():pass
@@ -181,14 +180,54 @@ def weeklyMission():
     while not Detect.cache.isWeeklyMissionListEnd():
         fgoDevice.device.swipe((1000,600),(1000,300))
         Detect(.4).getWeeklyMission()
+    parsed=Detect.cache.saveWeeklyMissionDetailed()
+    rows=parsed['tasks']
+    rowCompleted=sum(count<=0 for _,_,count in rows)
+    recognized=max(len(rows),parsed['explicitCompleted'])
+    completed=min(recognized,max(rowCompleted,parsed['explicitCompleted']))
+    active=[row for row in rows if row[2]>0]
     x=[pulp.LpVariable('_'.join(str(j)for j in i),lowBound=0,cat=pulp.LpInteger)for i in missionQuest]
     prob=pulp.LpProblem('WeeklyMission',sense=pulp.LpMinimize)
     prob+=pulp.lpDot(missionMat[0],x)
-    for count in(count for target,minion,count in Detect.cache.saveWeeklyMission()if(logger.info(f'Add [{"|".join(target)}],{minion},{count}')or True if(coefficient:=sum((j for i in target for j,k in zip(missionMat,missionTag)if i in k and(minion or'从者'in k)),numpy.zeros(missionMat.shape[1]))).any()else logger.error(f'Invalid Target [{"|".join(target)}],{minion},{count}'))):prob+=pulp.lpDot(coefficient,x)>=count
-    prob.solve(pulp.PULP_CBC_CMD(msg=False))
-    logger.info(f'AP: {prob.objective.value():.0f}')
+    supported=unsupported=0
+    for target,minion,count in active:
+        coefficient=sum((j for i in target for j,k in zip(missionMat,missionTag)if i in k and(minion or'从者'in k)),numpy.zeros(missionMat.shape[1]))
+        if coefficient.any():
+            supported+=1
+            logger.info(f'Add [{"|".join(target)}],{minion},{count}')
+            prob+=pulp.lpDot(coefficient,x)>=count
+        else:
+            unsupported+=1
+            logger.error(f'Invalid Target [{"|".join(target)}],{minion},{count}')
+    if supported:
+        prob.solve(pulp.PULP_CBC_CMD(msg=False))
+        objective=prob.objective.value()
+        quests=[(tuple(int(i)for i in v.name.split('_')),int(v.varValue))for v in prob.variables()if v.varValue]
+    else:
+        objective=0
+        quests=[]
     fgoDevice.device.press('\x67')
-    return[(tuple(int(i)for i in v.name.split('_')),int(v.varValue))for v in prob.variables()if v.varValue]
+    recognitionError=not rows and not parsed['explicitCompleted']
+    report={
+        'type':'WeeklyMission',
+        'recognized':recognized,
+        'completed':completed,
+        'supported':supported,
+        'unsupported':unsupported,
+        'entries':len(quests),
+        'expectedAp':round(objective or 0),
+        'quests':quests,
+        'recognitionError':recognitionError,
+    }
+    logger.info(f'WeeklyMission summary: recognized={recognized} completed={completed} supported={supported} unsupported={unsupported} entries={len(quests)} expectedAP={report["expectedAp"]} malformed={parsed["malformed"]}')
+    logger.debug(f'WeeklyMission OCR lines: {parsed["lines"]!r}')
+    if recognitionError:logger.error('WeeklyMission OCR did not yield task rows; inspect OCR lines above')
+    return report
+
+@serialize(mutex)
+def weeklyMissionDetailed():return _weeklyMissionDetailed()
+
+def weeklyMission():return weeklyMissionDetailed()['quests']
 class ClassicTurn:
     skillInfo=[[[0,0,0,7],[0,0,0,7],[0,0,0,7]],[[0,0,0,7],[0,0,0,7],[0,0,0,7]],[[0,0,0,7],[0,0,0,7],[0,0,0,7]],[[0,0,0,7],[0,0,0,7],[0,0,0,7]],[[0,0,0,7],[0,0,0,7],[0,0,0,7]],[[0,0,0,7],[0,0,0,7],[0,0,0,7]]]
     houguInfo=[[1,7],[1,7],[1,7],[1,7],[1,7],[1,7]]

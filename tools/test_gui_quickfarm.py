@@ -27,5 +27,10 @@ class QuickFarmTests(unittest.TestCase):
         operation=[]
         count=fgoQuickFarm.appendWeeklyQuests(operation,{'quests':[((1,2,3,0),2)]})
         self.assertEqual(count,1);self.assertEqual(operation,[((1,2,3,0),2)])
+    def test_weekly_report_summary_and_entries(self):
+        report={'recognized':7,'completed':4,'supported':2,'unsupported':1,'entries':3,'expectedAp':27,'quests':[]}
+        text=fgoQuickFarm.weeklyMissionFeedback(report)
+        for expected in ('7 条','已完成：4','可自动求解：2','暂不支持：1','加入 3 项','27'):
+            self.assertIn(expected,text)
 
 if __name__=='__main__':unittest.main()

@@ -143,12 +143,18 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.BTN_QUESTLOAD.setEnabled(True)
         self.MENU_SCRIPT.setEnabled(True)
         self.timer.stop()
+        if self.LBL_WEEKLY_STATUS.text()=='正在读取每周任务……' and not(isinstance(self.result,dict)and self.result.get('type')=='WeeklyMission'):
+            self.LBL_WEEKLY_STATUS.setText('每周任务读取未完成，请查看诊断日志。')
         QApplication.alert(self)
         self.TRAY.showMessage('FGO-py',*msg)
         match self.result:
             case{'type':'DailyPage'}:
                 self.LBL_WEEKLY_STATUS.setText('每日任务页已打开。请在游戏中点选当天目标关卡，再切换到当前关卡 / 活动关卡模式周回。')
                 QMessageBox.information(self,'FGO-py','每日任务页已打开。请手动点选当天目标关卡，再切换到“当前关卡 / 活动关卡”模式周回。')
+            case{'type':'WeeklyMission'}:
+                feedback=fgoQuickFarm.weeklyMissionFeedback(self.result)
+                self.LBL_WEEKLY_STATUS.setText(feedback)
+                QMessageBox.information(self,'FGO-py',feedback.replace('\n','<br/>'))
             case{'type':'Battle'}:QMessageBox.information(self,'FGO-py',f'''
 <h2>{msg[0].split(':',1)[0]}</h2>
 {self.color(0x006400)}{self.result['turn']}</font>{self.tr('回合完成战斗')},{self.tr('用时')}{self.color(0x006400)}{self.result['time']//3600:.0f}:{self.result['time']//60%60:02.0f}:{self.result['time']%60:02.0f}</font><br/>
@@ -298,7 +304,13 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.operation[cur],self.operation[cur+1]=self.operation[cur+1],self.operation[cur]
         self.LST_QUEST.setCurrentRow(cur+1)
         self.flush()
-    def questLoad(self):self.runFunc(lambda:self.operation.extend(fgoKernel.weeklyMission()))
+    def questLoad(self):
+        self.LBL_WEEKLY_STATUS.setText('正在读取每周任务……')
+        def load():
+            report=fgoKernel.weeklyMissionDetailed()
+            report['entries']=fgoQuickFarm.appendWeeklyQuests(self.operation,report)
+            return report
+        self.runFunc(load)
     def about(self):QMessageBox.about(self,'FGO-py - About',f'''
 <h2>FGO-py</h2>
 {self.tr('全自动免配置跨平台开箱即用的FGO助手')}

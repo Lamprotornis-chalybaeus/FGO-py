@@ -198,15 +198,23 @@ class XDetectCN(XDetectBase):
     ocr=OCR.ZHS
     def isBattleContinue(self):return self._compare(self.tmpl.BATTLECONTINUE,(455,85,835,144))
     @classmethod
-    def saveWeeklyMission(cls):
+    def saveWeeklyMissionDetailed(cls):
+        lines=cls.ocr.ocrArea(cls._weeklyMission)
         result=[]
         mission=''
-        for i in(i for i in cls.ocr.ocrArea(cls._weeklyMission)if'完成'not in i and'进行'not in i and'获得'not in i and'举办'not in i):
+        malformed=0
+        for i in(i for i in lines if'完成'not in i and'进行'not in i and'获得'not in i and'举办'not in i):
             if mission and i[0].isdigit():
-                if'『'in mission and(count:=(lambda x:int(x[1])-int(x[0]))(i.split('/')if'/'in i else(i[:len(i)>>1],i[len(i)+1>>1:]))):result.append((re.findall('『(.*?)』',mission),'从者'not in mission,count))
+                if'『'in mission:
+                    try:count=(lambda x:int(x[1])-int(x[0]))(i.split('/')if'/'in i else(i[:len(i)>>1],i[len(i)+1>>1:]))
+                    except(ValueError,IndexError):malformed+=1
+                    else:result.append((re.findall('『(.*?)』',mission),'从者'not in mission,count))
                 mission=''
             else:mission+=i
-        return result
+        return{'lines':lines,'tasks':result,'explicitCompleted':sum('完成'in i for i in lines),'malformed':malformed}
+    @classmethod
+    def saveWeeklyMission(cls):
+        return[i for i in cls.saveWeeklyMissionDetailed()['tasks']if i[2]]
 class XDetectJP(XDetectBase):
     tmpl=IMG_JP
     ocr=OCR.JA
