@@ -184,13 +184,13 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.CBB_QUEST.setEnabled(self.CBB_CHAPTER.currentData()!=fgoQuickQuest.DAILY_CATEGORY or bool(self.dailyEntries))
         self.MENU_SCRIPT.setEnabled(True)
         self.timer.stop()
+        self.flush()
         if self._dailyScanPending:
             self._dailyScanPending=False
             if isinstance(self.result,dict) and self.result.get('type')=='DailyQuestScan':
                 self.dailyEntries=list(self.result['entries'])
                 if self.CBB_CHAPTER.currentData()==fgoQuickQuest.DAILY_CATEGORY:self.populateDailyQuests()
-                status=f'发现 {len(self.dailyEntries)} 项每日任务；扫描 {self.result["screens"]} 屏。'
-                if not self.result['complete']:status+='已达 10 次滚动上限或未能确认列表末端，结果可能不完整。'
+                status=f'已完整扫描 {self.result["screens"]} 屏，校验 {len(self.dailyEntries)} 项每日任务；已返回顶部。'
                 self.LBL_WEEKLY_STATUS.setText(status)
             elif msg[0]!='Done':self.LBL_WEEKLY_STATUS.setText(msg[0])
         if self.LBL_WEEKLY_STATUS.text()=='正在读取每周任务……' and not(isinstance(self.result,dict)and self.result.get('type')=='WeeklyMission'):
@@ -212,6 +212,8 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
 {self.tr('获得了以下素材')}:<br/>
 {'<br/>'.join(f'<img src="fgoImage/material/{i}.png" height="18" width="18">{QApplication.translate("material",i)}{self.color(0x7030A0)}x{j}</font>'for i,j in self.result['material'].items())if self.result['material']else self.tr('无')}
 ''')
+            case{'type':'Main','battle':0}:
+                QMessageBox.information(self,'FGO-py',f'未进入战斗。\n{msg[0] if msg[0]!="Done" else "任务已停止，请检查队列与当前游戏画面。"}')
             case{'type':'Main'}:QMessageBox.information(self,'FGO-py',f'''
 <h2>{msg[0].split(':',1)[0]}</h2>
 {self.tr('在过去的')}{self.color(0x006400)}{self.result['time']//3600:.0f}:{self.result['time']//60%60:02.0f}:{self.result['time']%60:02.0f}</font>{self.tr('中完成了')}{self.color(0x006400)}{self.result['battle']}</font>{self.tr('场战斗')}<br/>
@@ -292,8 +294,8 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.BTN_MAIN.setStatusTip('只沿活动主线推进；遇到剧情默认暂停。' if eventMode else '按“当前关卡周回”或左侧“计划关卡队列”开始智能周回。')
         self.LBL_QUICK_HINT.setText({
             'current':'将游戏停在目标 Free Quest 列表；当前首位可见关卡为周回目标。',
-            'plan':'只执行左侧计划队列。普通章节仅包含已解锁地图的 Free Quest，不会推进主线剧情。',
-            'event':'通用 OCR 活动推进；默认遇到剧情暂停，不随机刷 Free Quest。',
+            'plan':'左侧次数是每项计划场数，右侧上限是本次合计场数。选择关卡后点“+”加入队列。',
+            'event':'依次推进当前活动主线；遇到剧情暂停，任务条件阻挡时停止。',
         }[mode])
         self.LBL_BATTLELIMIT.setVisible(not eventMode)
         self.TXT_BATTLELIMIT.setVisible(not eventMode)
@@ -322,8 +324,10 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
     def refreshDailyQuests(self):
         if self._dailyScanPending or not self.isDeviceAvailable():return
         self._dailyScanPending=True
+        self.dailyEntries=[]
+        self.CBB_QUEST.clear()
         self.CBB_QUEST.setEnabled(False)
-        self.LBL_WEEKLY_STATUS.setText('正在从顶部 OCR 扫描每日任务标题（最多向下滚动 10 次）……')
+        self.LBL_WEEKLY_STATUS.setText('正在校验每日任务卡片，扫描至列表末端后返回顶部……')
         self.runFunc(fgoQuickQuest.scanDailyQuestsCN)
     def quickFarm(self):
         if not self.isDeviceAvailable():return

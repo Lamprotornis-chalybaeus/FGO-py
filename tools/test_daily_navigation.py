@@ -133,7 +133,7 @@ class DailyNavigationTests(unittest.TestCase):
              patch.object(daily,'_swipe',return_value=(Frame(),True)) as swipe, \
              patch.object(daily.fgoDevice.device,'touch') as touch:
             with self.assertRaises(daily.ScriptStop):daily.openDailyPageCN()
-        self.assertEqual(swipe.call_count,daily.DAILY_SCROLL_LIMIT)
+        self.assertEqual(swipe.call_count,daily.DAILY_NAV_SCROLL_LIMIT)
         touch.assert_not_called()
 
     def test_duplicate_title_at_top_stops_without_picking_one(self):

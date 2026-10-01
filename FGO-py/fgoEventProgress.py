@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import re,unicodedata
 import fgoDevice
 import fgoKernel
+import fgoQuickQuest
 from fgoDetect import Detect,OCR,XDetect
 from fgoSchedule import ScriptStop,schedule
 
@@ -53,7 +54,7 @@ def _rows(items,delta=84):
     return rows
 
 def _eventAnchor(items):
-    matches=[item for item in items if '活动举办时间' in _text(item) and _center(item)[1]<260]
+    matches=[item for item in items if '活动举办时间' in _text(item) and _center(item)[0]>=640 and 95<_center(item)[1]<600]
     return matches[0] if len(matches)==1 else None
 
 def _isMainTitle(text):
@@ -78,7 +79,8 @@ def findNextMainQuest(items):
         candidates.append((0 if isNew else 1,y,title,(x,y),rowText))
     if not candidates:return None
     _,_,title,position,rowText=min(candidates,key=lambda v:(v[0],v[1]))
-    return {'title':str(title.text),'position':position,'rowText':rowText}
+    restrictions=[str(i.text) for i in items if any(t in _text(i) for t in ('编制需符合要求','编队限制','限定编队')) and abs(_center(i)[1]-position[1])<=110]
+    return {'title':str(title.text),'position':position,'rowText':rowText,'restrictions':restrictions}
 
 def findMissionGate(items):
     result=[]
@@ -105,13 +107,17 @@ def _isStartQuestConfirmation(items):
 
 def classifyEventState(items,flags=None):
     flags=flags or {}
+    # Confirmations can cover a still-recognizable support/formation background.
+    if _isStartQuestConfirmation(items):return 'start_confirmation'
+    if flags.get('ap_empty'):return 'ap_empty'
+    if flags.get('defeated'):return 'battle_defeated'
+    if flags.get('friend_request'):return 'friend_request'
     if flags.get('choose_friend'):return 'support'
     if flags.get('formation'):return 'formation'
     if flags.get('battle'):return 'battle'
     if flags.get('battle_result'):return 'battle_result'
-    if _isStartQuestConfirmation(items):return 'start_confirmation'
     if _isStory(items,flags):return 'story'
-    if any('每日任务' in _text(item) for item in items):return 'daily_quest'
+    if any(_text(item)=='每日任务' and _center(item)[0]>=900 and _center(item)[1]<95 for item in items):return 'daily_quest'
     if _eventMap(items):return 'event_map'
     if _missionListConfirmed(items):return 'mission_list'
     if _eventAnchor(items):return 'home'
@@ -166,16 +172,19 @@ def _detectFlags(detect):
         'formation':detect.isBattleFormation(),
         'battle':detect.isTurnBegin(),
         'battle_result':detect.isBattleFinished(),
+        'ap_empty':getattr(detect,'isApEmpty',lambda:False)(),
+        'defeated':getattr(detect,'isBattleDefeated',lambda:False)(),
+        'friend_request':getattr(detect,'isAddFriend',lambda:False)(),
     }
 
 def _readScreen(detect):return ocrScreen(detect.im)
 
-def _waitClassified(maxChecks=20):
+def _waitClassified(maxChecks=20,exclude=()):
     for _ in range(maxChecks):
         detect=Detect(.3)
         items=_readScreen(detect)
         state=classifyEventState(items,_detectFlags(detect))
-        if state!='unknown':return detect,items,state
+        if state!='unknown' and state not in exclude:return detect,items,state
     return detect,items,'unknown'
 
 def _skipStory(items):
@@ -207,15 +216,34 @@ def _eventMap(items):
     return bool(hasMapHeader and (hasNode or hasEventControls))
 
 def _openEventMap(detect,items):
-    state=classifyEventState(items,_detectFlags(detect))
-    if state in ('event_map','mission_list','start_confirmation','support','formation','battle','battle_result'):return detect,items
-    if state!='home':raise ScriptStop('请先返回游戏主界面或活动地图；当前界面未被可靠识别')
-    anchor=_eventAnchor(items)
-    if not anchor:raise ScriptStop('未能唯一识别主界面当前活动入口，已停止')
-    fgoDevice.device.touch(_center(anchor))
-    detect,items,state=_waitClassified(25)
-    if state!='event_map':raise ScriptStop('点击活动入口后未确认活动地图，已停止')
-    return detect,items
+    closes=scrolls=waits=0
+    for _ in range(20):
+        state=classifyEventState(items,_detectFlags(detect))
+        if state in ('event_map','mission_list','mission_gate','story','start_confirmation','support','formation','battle','battle_result','ap_empty','battle_defeated','friend_request'):return detect,items
+        gateHeader=any(_text(i)=='迦勒底之门' and _center(i)[0]>=900 and _center(i)[1]<95 for i in items)
+        close=[i for i in items if _text(i)=='关闭' and _center(i)[0]<200 and _center(i)[1]<95]
+        home=any(_text(i)=='通知' and _center(i)[0]<200 and _center(i)[1]<95 for i in items)
+        if (state=='daily_quest' or gateHeader) and len(close)==1:
+            if closes>=2:raise ScriptStop('返回活动入口的目录层级异常，已停止')
+            fgoDevice.device.touch(_center(close[0]));closes+=1;waits=0
+            schedule.sleep(.8)
+        elif home:
+            anchor=_eventAnchor(items)
+            if anchor and _center(anchor)[1]>=220:
+                # The timer is below the event banner, not inside its tap target.
+                x,y=_center(anchor)
+                fgoDevice.device.touch((x,y-70))
+                detect,items,state=_waitClassified(25,exclude=('home','daily_quest'))
+                if state!='event_map':raise ScriptStop('点击活动入口后未确认活动地图，已停止')
+                return detect,items
+            if scrolls>=EVENT_SCROLL_LIMIT:raise ScriptStop('当前主目录未唯一确认活动入口，已停止')
+            detect,_=fgoQuickQuest._swipe(detect,True);scrolls+=1;waits=0
+            items=_readScreen(detect);continue
+        elif closes and waits<3:
+            waits+=1;schedule.sleep(.5)
+        else:raise ScriptStop('当前界面未被可靠识别为活动地图或导航目录，已停止')
+        detect=Detect(.3);items=_readScreen(detect)
+    raise ScriptStop('返回活动入口超时，已停止')
 
 def _missionRewardGate(items,autoClaim):
     gates=findMissionGate(items)
@@ -244,7 +272,7 @@ def _claimMissionRewards(detect,items):
         position=_missionReturnButton(items)
         if not position:return detect,items,{'state':'mission_blocked','claimed':claimed,'message':'奖励检查完成，但未唯一识别返回活动地图按钮。'}
         fgoDevice.device.touch(position)
-        detect,items,state=_waitClassified(25)
+        detect,items,state=_waitClassified(25,exclude=('mission_list',))
         if state=='event_map':return detect,items,{'state':'event_map','claimed':claimed,'message':f'已领取 {claimed} 项明确完成的活动任务奖励并返回活动地图。'}
         return detect,items,{'state':'mission_blocked','claimed':claimed,'message':'点击返回后未确认活动地图，已停止。'}
     return detect,items,{'state':'mission_blocked','claimed':claimed,'message':'已达 20 项奖励领取上限，已停止。'}
@@ -259,14 +287,14 @@ def _runEventBattle(detect,items,state,friendPolicy,friendMaxRefresh):
         main=fgoKernel.Main(appleTotal=0,appleKind=0,battleClass=fgoKernel.Battle,friendPolicy=friendPolicy,friendMaxRefresh=friendMaxRefresh)
         try:main.chooseFriend()
         except ScriptStop as error:return detect,items,{'state':'blocked','battles':0,'message':str(error)}
-        detect,items,state=_waitClassified(60)
+        detect,items,state=_waitClassified(60,exclude=('support',))
         if state=='story':return detect,items,{'state':'story_paused','battles':0,'message':'助战选择后进入剧情，请阅读完成后继续。未点击跳过。'}
         if state!='formation':return detect,items,{'state':'blocked','battles':0,'message':'选择助战后未确认编队界面，已停止。'}
     if state=='formation':
         position=findEventBattleStart(items)
         if not position:return detect,items,{'state':'blocked','battles':0,'message':'未能唯一识别编队界面的开始按钮；没有更改编队或开始战斗。'}
         fgoDevice.device.touch(position)
-        detect,items,state=_waitClassified(30)
+        detect,items,state=_waitClassified(30,exclude=('formation',))
         if state=='story':return detect,items,{'state':'story_paused','battles':0,'message':'开始战斗前进入剧情，请阅读完成后继续。未点击跳过。'}
         if state!='battle':return detect,items,{'state':'blocked','battles':0,'message':'点击 OCR 确认的开始按钮后未识别到战斗，已停止。'}
     if state=='battle':
@@ -283,7 +311,7 @@ def _runEventBattle(detect,items,state,friendPolicy,friendMaxRefresh):
         position=findBattleProgressButton(items)
         if not position:return detect,items,{'state':'blocked','battles':1 if battleReport else 0,'battle':battleReport,'message':'未能唯一识别战斗结算“下一步/继续”按钮，已停止。'}
         fgoDevice.device.touch(position)
-        detect,items,state=_waitClassified(20)
+        detect,items,state=_waitClassified(20,exclude=('battle_result',))
     return detect,items,{'state':'blocked','battles':1 if battleReport else 0,'battle':battleReport,'message':'活动战斗结算超过 8 个已确认步骤，已停止。'}
 
 def progress(maxNodes=1,storyMode=EVENT_STORY_PAUSE,autoClaim=False,friendPolicy='first',friendMaxRefresh=2):
@@ -300,6 +328,9 @@ def progress(maxNodes=1,storyMode=EVENT_STORY_PAUSE,autoClaim=False,friendPolicy
     for _ in range(maxNodes+20):
         flags=_detectFlags(detect)
         state=classifyEventState(items,flags)
+        if state in ('ap_empty','battle_defeated','friend_request','mission_gate'):
+            messages={'ap_empty':'AP 不足，已停止；没有使用任何 AP 恢复。','battle_defeated':'战败界面，已停止；没有复活。','friend_request':'好友申请界面，请手动处理后继续。','mission_gate':'活动任务条件阻挡：'+'；'.join(findMissionGate(items))}
+            return {'type':'EventProgress','state':'blocked','nodes':nodes,'battles':battles,'message':messages[state]}
         if state in ('support','formation','battle','battle_result'):
             if nodes==0:nodes=1
             detect,items,outcome=_runEventBattle(detect,items,state,friendPolicy,friendMaxRefresh)
@@ -321,13 +352,16 @@ def progress(maxNodes=1,storyMode=EVENT_STORY_PAUSE,autoClaim=False,friendPolicy
             detect,items,state=_waitClassified(25)
         if state!='event_map':
             return {'type':'EventProgress','state':'blocked','nodes':nodes,'battles':battles,'message':'活动状态无法可靠分类，已安全停止。'}
+        if nodes>=maxNodes:return {'type':'EventProgress','state':'limit_reached','nodes':nodes,'battles':battles,'battle':lastBattle,'message':f'已达到活动推进上限 {maxNodes}，等待再次启动后重新扫描。'}
         candidate=findNextMainQuest(items)
+        if candidate and candidate.get('restrictions'):
+            return {'type':'EventProgress','state':'blocked','nodes':nodes,'battles':battles,'message':'当前活动关卡有编队限制：'+'；'.join(candidate['restrictions'])+'。请手动确认；未选择关卡或修改编队。'}
         if candidate is None:
             if autoClaim:
                 entry=findMissionListEntry(items)
                 if entry:
                     fgoDevice.device.touch(entry)
-                    detect,items,state=_waitClassified(25)
+                    detect,items,state=_waitClassified(25,exclude=('event_map',))
                     if state=='mission_list':
                         detect,items,outcome=_claimMissionRewards(detect,items)
                         if outcome['state']=='event_map':continue
@@ -339,7 +373,7 @@ def progress(maxNodes=1,storyMode=EVENT_STORY_PAUSE,autoClaim=False,friendPolicy
         if nodes>=maxNodes:return {'type':'EventProgress','state':'limit_reached','nodes':nodes,'battles':battles,'battle':lastBattle,'message':f'已达到活动推进上限 {maxNodes}，等待再次启动后重新扫描。'}
         fgoDevice.device.touch(candidate['position'])
         nodes+=1
-        detect,items,state=_waitClassified(30)
+        detect,items,state=_waitClassified(30,exclude=('event_map',))
         if state=='start_confirmation':
             return {'type':'EventProgress','state':'start_confirmation','nodes':nodes,'battles':battles,'message':'已到达关卡开始确认；为避免消耗 AP 或启动战斗，未点击“开始”。'}
         if state=='story':

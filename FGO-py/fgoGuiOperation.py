@@ -42,7 +42,7 @@ class GuiQueueOperation:
         self._start=time.time()
         self._battle=self._defeated=self._turns=0;self._battleTime=0;self._material={}
         while self.queue:
-            task=self.queue.pop(0)
+            task=self.queue[0]
             if isinstance(task,QuestTask):kind,target,times=task.type,task.target,task.repetitions
             else:
                 target,times=task;kind='metadata'
@@ -50,10 +50,19 @@ class GuiQueueOperation:
                 fgoQuickQuest.gotoDailyEntry(target)
                 runner=fgoKernel.Main(appleTotal=self.settings.appleTotal,appleKind=self.settings.appleKind,battleClass=self.battleClass,friendPolicy=self.settings.friendPolicy,friendMaxRefresh=self.settings.friendMaxRefresh)
                 try:runner(0,times or None)
-                finally:self._record(runner)
+                finally:self._recordProgress(runner,task,times)
             elif kind=='metadata':
                 runner=fgoKernel.Operation([(tuple(target),times)],appleTotal=self.settings.appleTotal,appleKind=self.settings.appleKind,battleClass=self.battleClass,friendPolicy=self.settings.friendPolicy,friendMaxRefresh=self.settings.friendMaxRefresh,wait=self.settings.wait)
                 try:runner()
-                finally:self._record(runner)
+                finally:self._recordProgress(runner,task,times)
             else:raise fgoKernel.ScriptStop(f'未知 GUI 队列任务类型：{kind}')
+            # AP shortage or an early stop must not silently consume the rest of
+            # this task or move on to another quest.
+            if not times or runner.result['battle']<times:return self.result
         return self.result
+    def _recordProgress(self,runner,task,times):
+        self._record(runner)
+        remaining=max(0,times-runner.result['battle']) if times else 0
+        if times and not remaining:self.queue.pop(0)
+        elif isinstance(task,QuestTask):self.queue[0]=QuestTask(task.type,task.target,remaining)
+        else:self.queue[0]=(task[0],remaining)

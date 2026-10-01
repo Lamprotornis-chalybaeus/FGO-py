@@ -80,7 +80,7 @@
         <item>
          <widget class="QPushButton" name="BTN_DAILY_REFRESH">
           <property name="text"><string>刷新每日任务列表</string></property>
-          <property name="statusTip"><string>只扫描当前国服每日任务卡片标题；最多向下滚动 10 次，不会进入关卡。</string></property>
+          <property name="statusTip"><string>滚动到列表末端，校验完整卡片后返回顶部；不会进入关卡。</string></property>
          </widget>
         </item>
         <item>
@@ -167,7 +167,8 @@
         <item>
          <widget class="QGroupBox" name="GRP_QUICKFARM">
           <property name="title"><string>快速周回</string></property>
-          <layout class="QFormLayout" name="LAYOUT_QUICKFARM">
+          <layout class="QGridLayout" name="LAYOUT_QUICKFARM" columnstretch="0,1">
+           <property name="verticalSpacing"><number>8</number></property>
            <item row="0" column="0"><widget class="QLabel" name="LBL_QUICKMODE"><property name="text"><string>模式</string></property></widget></item>
            <item row="0" column="1">
             <widget class="QComboBox" name="CBB_QUICKMODE">
@@ -179,7 +180,7 @@
            <item row="1" column="0"><widget class="QLabel" name="LBL_BATTLELIMIT"><property name="text"><string>场数上限</string></property></widget></item>
            <item row="1" column="1">
             <widget class="QSpinBox" name="TXT_BATTLELIMIT">
-             <property name="statusTip"><string>0 表示不设置场数上限，直到 AP 不足；1 到 N 表示完成对应场数后停止。</string></property>
+             <property name="statusTip"><string>本次运行所有队列项合计的场数上限；左侧次数限制单项。0 表示不设总上限，仍受单项次数和 AP 限制。</string></property>
              <property name="alignment"><set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set></property>
              <property name="maximum"><number>1000</number></property>
              <property name="value"><number>1</number></property>
@@ -187,6 +188,8 @@
            </item>
            <item row="2" column="0" colspan="2">
             <widget class="QLabel" name="LBL_QUICK_HINT">
+             <property name="sizePolicy"><sizepolicy hsizetype="Preferred" vsizetype="Minimum"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property>
+             <property name="textFormat"><enum>Qt::PlainText</enum></property>
              <property name="wordWrap"><bool>true</bool></property>
              <property name="text"><string>把游戏停在目标关卡列表，并让目标关卡排在首位。每日任务请先手动选择种类和难度。</string></property>
             </widget>
@@ -221,7 +224,7 @@
              </widget>
             </item>
             <item row="7" column="0" colspan="2">
-             <widget class="QLabel" name="LBL_EVENT_STATUS"><property name="wordWrap"><bool>true</bool></property><property name="text"><string/></property></widget>
+             <widget class="QLabel" name="LBL_EVENT_STATUS"><property name="sizePolicy"><sizepolicy hsizetype="Preferred" vsizetype="Minimum"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property><property name="textFormat"><enum>Qt::PlainText</enum></property><property name="wordWrap"><bool>true</bool></property><property name="text"><string/></property></widget>
             </item>
           </layout>
          </widget>

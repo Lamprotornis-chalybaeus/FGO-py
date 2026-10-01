@@ -17,10 +17,10 @@ from PySide6.QtGui import (QAction, QBrush, QColor, QConicalGradient,
     QPainter, QPalette, QPixmap, QRadialGradient,
     QTransform)
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFormLayout,
-    QGroupBox, QHBoxLayout, QLabel, QListWidget,
-    QListWidgetItem, QMainWindow, QMenu, QMenuBar,
-    QPushButton, QSizePolicy, QSpinBox, QStatusBar,
-    QVBoxLayout, QWidget)
+    QGridLayout, QGroupBox, QHBoxLayout, QLabel,
+    QListWidget, QListWidgetItem, QMainWindow, QMenu,
+    QMenuBar, QPushButton, QSizePolicy, QSpinBox,
+    QStatusBar, QVBoxLayout, QWidget)
 
 class Ui_fgoMainWindow(object):
     def setupUi(self, fgoMainWindow):
@@ -193,12 +193,13 @@ class Ui_fgoMainWindow(object):
         self.LAYOUT_LAUNCH.setObjectName(u"LAYOUT_LAUNCH")
         self.GRP_QUICKFARM = QGroupBox(self.widget)
         self.GRP_QUICKFARM.setObjectName(u"GRP_QUICKFARM")
-        self.LAYOUT_QUICKFARM = QFormLayout(self.GRP_QUICKFARM)
+        self.LAYOUT_QUICKFARM = QGridLayout(self.GRP_QUICKFARM)
         self.LAYOUT_QUICKFARM.setObjectName(u"LAYOUT_QUICKFARM")
+        self.LAYOUT_QUICKFARM.setVerticalSpacing(8)
         self.LBL_QUICKMODE = QLabel(self.GRP_QUICKFARM)
         self.LBL_QUICKMODE.setObjectName(u"LBL_QUICKMODE")
 
-        self.LAYOUT_QUICKFARM.setWidget(0, QFormLayout.ItemRole.LabelRole, self.LBL_QUICKMODE)
+        self.LAYOUT_QUICKFARM.addWidget(self.LBL_QUICKMODE, 0, 0, 1, 1)
 
         self.CBB_QUICKMODE = QComboBox(self.GRP_QUICKFARM)
         self.CBB_QUICKMODE.addItem("")
@@ -206,12 +207,12 @@ class Ui_fgoMainWindow(object):
         self.CBB_QUICKMODE.addItem("")
         self.CBB_QUICKMODE.setObjectName(u"CBB_QUICKMODE")
 
-        self.LAYOUT_QUICKFARM.setWidget(0, QFormLayout.ItemRole.FieldRole, self.CBB_QUICKMODE)
+        self.LAYOUT_QUICKFARM.addWidget(self.CBB_QUICKMODE, 0, 1, 1, 1)
 
         self.LBL_BATTLELIMIT = QLabel(self.GRP_QUICKFARM)
         self.LBL_BATTLELIMIT.setObjectName(u"LBL_BATTLELIMIT")
 
-        self.LAYOUT_QUICKFARM.setWidget(1, QFormLayout.ItemRole.LabelRole, self.LBL_BATTLELIMIT)
+        self.LAYOUT_QUICKFARM.addWidget(self.LBL_BATTLELIMIT, 1, 0, 1, 1)
 
         self.TXT_BATTLELIMIT = QSpinBox(self.GRP_QUICKFARM)
         self.TXT_BATTLELIMIT.setObjectName(u"TXT_BATTLELIMIT")
@@ -219,36 +220,42 @@ class Ui_fgoMainWindow(object):
         self.TXT_BATTLELIMIT.setMaximum(1000)
         self.TXT_BATTLELIMIT.setValue(1)
 
-        self.LAYOUT_QUICKFARM.setWidget(1, QFormLayout.ItemRole.FieldRole, self.TXT_BATTLELIMIT)
+        self.LAYOUT_QUICKFARM.addWidget(self.TXT_BATTLELIMIT, 1, 1, 1, 1)
 
         self.LBL_QUICK_HINT = QLabel(self.GRP_QUICKFARM)
         self.LBL_QUICK_HINT.setObjectName(u"LBL_QUICK_HINT")
+        sizePolicy1 = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        sizePolicy1.setHorizontalStretch(0)
+        sizePolicy1.setVerticalStretch(0)
+        sizePolicy1.setHeightForWidth(self.LBL_QUICK_HINT.sizePolicy().hasHeightForWidth())
+        self.LBL_QUICK_HINT.setSizePolicy(sizePolicy1)
+        self.LBL_QUICK_HINT.setTextFormat(Qt.PlainText)
         self.LBL_QUICK_HINT.setWordWrap(True)
 
-        self.LAYOUT_QUICKFARM.setWidget(2, QFormLayout.ItemRole.SpanningRole, self.LBL_QUICK_HINT)
+        self.LAYOUT_QUICKFARM.addWidget(self.LBL_QUICK_HINT, 2, 0, 1, 2)
 
         self.BTN_MAIN = QPushButton(self.GRP_QUICKFARM)
         self.BTN_MAIN.setObjectName(u"BTN_MAIN")
         self.BTN_MAIN.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
-        self.LAYOUT_QUICKFARM.setWidget(3, QFormLayout.ItemRole.SpanningRole, self.BTN_MAIN)
+        self.LAYOUT_QUICKFARM.addWidget(self.BTN_MAIN, 3, 0, 1, 2)
 
         self.LBL_EVENT_STORYMODE = QLabel(self.GRP_QUICKFARM)
         self.LBL_EVENT_STORYMODE.setObjectName(u"LBL_EVENT_STORYMODE")
 
-        self.LAYOUT_QUICKFARM.setWidget(4, QFormLayout.ItemRole.LabelRole, self.LBL_EVENT_STORYMODE)
+        self.LAYOUT_QUICKFARM.addWidget(self.LBL_EVENT_STORYMODE, 4, 0, 1, 1)
 
         self.CBB_EVENT_STORYMODE = QComboBox(self.GRP_QUICKFARM)
         self.CBB_EVENT_STORYMODE.addItem("")
         self.CBB_EVENT_STORYMODE.addItem("")
         self.CBB_EVENT_STORYMODE.setObjectName(u"CBB_EVENT_STORYMODE")
 
-        self.LAYOUT_QUICKFARM.setWidget(4, QFormLayout.ItemRole.FieldRole, self.CBB_EVENT_STORYMODE)
+        self.LAYOUT_QUICKFARM.addWidget(self.CBB_EVENT_STORYMODE, 4, 1, 1, 1)
 
         self.LBL_EVENT_LIMIT = QLabel(self.GRP_QUICKFARM)
         self.LBL_EVENT_LIMIT.setObjectName(u"LBL_EVENT_LIMIT")
 
-        self.LAYOUT_QUICKFARM.setWidget(5, QFormLayout.ItemRole.LabelRole, self.LBL_EVENT_LIMIT)
+        self.LAYOUT_QUICKFARM.addWidget(self.LBL_EVENT_LIMIT, 5, 0, 1, 1)
 
         self.TXT_EVENT_LIMIT = QSpinBox(self.GRP_QUICKFARM)
         self.TXT_EVENT_LIMIT.setObjectName(u"TXT_EVENT_LIMIT")
@@ -256,19 +263,23 @@ class Ui_fgoMainWindow(object):
         self.TXT_EVENT_LIMIT.setMaximum(100)
         self.TXT_EVENT_LIMIT.setValue(1)
 
-        self.LAYOUT_QUICKFARM.setWidget(5, QFormLayout.ItemRole.FieldRole, self.TXT_EVENT_LIMIT)
+        self.LAYOUT_QUICKFARM.addWidget(self.TXT_EVENT_LIMIT, 5, 1, 1, 1)
 
         self.CKB_EVENT_REWARD = QCheckBox(self.GRP_QUICKFARM)
         self.CKB_EVENT_REWARD.setObjectName(u"CKB_EVENT_REWARD")
 
-        self.LAYOUT_QUICKFARM.setWidget(6, QFormLayout.ItemRole.SpanningRole, self.CKB_EVENT_REWARD)
+        self.LAYOUT_QUICKFARM.addWidget(self.CKB_EVENT_REWARD, 6, 0, 1, 2)
 
         self.LBL_EVENT_STATUS = QLabel(self.GRP_QUICKFARM)
         self.LBL_EVENT_STATUS.setObjectName(u"LBL_EVENT_STATUS")
+        sizePolicy1.setHeightForWidth(self.LBL_EVENT_STATUS.sizePolicy().hasHeightForWidth())
+        self.LBL_EVENT_STATUS.setSizePolicy(sizePolicy1)
+        self.LBL_EVENT_STATUS.setTextFormat(Qt.PlainText)
         self.LBL_EVENT_STATUS.setWordWrap(True)
 
-        self.LAYOUT_QUICKFARM.setWidget(7, QFormLayout.ItemRole.SpanningRole, self.LBL_EVENT_STATUS)
+        self.LAYOUT_QUICKFARM.addWidget(self.LBL_EVENT_STATUS, 7, 0, 1, 2)
 
+        self.LAYOUT_QUICKFARM.setColumnStretch(1, 1)
 
         self.LAYOUT_LAUNCH.addWidget(self.GRP_QUICKFARM)
 
@@ -340,11 +351,11 @@ class Ui_fgoMainWindow(object):
         self.LAYOUT_DEVICE.setObjectName(u"LAYOUT_DEVICE")
         self.LBL_DEVICE = QLabel(self.widget)
         self.LBL_DEVICE.setObjectName(u"LBL_DEVICE")
-        sizePolicy1 = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        sizePolicy1.setHorizontalStretch(0)
-        sizePolicy1.setVerticalStretch(0)
-        sizePolicy1.setHeightForWidth(self.LBL_DEVICE.sizePolicy().hasHeightForWidth())
-        self.LBL_DEVICE.setSizePolicy(sizePolicy1)
+        sizePolicy2 = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        sizePolicy2.setHorizontalStretch(0)
+        sizePolicy2.setVerticalStretch(0)
+        sizePolicy2.setHeightForWidth(self.LBL_DEVICE.sizePolicy().hasHeightForWidth())
+        self.LBL_DEVICE.setSizePolicy(sizePolicy2)
 
         self.LAYOUT_DEVICE.addWidget(self.LBL_DEVICE)
 
@@ -622,7 +633,7 @@ class Ui_fgoMainWindow(object):
 #endif // QT_CONFIG(statustip)
         self.BTN_DAILY_REFRESH.setText(QCoreApplication.translate("fgoMainWindow", u"\u5237\u65b0\u6bcf\u65e5\u4efb\u52a1\u5217\u8868", None))
 #if QT_CONFIG(statustip)
-        self.BTN_DAILY_REFRESH.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u53ea\u626b\u63cf\u5f53\u524d\u56fd\u670d\u6bcf\u65e5\u4efb\u52a1\u5361\u7247\u6807\u9898\uff1b\u6700\u591a\u5411\u4e0b\u6eda\u52a8 10 \u6b21\uff0c\u4e0d\u4f1a\u8fdb\u5165\u5173\u5361\u3002", None))
+        self.BTN_DAILY_REFRESH.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u6eda\u52a8\u5230\u5217\u8868\u672b\u7aef\uff0c\u6821\u9a8c\u5b8c\u6574\u5361\u7247\u540e\u8fd4\u56de\u9876\u90e8\uff1b\u4e0d\u4f1a\u8fdb\u5165\u5173\u5361\u3002", None))
 #endif // QT_CONFIG(statustip)
 #if QT_CONFIG(statustip)
         self.BTN_QUESTADD.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u65b0\u589e", None))
@@ -654,7 +665,7 @@ class Ui_fgoMainWindow(object):
 
         self.LBL_BATTLELIMIT.setText(QCoreApplication.translate("fgoMainWindow", u"\u573a\u6570\u4e0a\u9650", None))
 #if QT_CONFIG(statustip)
-        self.TXT_BATTLELIMIT.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"0 \u8868\u793a\u4e0d\u8bbe\u7f6e\u573a\u6570\u4e0a\u9650\uff0c\u76f4\u5230 AP \u4e0d\u8db3\uff1b1 \u5230 N \u8868\u793a\u5b8c\u6210\u5bf9\u5e94\u573a\u6570\u540e\u505c\u6b62\u3002", None))
+        self.TXT_BATTLELIMIT.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u672c\u6b21\u8fd0\u884c\u6240\u6709\u961f\u5217\u9879\u5408\u8ba1\u7684\u573a\u6570\u4e0a\u9650\uff1b\u5de6\u4fa7\u6b21\u6570\u9650\u5236\u5355\u9879\u30020 \u8868\u793a\u4e0d\u8bbe\u603b\u4e0a\u9650\uff0c\u4ecd\u53d7\u5355\u9879\u6b21\u6570\u548c AP \u9650\u5236\u3002", None))
 #endif // QT_CONFIG(statustip)
         self.LBL_QUICK_HINT.setText(QCoreApplication.translate("fgoMainWindow", u"\u628a\u6e38\u620f\u505c\u5728\u76ee\u6807\u5173\u5361\u5217\u8868\uff0c\u5e76\u8ba9\u76ee\u6807\u5173\u5361\u6392\u5728\u9996\u4f4d\u3002\u6bcf\u65e5\u4efb\u52a1\u8bf7\u5148\u624b\u52a8\u9009\u62e9\u79cd\u7c7b\u548c\u96be\u5ea6\u3002", None))
 #if QT_CONFIG(statustip)
