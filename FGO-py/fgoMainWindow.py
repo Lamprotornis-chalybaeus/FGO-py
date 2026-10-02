@@ -19,8 +19,9 @@ from PySide6.QtGui import (QAction, QBrush, QColor, QConicalGradient,
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFormLayout,
     QGridLayout, QGroupBox, QHBoxLayout, QLabel,
     QListWidget, QListWidgetItem, QMainWindow, QMenu,
-    QMenuBar, QPushButton, QSizePolicy, QSpinBox,
-    QStatusBar, QVBoxLayout, QWidget)
+    QMenuBar, QPlainTextEdit, QPushButton, QSizePolicy,
+    QSpinBox, QSplitter, QStatusBar, QVBoxLayout,
+    QWidget)
 
 class Ui_fgoMainWindow(object):
     def setupUi(self, fgoMainWindow):
@@ -28,6 +29,7 @@ class Ui_fgoMainWindow(object):
             fgoMainWindow.setObjectName(u"fgoMainWindow")
         fgoMainWindow.setFocusPolicy(Qt.StrongFocus)
         fgoMainWindow.setStyleSheet(u"QWidget{font-family:\"Microsoft YaHei UI\";font-size:14px}")
+        fgoMainWindow.resize(900, 680)
         self.MENU_ABOUT_ABOUT = QAction(fgoMainWindow)
         self.MENU_ABOUT_ABOUT.setObjectName(u"MENU_ABOUT_ABOUT")
         self.MENU_FILE_EXPLORER = QAction(fgoMainWindow)
@@ -80,12 +82,27 @@ class Ui_fgoMainWindow(object):
         self.widget = QWidget(fgoMainWindow)
         self.widget.setObjectName(u"widget")
         self.verticalLayout = QVBoxLayout(self.widget)
+        self.verticalLayout.setSpacing(3)
         self.verticalLayout.setObjectName(u"verticalLayout")
+        self.verticalLayout.setContentsMargins(6, 6, 6, 6)
+        self.SPLIT_RUN = QSplitter(self.widget)
+        self.SPLIT_RUN.setObjectName(u"SPLIT_RUN")
+        self.SPLIT_RUN.setOrientation(Qt.Vertical)
+        self.RUN_CONTROLS = QWidget(self.SPLIT_RUN)
+        self.RUN_CONTROLS.setObjectName(u"RUN_CONTROLS")
+        self.RUN_CONTROLS.setMinimumSize(QSize(0, 390))
+        self.LAYOUT_TOP = QVBoxLayout(self.RUN_CONTROLS)
+        self.LAYOUT_TOP.setSpacing(3)
+        self.LAYOUT_TOP.setObjectName(u"LAYOUT_TOP")
+        self.LAYOUT_TOP.setContentsMargins(0, 0, 0, 0)
         self.LAYOUT_MAIN = QHBoxLayout()
+        self.LAYOUT_MAIN.setSpacing(3)
         self.LAYOUT_MAIN.setObjectName(u"LAYOUT_MAIN")
         self.LAYOUT_QUEST = QVBoxLayout()
+        self.LAYOUT_QUEST.setSpacing(3)
         self.LAYOUT_QUEST.setObjectName(u"LAYOUT_QUEST")
-        self.LBL_QUEUE_TITLE = QLabel(self.widget)
+        self.LAYOUT_QUEST.setAlignment(Qt.AlignTop)
+        self.LBL_QUEUE_TITLE = QLabel(self.RUN_CONTROLS)
         self.LBL_QUEUE_TITLE.setObjectName(u"LBL_QUEUE_TITLE")
 
         self.LAYOUT_QUEST.addWidget(self.LBL_QUEUE_TITLE)
@@ -93,32 +110,33 @@ class Ui_fgoMainWindow(object):
         self.LAYOUT_QUESTSELECT = QFormLayout()
         self.LAYOUT_QUESTSELECT.setObjectName(u"LAYOUT_QUESTSELECT")
         self.LAYOUT_QUESTSELECT.setLabelAlignment(Qt.AlignRight|Qt.AlignTrailing|Qt.AlignVCenter)
-        self.CBB_CHAPTER = QComboBox(self.widget)
+        self.LAYOUT_QUESTSELECT.setVerticalSpacing(3)
+        self.CBB_CHAPTER = QComboBox(self.RUN_CONTROLS)
         self.CBB_CHAPTER.setObjectName(u"CBB_CHAPTER")
 
         self.LAYOUT_QUESTSELECT.setWidget(0, QFormLayout.ItemRole.FieldRole, self.CBB_CHAPTER)
 
-        self.LBL_CHAPTER = QLabel(self.widget)
+        self.LBL_CHAPTER = QLabel(self.RUN_CONTROLS)
         self.LBL_CHAPTER.setObjectName(u"LBL_CHAPTER")
 
         self.LAYOUT_QUESTSELECT.setWidget(0, QFormLayout.ItemRole.LabelRole, self.LBL_CHAPTER)
 
-        self.LBL_QUEST = QLabel(self.widget)
+        self.LBL_QUEST = QLabel(self.RUN_CONTROLS)
         self.LBL_QUEST.setObjectName(u"LBL_QUEST")
 
         self.LAYOUT_QUESTSELECT.setWidget(1, QFormLayout.ItemRole.LabelRole, self.LBL_QUEST)
 
-        self.CBB_QUEST = QComboBox(self.widget)
+        self.CBB_QUEST = QComboBox(self.RUN_CONTROLS)
         self.CBB_QUEST.setObjectName(u"CBB_QUEST")
 
         self.LAYOUT_QUESTSELECT.setWidget(1, QFormLayout.ItemRole.FieldRole, self.CBB_QUEST)
 
-        self.LBL_TIMES = QLabel(self.widget)
+        self.LBL_TIMES = QLabel(self.RUN_CONTROLS)
         self.LBL_TIMES.setObjectName(u"LBL_TIMES")
 
         self.LAYOUT_QUESTSELECT.setWidget(2, QFormLayout.ItemRole.LabelRole, self.LBL_TIMES)
 
-        self.TXT_TIMES = QSpinBox(self.widget)
+        self.TXT_TIMES = QSpinBox(self.RUN_CONTROLS)
         self.TXT_TIMES.setObjectName(u"TXT_TIMES")
         self.TXT_TIMES.setContextMenuPolicy(Qt.NoContextMenu)
         self.TXT_TIMES.setAlignment(Qt.AlignRight|Qt.AlignTrailing|Qt.AlignVCenter)
@@ -130,19 +148,20 @@ class Ui_fgoMainWindow(object):
 
         self.LAYOUT_QUEST.addLayout(self.LAYOUT_QUESTSELECT)
 
-        self.BTN_DAILY_REFRESH = QPushButton(self.widget)
+        self.BTN_DAILY_REFRESH = QPushButton(self.RUN_CONTROLS)
         self.BTN_DAILY_REFRESH.setObjectName(u"BTN_DAILY_REFRESH")
 
         self.LAYOUT_QUEST.addWidget(self.BTN_DAILY_REFRESH)
 
         self.LAYOUT_QUESTADD = QHBoxLayout()
+        self.LAYOUT_QUESTADD.setSpacing(3)
         self.LAYOUT_QUESTADD.setObjectName(u"LAYOUT_QUESTADD")
-        self.BTN_QUESTADD = QPushButton(self.widget)
+        self.BTN_QUESTADD = QPushButton(self.RUN_CONTROLS)
         self.BTN_QUESTADD.setObjectName(u"BTN_QUESTADD")
 
         self.LAYOUT_QUESTADD.addWidget(self.BTN_QUESTADD)
 
-        self.BTN_QUESTREMOVE = QPushButton(self.widget)
+        self.BTN_QUESTREMOVE = QPushButton(self.RUN_CONTROLS)
         self.BTN_QUESTREMOVE.setObjectName(u"BTN_QUESTREMOVE")
 
         self.LAYOUT_QUESTADD.addWidget(self.BTN_QUESTREMOVE)
@@ -151,18 +170,19 @@ class Ui_fgoMainWindow(object):
         self.LAYOUT_QUEST.addLayout(self.LAYOUT_QUESTADD)
 
         self.LAYOUT_QUESTMOVE = QHBoxLayout()
+        self.LAYOUT_QUESTMOVE.setSpacing(3)
         self.LAYOUT_QUESTMOVE.setObjectName(u"LAYOUT_QUESTMOVE")
-        self.BTN_QUESTUP = QPushButton(self.widget)
+        self.BTN_QUESTUP = QPushButton(self.RUN_CONTROLS)
         self.BTN_QUESTUP.setObjectName(u"BTN_QUESTUP")
 
         self.LAYOUT_QUESTMOVE.addWidget(self.BTN_QUESTUP)
 
-        self.BTN_QUESTDOWN = QPushButton(self.widget)
+        self.BTN_QUESTDOWN = QPushButton(self.RUN_CONTROLS)
         self.BTN_QUESTDOWN.setObjectName(u"BTN_QUESTDOWN")
 
         self.LAYOUT_QUESTMOVE.addWidget(self.BTN_QUESTDOWN)
 
-        self.BTN_QUESTCLEAR = QPushButton(self.widget)
+        self.BTN_QUESTCLEAR = QPushButton(self.RUN_CONTROLS)
         self.BTN_QUESTCLEAR.setObjectName(u"BTN_QUESTCLEAR")
 
         self.LAYOUT_QUESTMOVE.addWidget(self.BTN_QUESTCLEAR)
@@ -170,7 +190,7 @@ class Ui_fgoMainWindow(object):
 
         self.LAYOUT_QUEST.addLayout(self.LAYOUT_QUESTMOVE)
 
-        self.BTN_QUESTLOAD = QPushButton(self.widget)
+        self.BTN_QUESTLOAD = QPushButton(self.RUN_CONTROLS)
         self.BTN_QUESTLOAD.setObjectName(u"BTN_QUESTLOAD")
         sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         sizePolicy.setHorizontalStretch(0)
@@ -180,22 +200,30 @@ class Ui_fgoMainWindow(object):
 
         self.LAYOUT_QUEST.addWidget(self.BTN_QUESTLOAD)
 
-        self.LBL_WEEKLY_STATUS = QLabel(self.widget)
+        self.LBL_WEEKLY_STATUS = QLabel(self.RUN_CONTROLS)
         self.LBL_WEEKLY_STATUS.setObjectName(u"LBL_WEEKLY_STATUS")
         self.LBL_WEEKLY_STATUS.setWordWrap(True)
 
         self.LAYOUT_QUEST.addWidget(self.LBL_WEEKLY_STATUS)
 
+        self.LST_QUEST = QListWidget(self.RUN_CONTROLS)
+        self.LST_QUEST.setObjectName(u"LST_QUEST")
+        self.LST_QUEST.setMinimumSize(QSize(0, 48))
+
+        self.LAYOUT_QUEST.addWidget(self.LST_QUEST)
+
 
         self.LAYOUT_MAIN.addLayout(self.LAYOUT_QUEST)
 
         self.LAYOUT_LAUNCH = QVBoxLayout()
+        self.LAYOUT_LAUNCH.setSpacing(3)
         self.LAYOUT_LAUNCH.setObjectName(u"LAYOUT_LAUNCH")
-        self.GRP_QUICKFARM = QGroupBox(self.widget)
+        self.LAYOUT_LAUNCH.setAlignment(Qt.AlignTop)
+        self.GRP_QUICKFARM = QGroupBox(self.RUN_CONTROLS)
         self.GRP_QUICKFARM.setObjectName(u"GRP_QUICKFARM")
         self.LAYOUT_QUICKFARM = QGridLayout(self.GRP_QUICKFARM)
         self.LAYOUT_QUICKFARM.setObjectName(u"LAYOUT_QUICKFARM")
-        self.LAYOUT_QUICKFARM.setVerticalSpacing(8)
+        self.LAYOUT_QUICKFARM.setVerticalSpacing(3)
         self.LBL_QUICKMODE = QLabel(self.GRP_QUICKFARM)
         self.LBL_QUICKMODE.setObjectName(u"LBL_QUICKMODE")
 
@@ -286,14 +314,16 @@ class Ui_fgoMainWindow(object):
         self.LAYOUT_INFO = QFormLayout()
         self.LAYOUT_INFO.setObjectName(u"LAYOUT_INFO")
         self.LAYOUT_INFO.setLabelAlignment(Qt.AlignRight|Qt.AlignTrailing|Qt.AlignVCenter)
-        self.LBL_TEAM = QLabel(self.widget)
+        self.LAYOUT_INFO.setVerticalSpacing(3)
+        self.LBL_TEAM = QLabel(self.RUN_CONTROLS)
         self.LBL_TEAM.setObjectName(u"LBL_TEAM")
 
         self.LAYOUT_INFO.setWidget(0, QFormLayout.ItemRole.LabelRole, self.LBL_TEAM)
 
         self.LAYOUT_INFO_TEAM = QHBoxLayout()
+        self.LAYOUT_INFO_TEAM.setSpacing(3)
         self.LAYOUT_INFO_TEAM.setObjectName(u"LAYOUT_INFO_TEAM")
-        self.TXT_TEAM = QSpinBox(self.widget)
+        self.TXT_TEAM = QSpinBox(self.RUN_CONTROLS)
         self.TXT_TEAM.setObjectName(u"TXT_TEAM")
         sizePolicy.setHeightForWidth(self.TXT_TEAM.sizePolicy().hasHeightForWidth())
         self.TXT_TEAM.setSizePolicy(sizePolicy)
@@ -303,7 +333,7 @@ class Ui_fgoMainWindow(object):
 
         self.LAYOUT_INFO_TEAM.addWidget(self.TXT_TEAM)
 
-        self.CKB_TEAM = QCheckBox(self.widget)
+        self.CKB_TEAM = QCheckBox(self.RUN_CONTROLS)
         self.CKB_TEAM.setObjectName(u"CKB_TEAM")
 
         self.LAYOUT_INFO_TEAM.addWidget(self.CKB_TEAM)
@@ -311,15 +341,16 @@ class Ui_fgoMainWindow(object):
 
         self.LAYOUT_INFO.setLayout(0, QFormLayout.ItemRole.FieldRole, self.LAYOUT_INFO_TEAM)
 
-        self.LBL_APPLE = QLabel(self.widget)
+        self.LBL_APPLE = QLabel(self.RUN_CONTROLS)
         self.LBL_APPLE.setObjectName(u"LBL_APPLE")
         self.LBL_APPLE.setMaximumSize(QSize(16777215, 28))
 
         self.LAYOUT_INFO.setWidget(1, QFormLayout.ItemRole.LabelRole, self.LBL_APPLE)
 
         self.LAYOUT_INFO_APPLE = QHBoxLayout()
+        self.LAYOUT_INFO_APPLE.setSpacing(3)
         self.LAYOUT_INFO_APPLE.setObjectName(u"LAYOUT_INFO_APPLE")
-        self.CBB_APPLE = QComboBox(self.widget)
+        self.CBB_APPLE = QComboBox(self.RUN_CONTROLS)
         self.CBB_APPLE.addItem("")
         self.CBB_APPLE.addItem("")
         self.CBB_APPLE.addItem("")
@@ -329,7 +360,7 @@ class Ui_fgoMainWindow(object):
 
         self.LAYOUT_INFO_APPLE.addWidget(self.CBB_APPLE)
 
-        self.TXT_APPLE = QSpinBox(self.widget)
+        self.TXT_APPLE = QSpinBox(self.RUN_CONTROLS)
         self.TXT_APPLE.setObjectName(u"TXT_APPLE")
         sizePolicy.setHeightForWidth(self.TXT_APPLE.sizePolicy().hasHeightForWidth())
         self.TXT_APPLE.setSizePolicy(sizePolicy)
@@ -342,14 +373,15 @@ class Ui_fgoMainWindow(object):
 
         self.LAYOUT_INFO.setLayout(1, QFormLayout.ItemRole.FieldRole, self.LAYOUT_INFO_APPLE)
 
-        self.LBL_CURRENTDEVICE = QLabel(self.widget)
+        self.LBL_CURRENTDEVICE = QLabel(self.RUN_CONTROLS)
         self.LBL_CURRENTDEVICE.setObjectName(u"LBL_CURRENTDEVICE")
 
         self.LAYOUT_INFO.setWidget(2, QFormLayout.ItemRole.LabelRole, self.LBL_CURRENTDEVICE)
 
         self.LAYOUT_DEVICE = QHBoxLayout()
+        self.LAYOUT_DEVICE.setSpacing(3)
         self.LAYOUT_DEVICE.setObjectName(u"LAYOUT_DEVICE")
-        self.LBL_DEVICE = QLabel(self.widget)
+        self.LBL_DEVICE = QLabel(self.RUN_CONTROLS)
         self.LBL_DEVICE.setObjectName(u"LBL_DEVICE")
         sizePolicy2 = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         sizePolicy2.setHorizontalStretch(0)
@@ -359,7 +391,7 @@ class Ui_fgoMainWindow(object):
 
         self.LAYOUT_DEVICE.addWidget(self.LBL_DEVICE)
 
-        self.BTN_CONNECT = QPushButton(self.widget)
+        self.BTN_CONNECT = QPushButton(self.RUN_CONTROLS)
         self.BTN_CONNECT.setObjectName(u"BTN_CONNECT")
         self.BTN_CONNECT.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
@@ -368,12 +400,12 @@ class Ui_fgoMainWindow(object):
 
         self.LAYOUT_INFO.setLayout(2, QFormLayout.ItemRole.FieldRole, self.LAYOUT_DEVICE)
 
-        self.LBL_FRIENDPOLICY = QLabel(self.widget)
+        self.LBL_FRIENDPOLICY = QLabel(self.RUN_CONTROLS)
         self.LBL_FRIENDPOLICY.setObjectName(u"LBL_FRIENDPOLICY")
 
         self.LAYOUT_INFO.setWidget(3, QFormLayout.ItemRole.LabelRole, self.LBL_FRIENDPOLICY)
 
-        self.CBB_FRIENDPOLICY = QComboBox(self.widget)
+        self.CBB_FRIENDPOLICY = QComboBox(self.RUN_CONTROLS)
         self.CBB_FRIENDPOLICY.addItem("")
         self.CBB_FRIENDPOLICY.addItem("")
         self.CBB_FRIENDPOLICY.addItem("")
@@ -381,12 +413,12 @@ class Ui_fgoMainWindow(object):
 
         self.LAYOUT_INFO.setWidget(3, QFormLayout.ItemRole.FieldRole, self.CBB_FRIENDPOLICY)
 
-        self.LBL_FRIENDREFRESH = QLabel(self.widget)
+        self.LBL_FRIENDREFRESH = QLabel(self.RUN_CONTROLS)
         self.LBL_FRIENDREFRESH.setObjectName(u"LBL_FRIENDREFRESH")
 
         self.LAYOUT_INFO.setWidget(4, QFormLayout.ItemRole.LabelRole, self.LBL_FRIENDREFRESH)
 
-        self.TXT_FRIENDREFRESH = QSpinBox(self.widget)
+        self.TXT_FRIENDREFRESH = QSpinBox(self.RUN_CONTROLS)
         self.TXT_FRIENDREFRESH.setObjectName(u"TXT_FRIENDREFRESH")
         self.TXT_FRIENDREFRESH.setAlignment(Qt.AlignRight|Qt.AlignTrailing|Qt.AlignVCenter)
         self.TXT_FRIENDREFRESH.setMaximum(10)
@@ -394,7 +426,7 @@ class Ui_fgoMainWindow(object):
 
         self.LAYOUT_INFO.setWidget(4, QFormLayout.ItemRole.FieldRole, self.TXT_FRIENDREFRESH)
 
-        self.BTN_FRIENDTEMPLATES = QPushButton(self.widget)
+        self.BTN_FRIENDTEMPLATES = QPushButton(self.RUN_CONTROLS)
         self.BTN_FRIENDTEMPLATES.setObjectName(u"BTN_FRIENDTEMPLATES")
 
         self.LAYOUT_INFO.setWidget(5, QFormLayout.ItemRole.SpanningRole, self.BTN_FRIENDTEMPLATES)
@@ -403,15 +435,17 @@ class Ui_fgoMainWindow(object):
         self.LAYOUT_LAUNCH.addLayout(self.LAYOUT_INFO)
 
         self.LAYOUT_FUNC = QHBoxLayout()
+        self.LAYOUT_FUNC.setSpacing(3)
         self.LAYOUT_FUNC.setObjectName(u"LAYOUT_FUNC")
         self.LAYOUT_FUNCBATTLE = QVBoxLayout()
+        self.LAYOUT_FUNCBATTLE.setSpacing(3)
         self.LAYOUT_FUNCBATTLE.setObjectName(u"LAYOUT_FUNCBATTLE")
-        self.BTN_BATTLE = QPushButton(self.widget)
+        self.BTN_BATTLE = QPushButton(self.RUN_CONTROLS)
         self.BTN_BATTLE.setObjectName(u"BTN_BATTLE")
 
         self.LAYOUT_FUNCBATTLE.addWidget(self.BTN_BATTLE)
 
-        self.BTN_CLASSIC = QPushButton(self.widget)
+        self.BTN_CLASSIC = QPushButton(self.RUN_CONTROLS)
         self.BTN_CLASSIC.setObjectName(u"BTN_CLASSIC")
 
         self.LAYOUT_FUNCBATTLE.addWidget(self.BTN_CLASSIC)
@@ -420,15 +454,16 @@ class Ui_fgoMainWindow(object):
         self.LAYOUT_FUNC.addLayout(self.LAYOUT_FUNCBATTLE)
 
         self.LAYOUT_FUNCCONTROL = QVBoxLayout()
+        self.LAYOUT_FUNCCONTROL.setSpacing(3)
         self.LAYOUT_FUNCCONTROL.setObjectName(u"LAYOUT_FUNCCONTROL")
-        self.BTN_PAUSE = QPushButton(self.widget)
+        self.BTN_PAUSE = QPushButton(self.RUN_CONTROLS)
         self.BTN_PAUSE.setObjectName(u"BTN_PAUSE")
         self.BTN_PAUSE.setEnabled(False)
         self.BTN_PAUSE.setCheckable(True)
 
         self.LAYOUT_FUNCCONTROL.addWidget(self.BTN_PAUSE)
 
-        self.BTN_STOP = QPushButton(self.widget)
+        self.BTN_STOP = QPushButton(self.RUN_CONTROLS)
         self.BTN_STOP.setObjectName(u"BTN_STOP")
         self.BTN_STOP.setEnabled(False)
 
@@ -438,13 +473,14 @@ class Ui_fgoMainWindow(object):
         self.LAYOUT_FUNC.addLayout(self.LAYOUT_FUNCCONTROL)
 
         self.LAYOUT_FUNCAPPOINT = QVBoxLayout()
+        self.LAYOUT_FUNCAPPOINT.setSpacing(3)
         self.LAYOUT_FUNCAPPOINT.setObjectName(u"LAYOUT_FUNCAPPOINT")
-        self.BTN_SCREENSHOT = QPushButton(self.widget)
+        self.BTN_SCREENSHOT = QPushButton(self.RUN_CONTROLS)
         self.BTN_SCREENSHOT.setObjectName(u"BTN_SCREENSHOT")
 
         self.LAYOUT_FUNCAPPOINT.addWidget(self.BTN_SCREENSHOT)
 
-        self.BTN_STOPLATER = QPushButton(self.widget)
+        self.BTN_STOPLATER = QPushButton(self.RUN_CONTROLS)
         self.BTN_STOPLATER.setObjectName(u"BTN_STOPLATER")
         self.BTN_STOPLATER.setEnabled(False)
         self.BTN_STOPLATER.setCheckable(True)
@@ -461,12 +497,17 @@ class Ui_fgoMainWindow(object):
         self.LAYOUT_MAIN.addLayout(self.LAYOUT_LAUNCH)
 
 
-        self.verticalLayout.addLayout(self.LAYOUT_MAIN)
+        self.LAYOUT_TOP.addLayout(self.LAYOUT_MAIN)
 
-        self.LST_QUEST = QListWidget(self.widget)
-        self.LST_QUEST.setObjectName(u"LST_QUEST")
+        self.SPLIT_RUN.addWidget(self.RUN_CONTROLS)
+        self.TXT_LOG = QPlainTextEdit(self.SPLIT_RUN)
+        self.TXT_LOG.setObjectName(u"TXT_LOG")
+        self.TXT_LOG.setReadOnly(True)
+        self.TXT_LOG.setMaximumBlockCount(2000)
+        self.TXT_LOG.setMinimumSize(QSize(0, 200))
+        self.SPLIT_RUN.addWidget(self.TXT_LOG)
 
-        self.verticalLayout.addWidget(self.LST_QUEST)
+        self.verticalLayout.addWidget(self.SPLIT_RUN)
 
         fgoMainWindow.setCentralWidget(self.widget)
         self.MENU = QMenuBar(fgoMainWindow)
@@ -657,6 +698,9 @@ class Ui_fgoMainWindow(object):
         self.BTN_QUESTCLEAR.setText(QCoreApplication.translate("fgoMainWindow", u"\u00d7", None))
         self.BTN_QUESTLOAD.setText(QCoreApplication.translate("fgoMainWindow", u"\u5206\u6790\u6bcf\u5468\u4efb\u52a1\u5e76\u52a0\u5165\u961f\u5217", None))
         self.LBL_WEEKLY_STATUS.setText("")
+#if QT_CONFIG(statustip)
+        self.LST_QUEST.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u5173\u5361\u961f\u5217", None))
+#endif // QT_CONFIG(statustip)
         self.GRP_QUICKFARM.setTitle(QCoreApplication.translate("fgoMainWindow", u"\u5feb\u901f\u5468\u56de", None))
         self.LBL_QUICKMODE.setText(QCoreApplication.translate("fgoMainWindow", u"\u6a21\u5f0f", None))
         self.CBB_QUICKMODE.setItemText(0, QCoreApplication.translate("fgoMainWindow", u"\u5f53\u524d\u5173\u5361\u5468\u56de", None))
@@ -718,9 +762,9 @@ class Ui_fgoMainWindow(object):
         self.TXT_FRIENDREFRESH.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"0 \u8868\u793a\u53ea\u626b\u63cf\u5f53\u524d\u52a9\u6218\u5217\u8868\uff0c\u4e0d\u4e3b\u52a8\u5237\u65b0\uff1b\u6700\u5927\u4e3a 10 \u6b21\u3002", None))
 #endif // QT_CONFIG(statustip)
 #if QT_CONFIG(statustip)
-        self.BTN_FRIENDTEMPLATES.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u6253\u5f00\u672c\u673a\u52a9\u6218\u6a21\u677f\u6587\u4ef6\u5939\u3002\u56fe\u7247\u53ea\u4fdd\u5b58\u5728\u672c\u673a\u3002", None))
+        self.BTN_FRIENDTEMPLATES.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u672c\u673a\u6a21\u677f\u4f18\u5148\u7ea7\u3001\u542f\u7528\u72b6\u6001\u4e0e\u622a\u56fe\u5236\u4f5c\u3002", None))
 #endif // QT_CONFIG(statustip)
-        self.BTN_FRIENDTEMPLATES.setText(QCoreApplication.translate("fgoMainWindow", u"\u6253\u5f00\u52a9\u6218\u6a21\u677f\u76ee\u5f55", None))
+        self.BTN_FRIENDTEMPLATES.setText(QCoreApplication.translate("fgoMainWindow", u"\u7ba1\u7406\u52a9\u6218\u6a21\u677f", None))
 #if QT_CONFIG(statustip)
         self.BTN_BATTLE.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u5b8c\u6210\u5f53\u524d\u6218\u6597", None))
 #endif // QT_CONFIG(statustip)
@@ -745,9 +789,7 @@ class Ui_fgoMainWindow(object):
         self.BTN_STOPLATER.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u5728\u5b8c\u6210\u82e5\u5e72\u573a\u6218\u6597\u540e\u7ec8\u6b62\u6218\u6597", None))
 #endif // QT_CONFIG(statustip)
         self.BTN_STOPLATER.setText(QCoreApplication.translate("fgoMainWindow", u"\u9884\u7ea6\u7ec8\u6b62", None))
-#if QT_CONFIG(statustip)
-        self.LST_QUEST.setStatusTip(QCoreApplication.translate("fgoMainWindow", u"\u5173\u5361\u961f\u5217", None))
-#endif // QT_CONFIG(statustip)
+        self.TXT_LOG.setPlaceholderText(QCoreApplication.translate("fgoMainWindow", u"\u5b9e\u65f6\u8fd0\u884c\u65e5\u5fd7", None))
         self.MENU_ABOUT.setTitle(QCoreApplication.translate("fgoMainWindow", u"\u5173\u4e8e", None))
         self.MENU_FILE.setTitle(QCoreApplication.translate("fgoMainWindow", u"\u6587\u4ef6", None))
         self.MENU_SCRIPT.setTitle(QCoreApplication.translate("fgoMainWindow", u"\u7a0b\u5e8f", None))

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <ui version="4.0" connectslotsbyname="false">
  <author>hgjazhgj</author>
  <class>fgoMainWindow</class>
@@ -10,505 +10,776 @@
    <string>FGO-py - hgjazhgj</string>
   </property>
   <property name="styleSheet">
-   <string notr="true">QWidget{font-family:&quot;Microsoft YaHei UI&quot;;font-size:14px}</string>
+   <string notr="true">QWidget{font-family:"Microsoft YaHei UI";font-size:14px}</string>
   </property>
   <widget class="QWidget" name="widget">
    <layout class="QVBoxLayout" name="verticalLayout">
     <item>
-     <layout class="QHBoxLayout" name="LAYOUT_MAIN">
-      <item>
-       <layout class="QVBoxLayout" name="LAYOUT_QUEST">
+     <widget class="QSplitter" name="SPLIT_RUN">
+      <property name="orientation">
+       <enum>Qt::Vertical</enum>
+      </property>
+      <widget class="QWidget" name="RUN_CONTROLS">
+       <layout class="QVBoxLayout" name="LAYOUT_TOP">
         <item>
-         <widget class="QLabel" name="LBL_QUEUE_TITLE">
-          <property name="text"><string>计划关卡队列</string></property>
-          <property name="statusTip"><string>这里只列出由章节/关卡选择器或每周任务分析加入的计划任务。</string></property>
-        </widget>
-        </item>
-        <item>
-         <layout class="QFormLayout" name="LAYOUT_QUESTSELECT">
-          <property name="labelAlignment">
-           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-          </property>
-          <item row="0" column="1">
-           <widget class="QComboBox" name="CBB_CHAPTER"><property name="statusTip"><string>普通章节只包含已解锁地图上的自由关卡，不会自动推进主线剧情。</string></property></widget>
-          </item>
-          <item row="0" column="0">
-           <widget class="QLabel" name="LBL_CHAPTER">
-            <property name="text">
-             <string>章节 / 分类</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="0">
-           <widget class="QLabel" name="LBL_QUEST">
-            <property name="text">
-             <string>关卡</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="1">
-           <widget class="QComboBox" name="CBB_QUEST"/>
-          </item>
-          <item row="2" column="0">
-           <widget class="QLabel" name="LBL_TIMES">
-            <property name="text">
-             <string>次数</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="1">
-           <widget class="QSpinBox" name="TXT_TIMES">
-            <property name="contextMenuPolicy">
-             <enum>Qt::NoContextMenu</enum>
-            </property>
-            <property name="statusTip">
-             <string>加入关卡队列后生效,0为不限制次数</string>
+         <layout class="QHBoxLayout" name="LAYOUT_MAIN">
+          <item>
+           <layout class="QVBoxLayout" name="LAYOUT_QUEST">
+            <item>
+             <widget class="QLabel" name="LBL_QUEUE_TITLE">
+              <property name="text">
+               <string>计划关卡队列</string>
+              </property>
+              <property name="statusTip">
+               <string>这里只列出由章节/关卡选择器或每周任务分析加入的计划任务。</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <layout class="QFormLayout" name="LAYOUT_QUESTSELECT">
+              <property name="labelAlignment">
+               <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+              </property>
+              <item row="0" column="1">
+               <widget class="QComboBox" name="CBB_CHAPTER">
+                <property name="statusTip">
+                 <string>普通章节只包含已解锁地图上的自由关卡，不会自动推进主线剧情。</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="0">
+               <widget class="QLabel" name="LBL_CHAPTER">
+                <property name="text">
+                 <string>章节 / 分类</string>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="0">
+               <widget class="QLabel" name="LBL_QUEST">
+                <property name="text">
+                 <string>关卡</string>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="1">
+               <widget class="QComboBox" name="CBB_QUEST" />
+              </item>
+              <item row="2" column="0">
+               <widget class="QLabel" name="LBL_TIMES">
+                <property name="text">
+                 <string>次数</string>
+                </property>
+               </widget>
+              </item>
+              <item row="2" column="1">
+               <widget class="QSpinBox" name="TXT_TIMES">
+                <property name="contextMenuPolicy">
+                 <enum>Qt::NoContextMenu</enum>
+                </property>
+                <property name="statusTip">
+                 <string>加入关卡队列后生效,0为不限制次数</string>
+                </property>
+                <property name="alignment">
+                 <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                </property>
+                <property name="maximum">
+                 <number>114514</number>
+                </property>
+                <property name="value">
+                 <number>1</number>
+                </property>
+               </widget>
+              </item>
+              <property name="verticalSpacing">
+               <number>3</number>
+              </property>
+             </layout>
+            </item>
+            <item>
+             <widget class="QPushButton" name="BTN_DAILY_REFRESH">
+              <property name="text">
+               <string>刷新每日任务列表</string>
+              </property>
+              <property name="statusTip">
+               <string>滚动到列表末端，校验完整卡片后返回顶部；不会进入关卡。</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="LAYOUT_QUESTADD">
+              <item>
+               <widget class="QPushButton" name="BTN_QUESTADD">
+                <property name="statusTip">
+                 <string>新增</string>
+                </property>
+                <property name="text">
+                 <string>+</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="BTN_QUESTREMOVE">
+                <property name="statusTip">
+                 <string>删除</string>
+                </property>
+                <property name="text">
+                 <string>-</string>
+                </property>
+               </widget>
+              </item>
+              <property name="spacing">
+               <number>3</number>
+              </property>
+             </layout>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="LAYOUT_QUESTMOVE">
+              <item>
+               <widget class="QPushButton" name="BTN_QUESTUP">
+                <property name="statusTip">
+                 <string>上移</string>
+                </property>
+                <property name="text">
+                 <string>↑</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="BTN_QUESTDOWN">
+                <property name="statusTip">
+                 <string>下移</string>
+                </property>
+                <property name="text">
+                 <string>↓</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="BTN_QUESTCLEAR">
+                <property name="statusTip">
+                 <string>清空</string>
+                </property>
+                <property name="text">
+                 <string>×</string>
+                </property>
+               </widget>
+              </item>
+              <property name="spacing">
+               <number>3</number>
+              </property>
+             </layout>
+            </item>
+            <item>
+             <widget class="QPushButton" name="BTN_QUESTLOAD">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
+              </property>
+              <property name="text">
+               <string>分析每周任务并加入队列</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="LBL_WEEKLY_STATUS">
+              <property name="wordWrap">
+               <bool>true</bool>
+              </property>
+              <property name="text">
+               <string />
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QListWidget" name="LST_QUEST">
+              <property name="statusTip">
+               <string>关卡队列</string>
+              </property>
+              <property name="minimumSize">
+               <size>
+                <width>0</width>
+                <height>48</height>
+               </size>
+              </property>
+             </widget>
+            </item>
+            <property name="spacing">
+             <number>3</number>
             </property>
             <property name="alignment">
-             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+             <set>Qt::AlignTop</set>
             </property>
-            <property name="maximum">
-             <number>114514</number>
-            </property>
-            <property name="value">
-             <number>1</number>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </item>
-        <item>
-         <widget class="QPushButton" name="BTN_DAILY_REFRESH">
-          <property name="text"><string>刷新每日任务列表</string></property>
-          <property name="statusTip"><string>滚动到列表末端，校验完整卡片后返回顶部；不会进入关卡。</string></property>
-         </widget>
-        </item>
-        <item>
-         <layout class="QHBoxLayout" name="LAYOUT_QUESTADD">
-          <item>
-           <widget class="QPushButton" name="BTN_QUESTADD">
-            <property name="statusTip">
-             <string>新增</string>
-            </property>
-            <property name="text">
-             <string>+</string>
-            </property>
-           </widget>
+           </layout>
           </item>
           <item>
-           <widget class="QPushButton" name="BTN_QUESTREMOVE">
-            <property name="statusTip">
-             <string>删除</string>
-            </property>
-            <property name="text">
-             <string>-</string>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </item>
-        <item>
-         <layout class="QHBoxLayout" name="LAYOUT_QUESTMOVE">
-          <item>
-           <widget class="QPushButton" name="BTN_QUESTUP">
-            <property name="statusTip">
-             <string>上移</string>
-            </property>
-            <property name="text">
-             <string>↑</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="BTN_QUESTDOWN">
-            <property name="statusTip">
-             <string>下移</string>
-            </property>
-            <property name="text">
-             <string>↓</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="BTN_QUESTCLEAR">
-            <property name="statusTip">
-             <string>清空</string>
-            </property>
-            <property name="text">
-             <string>×</string>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </item>
-        <item>
-         <widget class="QPushButton" name="BTN_QUESTLOAD">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="text">
-           <string>分析每周任务并加入队列</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="LBL_WEEKLY_STATUS">
-          <property name="wordWrap"><bool>true</bool></property>
-          <property name="text"><string/></property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <layout class="QVBoxLayout" name="LAYOUT_LAUNCH">
-        <item>
-         <widget class="QGroupBox" name="GRP_QUICKFARM">
-          <property name="title"><string>快速周回</string></property>
-          <layout class="QGridLayout" name="LAYOUT_QUICKFARM" columnstretch="0,1">
-           <property name="verticalSpacing"><number>8</number></property>
-           <item row="0" column="0"><widget class="QLabel" name="LBL_QUICKMODE"><property name="text"><string>模式</string></property></widget></item>
-           <item row="0" column="1">
-            <widget class="QComboBox" name="CBB_QUICKMODE">
-             <item><property name="text"><string>当前关卡周回</string></property></item>
-             <item><property name="text"><string>计划关卡队列</string></property></item>
-             <item><property name="text"><string>活动推进</string></property></item>
-            </widget>
-           </item>
-           <item row="1" column="0"><widget class="QLabel" name="LBL_BATTLELIMIT"><property name="text"><string>场数上限</string></property></widget></item>
-           <item row="1" column="1">
-            <widget class="QSpinBox" name="TXT_BATTLELIMIT">
-             <property name="statusTip"><string>本次运行所有队列项合计的场数上限；左侧次数限制单项。0 表示不设总上限，仍受单项次数和 AP 限制。</string></property>
-             <property name="alignment"><set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set></property>
-             <property name="maximum"><number>1000</number></property>
-             <property name="value"><number>1</number></property>
-            </widget>
-           </item>
-           <item row="2" column="0" colspan="2">
-            <widget class="QLabel" name="LBL_QUICK_HINT">
-             <property name="sizePolicy"><sizepolicy hsizetype="Preferred" vsizetype="Minimum"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property>
-             <property name="textFormat"><enum>Qt::PlainText</enum></property>
-             <property name="wordWrap"><bool>true</bool></property>
-             <property name="text"><string>把游戏停在目标关卡列表，并让目标关卡排在首位。每日任务请先手动选择种类和难度。</string></property>
-            </widget>
-           </item>
-            <item row="3" column="0" colspan="2">
-             <widget class="QPushButton" name="BTN_MAIN">
-              <property name="cursor"><cursorShape>PointingHandCursor</cursorShape></property>
-              <property name="statusTip"><string>按所选模式开始智能周回或安全活动推进。</string></property>
-              <property name="text"><string>开始智能周回</string></property>
-             </widget>
-            </item>
-            <item row="4" column="0"><widget class="QLabel" name="LBL_EVENT_STORYMODE"><property name="text"><string>剧情处理</string></property></widget></item>
-            <item row="4" column="1">
-             <widget class="QComboBox" name="CBB_EVENT_STORYMODE">
-              <item><property name="text"><string>遇到剧情暂停</string></property></item>
-              <item><property name="text"><string>自动跳过剧情</string></property></item>
-             </widget>
-            </item>
-            <item row="5" column="0"><widget class="QLabel" name="LBL_EVENT_LIMIT"><property name="text"><string>推进上限</string></property></widget></item>
-            <item row="5" column="1">
-             <widget class="QSpinBox" name="TXT_EVENT_LIMIT">
-              <property name="statusTip"><string>最多推进 1 到 100 个剧情节点；不允许无限推进。</string></property>
-              <property name="minimum"><number>1</number></property>
-              <property name="maximum"><number>100</number></property>
-              <property name="value"><number>1</number></property>
-             </widget>
-            </item>
-            <item row="6" column="0" colspan="2">
-             <widget class="QCheckBox" name="CKB_EVENT_REWARD">
-              <property name="text"><string>自动领取已完成活动任务奖励</string></property>
-              <property name="statusTip"><string>仅在 OCR 明确确认任务已完成且按钮为领取时操作；不购买、不兑换、不处理选择奖励。</string></property>
-             </widget>
-            </item>
-            <item row="7" column="0" colspan="2">
-             <widget class="QLabel" name="LBL_EVENT_STATUS"><property name="sizePolicy"><sizepolicy hsizetype="Preferred" vsizetype="Minimum"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property><property name="textFormat"><enum>Qt::PlainText</enum></property><property name="wordWrap"><bool>true</bool></property><property name="text"><string/></property></widget>
-            </item>
-          </layout>
-         </widget>
-        </item>
-        <item>
-         <layout class="QFormLayout" name="LAYOUT_INFO">
-          <property name="labelAlignment">
-           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-          </property>
-          <item row="0" column="0">
-           <widget class="QLabel" name="LBL_TEAM">
-            <property name="text">
-             <string>编队</string>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="1">
-           <layout class="QHBoxLayout" name="LAYOUT_INFO_TEAM">
+           <layout class="QVBoxLayout" name="LAYOUT_LAUNCH">
             <item>
-             <widget class="QSpinBox" name="TXT_TEAM">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-                <horstretch>0</horstretch>
-                <verstretch>0</verstretch>
-               </sizepolicy>
+             <widget class="QGroupBox" name="GRP_QUICKFARM">
+              <property name="title">
+               <string>快速周回</string>
               </property>
-              <property name="contextMenuPolicy">
-               <enum>Qt::NoContextMenu</enum>
-              </property>
-              <property name="statusTip">
-               <string>所选编队在队伍编成界面的位置,从左到右1-10,0为不切换编队</string>
-              </property>
-              <property name="alignment">
+              <layout class="QGridLayout" name="LAYOUT_QUICKFARM" columnstretch="0,1">
+               <item row="0" column="0">
+                <widget class="QLabel" name="LBL_QUICKMODE">
+                 <property name="text">
+                  <string>模式</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="1">
+                <widget class="QComboBox" name="CBB_QUICKMODE">
+                 <item>
+                  <property name="text">
+                   <string>当前关卡周回</string>
+                  </property>
+                 </item>
+                 <item>
+                  <property name="text">
+                   <string>计划关卡队列</string>
+                  </property>
+                 </item>
+                 <item>
+                  <property name="text">
+                   <string>活动推进</string>
+                  </property>
+                 </item>
+                </widget>
+               </item>
+               <item row="1" column="0">
+                <widget class="QLabel" name="LBL_BATTLELIMIT">
+                 <property name="text">
+                  <string>场数上限</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="1">
+                <widget class="QSpinBox" name="TXT_BATTLELIMIT">
+                 <property name="statusTip">
+                  <string>本次运行所有队列项合计的场数上限；左侧次数限制单项。0 表示不设总上限，仍受单项次数和 AP 限制。</string>
+                 </property>
+                 <property name="alignment">
+                  <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                 </property>
+                 <property name="maximum">
+                  <number>1000</number>
+                 </property>
+                 <property name="value">
+                  <number>1</number>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="0" colspan="2">
+                <widget class="QLabel" name="LBL_QUICK_HINT">
+                 <property name="sizePolicy">
+                  <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
+                   <horstretch>0</horstretch>
+                   <verstretch>0</verstretch>
+                  </sizepolicy>
+                 </property>
+                 <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                 </property>
+                 <property name="wordWrap">
+                  <bool>true</bool>
+                 </property>
+                 <property name="text">
+                  <string>把游戏停在目标关卡列表，并让目标关卡排在首位。每日任务请先手动选择种类和难度。</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="3" column="0" colspan="2">
+                <widget class="QPushButton" name="BTN_MAIN">
+                 <property name="cursor">
+                  <cursorShape>PointingHandCursor</cursorShape>
+                 </property>
+                 <property name="statusTip">
+                  <string>按所选模式开始智能周回或安全活动推进。</string>
+                 </property>
+                 <property name="text">
+                  <string>开始智能周回</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="4" column="0">
+                <widget class="QLabel" name="LBL_EVENT_STORYMODE">
+                 <property name="text">
+                  <string>剧情处理</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="4" column="1">
+                <widget class="QComboBox" name="CBB_EVENT_STORYMODE">
+                 <item>
+                  <property name="text">
+                   <string>遇到剧情暂停</string>
+                  </property>
+                 </item>
+                 <item>
+                  <property name="text">
+                   <string>自动跳过剧情</string>
+                  </property>
+                 </item>
+                </widget>
+               </item>
+               <item row="5" column="0">
+                <widget class="QLabel" name="LBL_EVENT_LIMIT">
+                 <property name="text">
+                  <string>推进上限</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="5" column="1">
+                <widget class="QSpinBox" name="TXT_EVENT_LIMIT">
+                 <property name="statusTip">
+                  <string>最多推进 1 到 100 个剧情节点；不允许无限推进。</string>
+                 </property>
+                 <property name="minimum">
+                  <number>1</number>
+                 </property>
+                 <property name="maximum">
+                  <number>100</number>
+                 </property>
+                 <property name="value">
+                  <number>1</number>
+                 </property>
+                </widget>
+               </item>
+               <item row="6" column="0" colspan="2">
+                <widget class="QCheckBox" name="CKB_EVENT_REWARD">
+                 <property name="text">
+                  <string>自动领取已完成活动任务奖励</string>
+                 </property>
+                 <property name="statusTip">
+                  <string>仅在 OCR 明确确认任务已完成且按钮为领取时操作；不购买、不兑换、不处理选择奖励。</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="7" column="0" colspan="2">
+                <widget class="QLabel" name="LBL_EVENT_STATUS">
+                 <property name="sizePolicy">
+                  <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
+                   <horstretch>0</horstretch>
+                   <verstretch>0</verstretch>
+                  </sizepolicy>
+                 </property>
+                 <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                 </property>
+                 <property name="wordWrap">
+                  <bool>true</bool>
+                 </property>
+                 <property name="text">
+                  <string />
+                 </property>
+                </widget>
+               </item>
+               <property name="verticalSpacing">
+                <number>3</number>
+               </property>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <layout class="QFormLayout" name="LAYOUT_INFO">
+              <property name="labelAlignment">
                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
               </property>
-              <property name="maximum">
-               <number>15</number>
+              <item row="0" column="0">
+               <widget class="QLabel" name="LBL_TEAM">
+                <property name="text">
+                 <string>编队</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <layout class="QHBoxLayout" name="LAYOUT_INFO_TEAM">
+                <item>
+                 <widget class="QSpinBox" name="TXT_TEAM">
+                  <property name="sizePolicy">
+                   <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                    <horstretch>0</horstretch>
+                    <verstretch>0</verstretch>
+                   </sizepolicy>
+                  </property>
+                  <property name="contextMenuPolicy">
+                   <enum>Qt::NoContextMenu</enum>
+                  </property>
+                  <property name="statusTip">
+                   <string>所选编队在队伍编成界面的位置,从左到右1-10,0为不切换编队</string>
+                  </property>
+                  <property name="alignment">
+                   <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                  </property>
+                  <property name="maximum">
+                   <number>15</number>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QCheckBox" name="CKB_TEAM">
+                  <property name="text">
+                   <string>自动编队</string>
+                  </property>
+                 </widget>
+                </item>
+                <property name="spacing">
+                 <number>3</number>
+                </property>
+               </layout>
+              </item>
+              <item row="1" column="0">
+               <widget class="QLabel" name="LBL_APPLE">
+                <property name="maximumSize">
+                 <size>
+                  <width>16777215</width>
+                  <height>28</height>
+                 </size>
+                </property>
+                <property name="text">
+                 <string>苹果</string>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="1">
+               <layout class="QHBoxLayout" name="LAYOUT_INFO_APPLE">
+                <item>
+                 <widget class="QComboBox" name="CBB_APPLE">
+                  <property name="statusTip">
+                   <string>要吃的苹果种类</string>
+                  </property>
+                  <property name="currentIndex">
+                   <number>0</number>
+                  </property>
+                  <item>
+                   <property name="text">
+                    <string>金</string>
+                   </property>
+                  </item>
+                  <item>
+                   <property name="text">
+                    <string>银</string>
+                   </property>
+                  </item>
+                  <item>
+                   <property name="text">
+                    <string>青</string>
+                   </property>
+                  </item>
+                  <item>
+                   <property name="text">
+                    <string>铜</string>
+                   </property>
+                  </item>
+                  <item>
+                   <property name="text">
+                    <string>彩</string>
+                   </property>
+                  </item>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QSpinBox" name="TXT_APPLE">
+                  <property name="sizePolicy">
+                   <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                    <horstretch>0</horstretch>
+                    <verstretch>0</verstretch>
+                   </sizepolicy>
+                  </property>
+                  <property name="contextMenuPolicy">
+                   <enum>Qt::NoContextMenu</enum>
+                  </property>
+                  <property name="statusTip">
+                   <string>要吃的苹果数量</string>
+                  </property>
+                  <property name="alignment">
+                   <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                  </property>
+                  <property name="maximum">
+                   <number>114514</number>
+                  </property>
+                 </widget>
+                </item>
+                <property name="spacing">
+                 <number>3</number>
+                </property>
+               </layout>
+              </item>
+              <item row="2" column="0">
+               <widget class="QLabel" name="LBL_CURRENTDEVICE">
+                <property name="text">
+                 <string>设备</string>
+                </property>
+               </widget>
+              </item>
+              <item row="2" column="1">
+               <layout class="QHBoxLayout" name="LAYOUT_DEVICE">
+                <item>
+                 <widget class="QLabel" name="LBL_DEVICE">
+                  <property name="sizePolicy">
+                   <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+                    <horstretch>0</horstretch>
+                    <verstretch>0</verstretch>
+                   </sizepolicy>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="BTN_CONNECT">
+                  <property name="cursor">
+                   <cursorShape>PointingHandCursor</cursorShape>
+                  </property>
+                  <property name="statusTip">
+                   <string>连接到设备</string>
+                  </property>
+                  <property name="text">
+                   <string>更改</string>
+                  </property>
+                 </widget>
+                </item>
+                <property name="spacing">
+                 <number>3</number>
+                </property>
+               </layout>
+              </item>
+              <item row="3" column="0">
+               <widget class="QLabel" name="LBL_FRIENDPOLICY">
+                <property name="text">
+                 <string>助战策略</string>
+                </property>
+               </widget>
+              </item>
+              <item row="3" column="1">
+               <widget class="QComboBox" name="CBB_FRIENDPOLICY">
+                <item>
+                 <property name="text">
+                  <string>任意（首位）</string>
+                 </property>
+                </item>
+                <item>
+                 <property name="text">
+                  <string>模板优先</string>
+                 </property>
+                </item>
+                <item>
+                 <property name="text">
+                  <string>模板严格</string>
+                 </property>
+                </item>
+               </widget>
+              </item>
+              <item row="4" column="0">
+               <widget class="QLabel" name="LBL_FRIENDREFRESH">
+                <property name="text">
+                 <string>刷新上限</string>
+                </property>
+               </widget>
+              </item>
+              <item row="4" column="1">
+               <widget class="QSpinBox" name="TXT_FRIENDREFRESH">
+                <property name="statusTip">
+                 <string>0 表示只扫描当前助战列表，不主动刷新；最大为 10 次。</string>
+                </property>
+                <property name="alignment">
+                 <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                </property>
+                <property name="maximum">
+                 <number>10</number>
+                </property>
+                <property name="value">
+                 <number>2</number>
+                </property>
+               </widget>
+              </item>
+              <item row="5" column="0" colspan="2">
+               <widget class="QPushButton" name="BTN_FRIENDTEMPLATES">
+                <property name="statusTip">
+                 <string>本机模板优先级、启用状态与截图制作。</string>
+                </property>
+                <property name="text">
+                 <string>管理助战模板</string>
+                </property>
+               </widget>
+              </item>
+              <property name="verticalSpacing">
+               <number>3</number>
               </property>
-             </widget>
+             </layout>
             </item>
             <item>
-             <widget class="QCheckBox" name="CKB_TEAM">
-              <property name="text">
-              <string>自动编队</string>
-             </property>
-            </widget>
+             <layout class="QHBoxLayout" name="LAYOUT_FUNC">
+              <item>
+               <layout class="QVBoxLayout" name="LAYOUT_FUNCBATTLE">
+                <item>
+                 <widget class="QPushButton" name="BTN_BATTLE">
+                  <property name="statusTip">
+                   <string>完成当前战斗</string>
+                  </property>
+                  <property name="text">
+                   <string>完成战斗</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="BTN_CLASSIC">
+                  <property name="statusTip">
+                   <string>基于经典战斗的清空体力</string>
+                  </property>
+                  <property name="text">
+                   <string>陈年老肝</string>
+                  </property>
+                 </widget>
+                </item>
+                <property name="spacing">
+                 <number>3</number>
+                </property>
+               </layout>
+              </item>
+              <item>
+               <layout class="QVBoxLayout" name="LAYOUT_FUNCCONTROL">
+                <item>
+                 <widget class="QPushButton" name="BTN_PAUSE">
+                  <property name="enabled">
+                   <bool>false</bool>
+                  </property>
+                  <property name="statusTip">
+                   <string>暂停/继续战斗</string>
+                  </property>
+                  <property name="text">
+                   <string>挂起战斗</string>
+                  </property>
+                  <property name="checkable">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="BTN_STOP">
+                  <property name="enabled">
+                   <bool>false</bool>
+                  </property>
+                  <property name="statusTip">
+                   <string>立刻终止战斗</string>
+                  </property>
+                  <property name="text">
+                   <string>终止战斗</string>
+                  </property>
+                 </widget>
+                </item>
+                <property name="spacing">
+                 <number>3</number>
+                </property>
+               </layout>
+              </item>
+              <item>
+               <layout class="QVBoxLayout" name="LAYOUT_FUNCAPPOINT">
+                <item>
+                 <widget class="QPushButton" name="BTN_SCREENSHOT">
+                  <property name="statusTip">
+                   <string>检查截图确定连接建立</string>
+                  </property>
+                  <property name="text">
+                   <string>检查截图</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="BTN_STOPLATER">
+                  <property name="enabled">
+                   <bool>false</bool>
+                  </property>
+                  <property name="statusTip">
+                   <string>在完成若干场战斗后终止战斗</string>
+                  </property>
+                  <property name="text">
+                   <string>预约终止</string>
+                  </property>
+                  <property name="checkable">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+                <property name="spacing">
+                 <number>3</number>
+                </property>
+               </layout>
+              </item>
+              <property name="spacing">
+               <number>3</number>
+              </property>
+             </layout>
             </item>
-           </layout>
-          </item>
-          <item row="1" column="0">
-           <widget class="QLabel" name="LBL_APPLE">
-            <property name="maximumSize">
-             <size>
-              <width>16777215</width>
-              <height>28</height>
-             </size>
+            <property name="spacing">
+             <number>3</number>
             </property>
-            <property name="text">
-             <string>苹果</string>
+            <property name="alignment">
+             <set>Qt::AlignTop</set>
             </property>
-           </widget>
-          </item>
-          <item row="1" column="1">
-           <layout class="QHBoxLayout" name="LAYOUT_INFO_APPLE">
-            <item>
-             <widget class="QComboBox" name="CBB_APPLE">
-              <property name="statusTip">
-               <string>要吃的苹果种类</string>
-              </property>
-              <property name="currentIndex">
-               <number>0</number>
-              </property>
-              <item>
-               <property name="text">
-                <string>金</string>
-               </property>
-              </item>
-              <item>
-               <property name="text">
-                <string>银</string>
-               </property>
-              </item>
-              <item>
-               <property name="text">
-                <string>青</string>
-               </property>
-              </item>
-              <item>
-               <property name="text">
-                <string>铜</string>
-               </property>
-              </item>
-              <item>
-               <property name="text">
-                <string>彩</string>
-               </property>
-              </item>
-             </widget>
-            </item>
-            <item>
-             <widget class="QSpinBox" name="TXT_APPLE">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-                <horstretch>0</horstretch>
-                <verstretch>0</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="contextMenuPolicy">
-               <enum>Qt::NoContextMenu</enum>
-              </property>
-              <property name="statusTip">
-               <string>要吃的苹果数量</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-              </property>
-              <property name="maximum">
-               <number>114514</number>
-              </property>
-             </widget>
-            </item>
            </layout>
           </item>
-          <item row="2" column="0">
-           <widget class="QLabel" name="LBL_CURRENTDEVICE">
-            <property name="text">
-             <string>设备</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="1">
-           <layout class="QHBoxLayout" name="LAYOUT_DEVICE">
-            <item>
-             <widget class="QLabel" name="LBL_DEVICE">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
-                <horstretch>0</horstretch>
-                <verstretch>0</verstretch>
-               </sizepolicy>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="BTN_CONNECT">
-              <property name="cursor">
-               <cursorShape>PointingHandCursor</cursorShape>
-              </property>
-              <property name="statusTip">
-               <string>连接到设备</string>
-              </property>
-              <property name="text">
-               <string>更改</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </item>
-         <item row="3" column="0"><widget class="QLabel" name="LBL_FRIENDPOLICY"><property name="text"><string>助战策略</string></property></widget></item>
-         <item row="3" column="1">
-          <widget class="QComboBox" name="CBB_FRIENDPOLICY">
-           <item><property name="text"><string>任意（首位）</string></property></item>
-           <item><property name="text"><string>模板优先</string></property></item>
-           <item><property name="text"><string>模板严格</string></property></item>
-          </widget>
-         </item>
-         <item row="4" column="0"><widget class="QLabel" name="LBL_FRIENDREFRESH"><property name="text"><string>刷新上限</string></property></widget></item>
-         <item row="4" column="1">
-          <widget class="QSpinBox" name="TXT_FRIENDREFRESH">
-           <property name="statusTip"><string>0 表示只扫描当前助战列表，不主动刷新；最大为 10 次。</string></property>
-           <property name="alignment"><set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set></property>
-           <property name="maximum"><number>10</number></property>
-           <property name="value"><number>2</number></property>
-          </widget>
-         </item>
-         <item row="5" column="0" colspan="2">
-          <widget class="QPushButton" name="BTN_FRIENDTEMPLATES">
-           <property name="statusTip"><string>打开本机助战模板文件夹。图片只保存在本机。</string></property>
-           <property name="text"><string>打开助战模板目录</string></property>
-          </widget>
-         </item>
-       </layout>
-        </item>
-<item>
-         <layout class="QHBoxLayout" name="LAYOUT_FUNC">
-          <item>
-           <layout class="QVBoxLayout" name="LAYOUT_FUNCBATTLE">
-            <item>
-             <widget class="QPushButton" name="BTN_BATTLE">
-              <property name="statusTip">
-               <string>完成当前战斗</string>
-              </property>
-              <property name="text">
-               <string>完成战斗</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="BTN_CLASSIC">
-              <property name="statusTip">
-               <string>基于经典战斗的清空体力</string>
-              </property>
-              <property name="text">
-               <string>陈年老肝</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </item>
-          <item>
-           <layout class="QVBoxLayout" name="LAYOUT_FUNCCONTROL">
-            <item>
-             <widget class="QPushButton" name="BTN_PAUSE">
-              <property name="enabled">
-               <bool>false</bool>
-              </property>
-              <property name="statusTip">
-               <string>暂停/继续战斗</string>
-              </property>
-              <property name="text">
-               <string>挂起战斗</string>
-              </property>
-              <property name="checkable">
-               <bool>true</bool>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="BTN_STOP">
-              <property name="enabled">
-               <bool>false</bool>
-              </property>
-              <property name="statusTip">
-               <string>立刻终止战斗</string>
-              </property>
-              <property name="text">
-               <string>终止战斗</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </item>
-          <item>
-           <layout class="QVBoxLayout" name="LAYOUT_FUNCAPPOINT">
-            <item>
-             <widget class="QPushButton" name="BTN_SCREENSHOT">
-              <property name="statusTip">
-               <string>检查截图确定连接建立</string>
-              </property>
-              <property name="text">
-               <string>检查截图</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="BTN_STOPLATER">
-              <property name="enabled">
-               <bool>false</bool>
-              </property>
-              <property name="statusTip">
-               <string>在完成若干场战斗后终止战斗</string>
-              </property>
-              <property name="text">
-               <string>预约终止</string>
-              </property>
-              <property name="checkable">
-               <bool>true</bool>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </item>
+          <property name="spacing">
+           <number>3</number>
+          </property>
          </layout>
         </item>
+        <property name="spacing">
+         <number>3</number>
+        </property>
+        <property name="leftMargin">
+         <number>0</number>
+        </property>
+        <property name="topMargin">
+         <number>0</number>
+        </property>
+        <property name="rightMargin">
+         <number>0</number>
+        </property>
+        <property name="bottomMargin">
+         <number>0</number>
+        </property>
        </layout>
-      </item>
-     </layout>
-    </item>
-    <item>
-     <widget class="QListWidget" name="LST_QUEST">
-      <property name="statusTip">
-       <string>关卡队列</string>
-      </property>
+       <property name="minimumSize">
+        <size>
+         <width>0</width>
+         <height>390</height>
+        </size>
+       </property>
+      </widget>
+      <widget class="QPlainTextEdit" name="TXT_LOG">
+       <property name="readOnly">
+        <bool>true</bool>
+       </property>
+       <property name="placeholderText">
+        <string>实时运行日志</string>
+       </property>
+       <property name="maximumBlockCount">
+        <number>2000</number>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>0</width>
+         <height>200</height>
+        </size>
+       </property>
+      </widget>
      </widget>
     </item>
+    <property name="spacing">
+     <number>3</number>
+    </property>
+    <property name="leftMargin">
+     <number>6</number>
+    </property>
+    <property name="topMargin">
+     <number>6</number>
+    </property>
+    <property name="rightMargin">
+     <number>6</number>
+    </property>
+    <property name="bottomMargin">
+     <number>6</number>
+    </property>
    </layout>
   </widget>
   <widget class="QMenuBar" name="MENU">
@@ -516,25 +787,25 @@
     <property name="title">
      <string>关于</string>
     </property>
-    <addaction name="MENU_ABOUT_ABOUT"/>
-    <addaction name="MENU_ABOUT_LICENSE"/>
+    <addaction name="MENU_ABOUT_ABOUT" />
+    <addaction name="MENU_ABOUT_LICENSE" />
    </widget>
    <widget class="QMenu" name="MENU_FILE">
     <property name="title">
      <string>文件</string>
     </property>
-    <addaction name="MENU_FILE_EXPLORER"/>
+    <addaction name="MENU_FILE_EXPLORER" />
    </widget>
    <widget class="QMenu" name="MENU_SCRIPT">
     <property name="title">
      <string>程序</string>
     </property>
-    <addaction name="MENU_SCRIPT_FPSUMMON"/>
-    <addaction name="MENU_SCRIPT_LOTTERY"/>
-    <addaction name="MENU_SCRIPT_MAILFILTER"/>
-    <addaction name="MENU_SCRIPT_SYNTHESIS"/>
-    <addaction name="MENU_SCRIPT_SUMMONHISTORY"/>
-    <addaction name="MENU_SCRIPT_EXPBALL"/>
+    <addaction name="MENU_SCRIPT_FPSUMMON" />
+    <addaction name="MENU_SCRIPT_LOTTERY" />
+    <addaction name="MENU_SCRIPT_MAILFILTER" />
+    <addaction name="MENU_SCRIPT_SYNTHESIS" />
+    <addaction name="MENU_SCRIPT_SUMMONHISTORY" />
+    <addaction name="MENU_SCRIPT_EXPBALL" />
    </widget>
    <widget class="QMenu" name="MENU_CONTROL">
     <property name="title">
@@ -544,34 +815,34 @@
      <property name="title">
       <string>全面屏适配</string>
      </property>
-     <addaction name="MENU_CONTROL_169_INVOKE"/>
-     <addaction name="MENU_CONTROL_169_REVOKE"/>
+     <addaction name="MENU_CONTROL_169_INVOKE" />
+     <addaction name="MENU_CONTROL_169_REVOKE" />
     </widget>
-    <addaction name="MENU_CONTROL_STAYONTOP"/>
-    <addaction name="MENU_CONTROL_TRAY"/>
-    <addaction name="separator"/>
-    <addaction name="MENU_CONTROL_MAPKEY"/>
-    <addaction name="MENU_CONTROL_169"/>
-    <addaction name="MENU_CONTROL_NOTIFY"/>
-    <addaction name="separator"/>
-    <addaction name="MENU_CONTROL_BENCH"/>
-    <addaction name="MENU_CONTROL_EXEC"/>
+    <addaction name="MENU_CONTROL_STAYONTOP" />
+    <addaction name="MENU_CONTROL_TRAY" />
+    <addaction name="separator" />
+    <addaction name="MENU_CONTROL_MAPKEY" />
+    <addaction name="MENU_CONTROL_169" />
+    <addaction name="MENU_CONTROL_NOTIFY" />
+    <addaction name="separator" />
+    <addaction name="MENU_CONTROL_BENCH" />
+    <addaction name="MENU_CONTROL_EXEC" />
    </widget>
    <widget class="QMenu" name="MENU_SETTINGS">
     <property name="title">
      <string>设置</string>
     </property>
-    <addaction name="MENU_SETTINGS_DEFEATED"/>
-    <addaction name="MENU_SETTINGS_KIZUNAREISOU"/>
-    <addaction name="MENU_SETTINGS_SPECIALDROP"/>
+    <addaction name="MENU_SETTINGS_DEFEATED" />
+    <addaction name="MENU_SETTINGS_KIZUNAREISOU" />
+    <addaction name="MENU_SETTINGS_SPECIALDROP" />
    </widget>
-   <addaction name="MENU_FILE"/>
-   <addaction name="MENU_SCRIPT"/>
-   <addaction name="MENU_SETTINGS"/>
-   <addaction name="MENU_CONTROL"/>
-   <addaction name="MENU_ABOUT"/>
+   <addaction name="MENU_FILE" />
+   <addaction name="MENU_SCRIPT" />
+   <addaction name="MENU_SETTINGS" />
+   <addaction name="MENU_CONTROL" />
+   <addaction name="MENU_ABOUT" />
   </widget>
-  <widget class="QStatusBar" name="STATUS"/>
+  <widget class="QStatusBar" name="STATUS" />
   <action name="MENU_ABOUT_ABOUT">
    <property name="text">
     <string>关于FGO-py</string>
@@ -667,9 +938,9 @@
    </property>
   </action>
   <action name="MENU_SETTINGS_SPECIALDROP">
-    <property name="checkable">
-     <bool>true</bool>
-    </property>
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
    <property name="text">
     <string>若干特殊掉落后终止战斗</string>
    </property>
@@ -710,6 +981,14 @@
     <string>消息推送</string>
    </property>
   </action>
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>900</width>
+    <height>680</height>
+   </rect>
+  </property>
  </widget>
  <tabstops>
   <tabstop>CBB_CHAPTER</tabstop>
@@ -743,7 +1022,7 @@
   <tabstop>BTN_SCREENSHOT</tabstop>
   <tabstop>BTN_STOPLATER</tabstop>
  </tabstops>
- <resources/>
+ <resources />
  <connections>
   <connection>
    <sender>BTN_CLASSIC</sender>

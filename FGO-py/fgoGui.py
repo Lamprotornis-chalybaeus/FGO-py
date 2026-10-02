@@ -1,9 +1,13 @@
-import os,sys,time,platform
+import os,sys,time,platform,logging
 from threading import Thread
 from PySide6.QtCore import Qt,QLocale,QTranslator,QTimer,Signal,QSignalBlocker
 from PySide6.QtGui import QAction,QIcon
 from PySide6.QtWidgets import QApplication,QInputDialog,QMainWindow,QMenu,QMessageBox,QSystemTrayIcon,QSpinBox,QComboBox,QCheckBox
 from matplotlib import pyplot
+import fgoDrop
+from fgoProgress import formatProgress,currentProgress
+from fgoGuiResult import RunResultDialog
+from fgoGuiFriendTemplates import FriendTemplateDialog
 import fgoDevice
 import fgoKernel
 import fgoQuickFarm,fgoQuickQuest,fgoFriendPolicy,fgoEventProgress,fgoGuiOperation
@@ -13,10 +17,21 @@ from fgoMetadata import quest
 logger=fgoKernel.getLogger('Gui')
 pyplot.ion()
 
+class GuiLogHandler(logging.Handler):
+    def __init__(self,send):super().__init__(logging.INFO);self.send=send;self.previous=None
+    def emit(self,record):
+        text=f'[{"导航" if record.name=="fgo.Navigation" else record.levelname}] {record.getMessage()}'
+        if text!=self.previous:
+            self.previous=text
+            try:self.send(text)
+            except RuntimeError:logging.getLogger('fgo').removeHandler(self)
+
 class MainWindow(QMainWindow,Ui_fgoMainWindow):
     signalFuncBegin=Signal()
     signalFuncEnd=Signal(object)
     signalNavigation=Signal(str)
+    signalProgress=Signal(object)
+    signalLog=Signal(str)
     def __init__(self,config,parent=None):
         super().__init__(parent)
         self.color={
@@ -41,7 +56,17 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.MENU_TRAY_FORCEQUIT.triggered.connect(QApplication.quit)
         self.signalFuncBegin.connect(self.funcBegin)
         self.signalFuncEnd.connect(self.funcEnd)
-        self.signalNavigation.connect(self.LBL_WEEKLY_STATUS.setText)
+        self.signalNavigation.connect(self.showNavigation)
+        self.signalProgress.connect(self.showProgress)
+        self.signalLog.connect(self.appendLog)
+        self.SPLIT_RUN.setChildrenCollapsible(False)
+        self.SPLIT_RUN.setStretchFactor(0,0);self.SPLIT_RUN.setStretchFactor(1,1)
+        self.SPLIT_RUN.setSizes([410,220])
+        self._queueSnapshot=()
+        self._lastProgress=None
+        self.LBL_WEEKLY_STATUS.setMaximumHeight(88)
+        self._logHandler=GuiLogHandler(self.signalLog.emit)
+        logging.getLogger('fgo').addHandler(self._logHandler)
         self.operation=fgoKernel.Operation()
         self.dailyEntries=[]
         self._dailyScanPending=False
@@ -57,6 +82,9 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.BTN_DAILY_REFRESH.clicked.connect(self.refreshDailyQuests)
         self.worker=Thread()
         self.config=config
+        fgoDrop.debug=bool(config.get('dropDebug',False))
+        self.dropDebugAction=QAction('保存掉落诊断（本机）',self);self.dropDebugAction.setCheckable(True);self.dropDebugAction.setChecked(fgoDrop.debug);self.MENU_SETTINGS.addAction(self.dropDebugAction)
+        self.dropDebugAction.toggled.connect(lambda value:(setattr(fgoDrop,'debug',value),self.config.__setitem__('dropDebug',value)))
         self.CBB_EVENT_STORYMODE.setItemData(0,fgoEventProgress.EVENT_STORY_PAUSE)
         self.CBB_EVENT_STORYMODE.setItemData(1,fgoEventProgress.EVENT_STORY_SKIP)
         self.CBB_EVENT_STORYMODE.setCurrentIndex(1 if self.config.get('eventStoryMode','pause')=='skip' else 0)
@@ -111,6 +139,7 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
             self.worker.join()
             self.funcEnd(('Quit',QSystemTrayIcon.MessageIcon.Information))
         self.TRAY.hide()
+        logging.getLogger('fgo').removeHandler(self._logHandler)
         return True
     def isDeviceAvailable(self):
         if not fgoDevice.device.available:
@@ -145,7 +174,7 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         cur=self.LST_QUEST.currentRow()
         self.LST_QUEST.clear()
         rows=[]
-        for index,task in enumerate(self.operation,1):
+        for index,task in enumerate(self._queueSnapshot if self.worker.is_alive() else tuple(self.operation),1):
             if isinstance(task,fgoGuiOperation.QuestTask):
                 target,times=task.target,task.repetitions
                 if task.type=='daily':chapter='每日任务';title=target.title
@@ -158,7 +187,39 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
             rows.append(f'{index}. {times}× {chapter} == {title}')
         self.LST_QUEST.addItems(rows)
         self.LST_QUEST.setCurrentRow(cur)
+    def showProgress(self,p):
+        self._lastProgress=p
+        self._queueSnapshot=p.queue
+        self.LBL_WEEKLY_STATUS.setText(formatProgress(p))
+        self.flush()
+        self.TXT_LOG.appendPlainText('[任务] '+formatProgress(p).replace('\n','；'))
+        if p.battle:
+            b=p.battle
+            self.TXT_LOG.appendPlainText(f'[战斗] 第{p.run_attempted}场完成：{b.turns}回合，{int(b.seconds)//60}:{int(b.seconds)%60:02}；累计胜{p.wins} 负{p.defeats}')
+            def show(result):
+                stats=result.get('dropStats',{})
+                items=[f'{QApplication.translate("material",n)}×{c}' for n,c in result.get('material',{}).items()]
+                items.extend(f'{n}×{c}' for n,c in stats.get('currency',{}).items())
+                items.append(f'未知格×{stats.get("unknown_slots",0)}')
+                if stats.get('currency_amount_unknown'):items.append(f'货币数量未确认×{stats["currency_amount_unknown"]}')
+                if stats.get('incomplete'):items.append('检测不完整')
+                return '，'.join(items)
+            self.TXT_LOG.appendPlainText(f'[掉落] 本场：{show(b.battle_result)}；累计：{show(p.result)}')
+    def showNavigation(self,message):
+        self.LBL_WEEKLY_STATUS.setText(formatProgress(self._lastProgress) if self._lastProgress else message)
+        line='[导航] '+message.split('\n')[-1]
+        self.appendLog(line)
+    def appendLog(self,line):
+        if getattr(self,'_lastLog',None)!=line:
+            self.TXT_LOG.appendPlainText(line);self._lastLog=line
+    def currentProgressCallback(self):
+        limit=self.TXT_BATTLELIMIT.value()
+        return lambda event:self.signalProgress.emit(currentProgress(event,limit))
     def funcBegin(self):
+        self._lastProgress=None;self._lastNavigation=None
+        for control in (self.CBB_QUICKMODE,self.TXT_TEAM,self.CKB_TEAM,self.CBB_APPLE,self.TXT_APPLE,self.CBB_FRIENDPOLICY,self.TXT_FRIENDREFRESH,self.BTN_CONNECT):control.setEnabled(False)
+        for control in (self.BTN_QUESTADD,self.BTN_QUESTREMOVE,self.BTN_QUESTUP,self.BTN_QUESTDOWN,self.BTN_QUESTCLEAR,self.BTN_FRIENDTEMPLATES,self.TXT_TIMES,self.TXT_BATTLELIMIT):control.setEnabled(False)
+        self.dropDebugAction.setEnabled(False)
         self.BTN_MAIN.setEnabled(False)
         self.BTN_BATTLE.setEnabled(False)
         self.BTN_CLASSIC.setEnabled(False)
@@ -173,6 +234,9 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.MENU_SCRIPT.setEnabled(False)
         self.timer.start(500)
     def funcEnd(self,msg):
+        for control in (self.CBB_QUICKMODE,self.TXT_TEAM,self.CKB_TEAM,self.CBB_APPLE,self.TXT_APPLE,self.CBB_FRIENDPOLICY,self.TXT_FRIENDREFRESH,self.BTN_CONNECT):control.setEnabled(True)
+        for control in (self.BTN_QUESTADD,self.BTN_QUESTREMOVE,self.BTN_QUESTUP,self.BTN_QUESTDOWN,self.BTN_QUESTCLEAR,self.BTN_FRIENDTEMPLATES,self.TXT_TIMES,self.TXT_BATTLELIMIT):control.setEnabled(True)
+        self.dropDebugAction.setEnabled(True)
         if msg[0]!='Done' and ('Navigation failed' in msg[0] or '导航' in msg[0] or '前置检查' in msg[0]):self.LBL_WEEKLY_STATUS.setText(msg[0])
         self.BTN_MAIN.setEnabled(True)
         self.BTN_BATTLE.setEnabled(True)
@@ -209,21 +273,8 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
                 feedback=fgoQuickFarm.weeklyMissionFeedback(self.result)
                 self.LBL_WEEKLY_STATUS.setText(feedback)
                 QMessageBox.information(self,'FGO-py',feedback)
-            case{'type':'Battle'}:QMessageBox.information(self,'FGO-py',f'''
-<h2>{msg[0].split(':',1)[0]}</h2>
-{self.color(0x006400)}{self.result['turn']}</font>{self.tr('回合完成战斗')},{self.tr('用时')}{self.color(0x006400)}{self.result['time']//3600:.0f}:{self.result['time']//60%60:02.0f}:{self.result['time']%60:02.0f}</font><br/>
-{self.tr('获得了以下素材')}:<br/>
-{'<br/>'.join(f'<img src="fgoImage/material/{i}.png" height="18" width="18">{QApplication.translate("material",i)}{self.color(0x7030A0)}x{j}</font>'for i,j in self.result['material'].items())if self.result['material']else self.tr('无')}
-''')
-            case{'type':'Main','battle':0}:
-                QMessageBox.information(self,'FGO-py',f'未进入战斗。\n{msg[0] if msg[0]!="Done" else "任务已停止，请检查队列与当前游戏画面。"}')
-            case{'type':'Main'}:QMessageBox.information(self,'FGO-py',f'''
-<h2>{msg[0].split(':',1)[0]}</h2>
-{self.tr('在过去的')}{self.color(0x006400)}{self.result['time']//3600:.0f}:{self.result['time']//60%60:02.0f}:{self.result['time']%60:02.0f}</font>{self.tr('中完成了')}{self.color(0x006400)}{self.result['battle']}</font>{self.tr('场战斗')}<br/>
-{self.tr('平均每场战斗')}{self.color(0x006400)}{self.result['turnPerBattle']:.1f}</font>{self.tr('回合')},{self.tr('用时')}{self.color(0x006400)}{self.result['timePerBattle']//60:.0f}:{self.result['timePerBattle']%60:04.1f}</font><br/>
-{self.tr('获得了以下素材')}:<br/>
-{'<br/>'.join(f'<img src="fgoImage/material/{i}.png" height="18" width="18">{QApplication.translate("material",i)}{self.color(0x7030A0)}x{j}</font>'for i,j in self.result['material'].items())if self.result['material']else self.tr('无')}
-''')
+            case{'type':'Battle'}|{'type':'Main'}:
+                RunResultDialog(self.result,msg[0],self).exec()
             case{'type':'SummonHistory'}:QMessageBox.information(self,'FGO-py',f'''
 <h2>{msg[0].split(':',1)[0]}</h2>
 {self.tr('获取到')}{self.color(0x006400)}{self.result['value']}</font>{self.tr('条抽卡记录')},{self.tr('图片保存至')}</br>
@@ -343,33 +394,33 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
             return
         fgoQuickFarm.applyBattleLimit(fgoKernel.schedule,self.TXT_BATTLELIMIT.value())
         if mode=='current':
-            operation=fgoKernel.Operation(appleTotal=self.operation.appleTotal,appleKind=self.operation.appleKind,battleClass=fgoKernel.Battle,friendPolicy=self.operation.friendPolicy,friendMaxRefresh=self.operation.friendMaxRefresh)
+            operation=fgoKernel.Operation(appleTotal=self.operation.appleTotal,appleKind=self.operation.appleKind,battleClass=fgoKernel.Battle,friendPolicy=self.operation.friendPolicy,friendMaxRefresh=self.operation.friendMaxRefresh,onProgress=self.currentProgressCallback())
         else:
             if not self.operation:
                 QMessageBox.information(self,'FGO-py','计划关卡队列为空。请先添加关卡。')
                 return
-            operation=fgoGuiOperation.GuiQueueOperation(self.operation,self.operation,onNavigation=self.signalNavigation.emit)
+            operation=fgoGuiOperation.GuiQueueOperation(self.operation,self.operation,onNavigation=self.signalNavigation.emit,onProgress=self.signalProgress.emit,runLimit=self.TXT_BATTLELIMIT.value())
         self.runFunc(operation)
     def friendPolicyChanged(self,index):
         policy=fgoFriendPolicy.policyName(index)
         self.config['friendPolicy']=policy
         tips={
             'first':'任意：选择当前助战列表首位，不扫描模板。',
-            'prefer':'模板优先：按文件名顺序查找；达到刷新上限后选择首位。',
+            'prefer':'模板优先：按显式优先级查找；达到刷新上限后选择首位。',
             'strict':'模板严格：只接受模板匹配；达到刷新上限后停止。',
         }
         self.CBB_FRIENDPOLICY.setStatusTip(tips[policy])
-    def openFriendTemplates(self):os.startfile(os.path.abspath('fgoImage/friend'))
+    def openFriendTemplates(self):FriendTemplateDialog(fgoKernel.friendImg,self).exec()
     def runMain(self):
         self.operation.battleClass=fgoKernel.Battle
-        if self.operation:self.runFunc(fgoGuiOperation.GuiQueueOperation(self.operation,self.operation,self.operation.battleClass,onNavigation=self.signalNavigation.emit))
-        else:self.runFunc(fgoKernel.Main(self.operation.appleTotal,self.operation.appleKind,fgoKernel.Battle,self.operation.friendPolicy,self.operation.friendMaxRefresh))
+        if self.operation:self.runFunc(fgoGuiOperation.GuiQueueOperation(self.operation,self.operation,self.operation.battleClass,onNavigation=self.signalNavigation.emit,onProgress=self.signalProgress.emit,runLimit=self.TXT_BATTLELIMIT.value()))
+        else:self.runFunc(fgoKernel.Main(self.operation.appleTotal,self.operation.appleKind,fgoKernel.Battle,self.operation.friendPolicy,self.operation.friendMaxRefresh,onProgress=self.currentProgressCallback()))
     def runBattle(self):self.runFunc(fgoKernel.Battle())
     def runClassic(self):
         if not Teamup(self).exec():return
         battleClass=lambda:fgoKernel.Battle(fgoKernel.ClassicTurn)
-        if self.operation:self.runFunc(fgoGuiOperation.GuiQueueOperation(self.operation,self.operation,battleClass,onNavigation=self.signalNavigation.emit))
-        else:self.runFunc(fgoKernel.Main(self.operation.appleTotal,self.operation.appleKind,battleClass,self.operation.friendPolicy,self.operation.friendMaxRefresh))
+        if self.operation:self.runFunc(fgoGuiOperation.GuiQueueOperation(self.operation,self.operation,battleClass,onNavigation=self.signalNavigation.emit,onProgress=self.signalProgress.emit,runLimit=self.TXT_BATTLELIMIT.value()))
+        else:self.runFunc(fgoKernel.Main(self.operation.appleTotal,self.operation.appleKind,battleClass,self.operation.friendPolicy,self.operation.friendMaxRefresh,onProgress=self.currentProgressCallback()))
     def pause(self,x):
         if not x and not self.isDeviceAvailable():return self.BTN_PAUSE.setChecked(True)
         fgoKernel.schedule.pause()
