@@ -69,6 +69,41 @@ def occupied(crop):
     # Unknown cards are retained independently of template matches.
     return bool(crop.size and np.mean(crop.max(axis=2)>90)>.025)
 
+def confirmationMatches(pixels,template,info):
+    """Require fixed class features in addition to the full card match."""
+    if 'confirmation_regions' not in info:return True
+    regions=info['confirmation_regions']
+    if info.get('match_region')!='card' or not isinstance(regions,list) or not regions:return False
+    for rect in regions:
+        if not isinstance(rect,(list,tuple)) or len(rect)!=4 or any(type(v) is not int for v in rect):return False
+        x,y,r,b=rect
+        if not (0<=x<r<=min(pixels.shape[1],template.shape[1]) and 0<=y<b<=min(pixels.shape[0],template.shape[0])):return False
+        score=float(cv2.minMaxLoc(cv2.matchTemplate(pixels[y:b,x:r],template[y:b,x:r],cv2.TM_SQDIFF_NORMED))[0])
+        if not np.isfinite(score) or score>=.02:return False
+    return True
+
+def parseCurrency(text,confidence,threshold):
+    number=re.fullmatch(r'\+?\s*(\d{1,3}(?:,\d{3})+|\d+)',str(text).strip())
+    return int(number[1].replace(',','')) if number and float(confidence)>=threshold else None
+
+def readCurrencyAmount(crop,ocr):
+    """Retry only rejected amounts; every independent read must agree."""
+    def read(rect,scale=1):
+        x,y,r,b=rect;pixels=crop[y:b,x:r]
+        if scale!=1:pixels=cv2.resize(pixels,None,fx=scale,fy=scale,interpolation=cv2.INTER_CUBIC)
+        text,confidence=ocr.ocr_single_line(pixels)
+        return dict(text=str(text),confidence=float(confidence),rect=list(rect),scale=scale)
+    evidence=read((15,91,113,119));amount=parseCurrency(evidence['text'],evidence['confidence'],.85)
+    if amount is not None:return amount,evidence
+    checks=[read(rect,scale) for rect in ((14,96,115,116),(12,96,117,116)) for scale in (1,2)]
+    amounts=[parseCurrency(check['text'],check['confidence'],.90) for check in checks]
+    evidence['checks']=checks
+    # A syntactically valid original read may veto an inconsistent retry.
+    original=parseCurrency(evidence['text'],evidence['confidence'],0)
+    if None not in amounts and len(set(amounts))==1 and original in (None,amounts[0]):
+        evidence['method']='four_read_agreement';return amounts[0],evidence
+    return None,evidence
+
 def detect(image,candidates=None,saveDebug=None):
     if image.shape!=(720,1280,3):raise ValueError('drop screenshot must be 1280x720')
     result=DropResult();candidates=templates() if candidates is None else candidates
@@ -84,7 +119,7 @@ def detect(image,candidates=None,saveDebug=None):
             pixels=crop[:118,:118] if info.get('match_region')=='card' else icon
             if template.shape[0]>pixels.shape[0] or template.shape[1]>pixels.shape[1]:continue
             score=float(cv2.minMaxLoc(cv2.matchTemplate(pixels,template,cv2.TM_SQDIFF_NORMED))[0])
-            if np.isfinite(score) and score<.02:matches.append((name,score,category))
+            if np.isfinite(score) and score<.02 and confirmationMatches(pixels,template,info):matches.append((name,score,category))
         identities={name for name,_,_ in matches}
         row={'slot':i,'rect':slotRect(i),'inner_rect':slotRect(i,True),'matches':[(n,s) for n,s,_ in matches],'name':None}
         if len(identities)==1:
@@ -93,11 +128,9 @@ def detect(image,candidates=None,saveDebug=None):
                 currencyName='baseQP' if name=='QP' and i==0 else 'droppedQP' if name=='QP' else name
                 # Currency amount is separate from the legacy material dict.
                 from fgoDetect import OCR
-                text,confidence=OCR.EN.ocr_single_line(image[y+91:y+119,x+15:x+113])
-                row['amount_ocr']={'text':str(text),'confidence':float(confidence)}
-                number=re.fullmatch(r'\+?\s*(\d{1,3}(?:,\d{3})+|\d+)',str(text).strip())
-                if number and float(confidence)>=.85:
-                    amount=int(number[1].replace(',',''));result.currency[currencyName]=result.currency.get(currencyName,0)+amount
+                amount,row['amount_ocr']=readCurrencyAmount(crop,OCR.EN)
+                if amount is not None:
+                    result.currency[currencyName]=result.currency.get(currencyName,0)+amount
                     if name=='QP':result.currency['QP']=result.currency.get('QP',0)+amount
                 else:row['amount_unknown']=True;result.currency_amount_unknown+=1
             else:result.recognized[name]=result.recognized.get(name,0)+1
