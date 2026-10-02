@@ -1,6 +1,6 @@
 import os,sys,time,platform,logging
 from threading import Thread
-from PySide6.QtCore import Qt,QLocale,QTranslator,QTimer,Signal,QSignalBlocker
+from PySide6.QtCore import Qt,QLocale,QTranslator,QTimer,Signal,QSignalBlocker,QByteArray
 from PySide6.QtGui import QAction,QIcon
 from PySide6.QtWidgets import QApplication,QInputDialog,QMainWindow,QMenu,QMessageBox,QSystemTrayIcon,QSpinBox,QComboBox,QCheckBox
 from matplotlib import pyplot
@@ -61,7 +61,7 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.signalLog.connect(self.appendLog)
         self.SPLIT_RUN.setChildrenCollapsible(False)
         self.SPLIT_RUN.setStretchFactor(0,0);self.SPLIT_RUN.setStretchFactor(1,1)
-        self.SPLIT_RUN.setSizes([410,220])
+        self.SPLIT_RUN.setSizes([365,210])
         self._queueSnapshot=()
         self._lastProgress=None
         self.LBL_WEEKLY_STATUS.setMaximumHeight(88)
@@ -82,6 +82,7 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.BTN_DAILY_REFRESH.clicked.connect(self.refreshDailyQuests)
         self.worker=Thread()
         self.config=config
+        self.resize(950,650)
         fgoDrop.debug=bool(config.get('dropDebug',False))
         self.dropDebugAction=QAction('保存掉落诊断（本机）',self);self.dropDebugAction.setCheckable(True);self.dropDebugAction.setChecked(fgoDrop.debug);self.MENU_SETTINGS.addAction(self.dropDebugAction)
         self.dropDebugAction.toggled.connect(lambda value:(setattr(fgoDrop,'debug',value),self.config.__setitem__('dropDebug',value)))
@@ -120,6 +121,13 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.notifier=[]
         self.LBL_DEVICE.setText(self.tr('未连接'))
         self.chapterChanged(self.CBB_CHAPTER.currentIndex(),autoScan=False)
+        # Restore after mode-specific controls have their final visibility.
+        for widgetName,key in (('window','windowGeometry'),('splitter','splitterState')):
+            try:
+                value=bytes.fromhex(config.get(key,''))
+                if value:(self.restoreGeometry if widgetName=='window' else self.SPLIT_RUN.restoreState)(QByteArray(value))
+            except (ValueError,TypeError):logger.warning('Ignored invalid saved GUI geometry')
+        safe=self.minimumSizeHint();self.resize(max(self.width(),safe.width()),max(self.height(),safe.height()))
     def keyPressEvent(self,key):
         if self.MENU_CONTROL_MAPKEY.isChecked()and not key.modifiers()&~Qt.KeyboardModifier.KeypadModifier:
             try:fgoDevice.device.press(chr(key.nativeVirtualKey()))
@@ -139,6 +147,8 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
             self.worker.join()
             self.funcEnd(('Quit',QSystemTrayIcon.MessageIcon.Information))
         self.TRAY.hide()
+        self.config['windowGeometry']=bytes(self.saveGeometry()).hex()
+        self.config['splitterState']=bytes(self.SPLIT_RUN.saveState()).hex()
         logging.getLogger('fgo').removeHandler(self._logHandler)
         return True
     def isDeviceAvailable(self):
@@ -199,7 +209,7 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
             def show(result):
                 stats=result.get('dropStats',{})
                 items=[f'{QApplication.translate("material",n)}×{c}' for n,c in result.get('material',{}).items()]
-                items.extend(f'{n}×{c}' for n,c in stats.get('currency',{}).items())
+                items.extend(f'{fgoDrop.currencyLabel(n)}×{c}' for n,c in stats.get('currency',{}).items())
                 items.append(f'未知格×{stats.get("unknown_slots",0)}')
                 if stats.get('currency_amount_unknown'):items.append(f'货币数量未确认×{stats["currency_amount_unknown"]}')
                 if stats.get('incomplete'):items.append('检测不完整')

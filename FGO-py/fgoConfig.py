@@ -1,6 +1,7 @@
 import json,os
 from fgoConst import CONFIG
 from fgoLogging import getLogger
+from fgoPaths import configFile
 logger=getLogger('Config')
 
 class ConfigItemList(list):
@@ -76,9 +77,13 @@ class Config(ConfigItem):
     def __new__(cls,*args,**kwargs):return super().__new__(cls,CONFIG)
     def __init__(self,file='fgoConfig.json'):
         super().__init__(CONFIG)
+        file=str(configFile(file))
         self.__dict__['file']=file
         if os.path.isfile(file):
-            with open(file)as f:self.update(json.load(f))
+            with open(file,encoding='utf-8')as f:self.update(json.load(f))
     def save(self,file=None):
         logger.info('Save Config')
-        with open(self.file if file is None else file,'w')as f:json.dump(self,f,ensure_ascii=False,indent=4)
+        target=configFile(self.file if file is None else file);target.parent.mkdir(parents=True,exist_ok=True)
+        temp=target.with_suffix(target.suffix+'.tmp')
+        with open(temp,'w',encoding='utf-8')as f:json.dump(self,f,ensure_ascii=False,indent=4)
+        temp.replace(target)

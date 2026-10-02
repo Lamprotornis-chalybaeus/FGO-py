@@ -10,7 +10,7 @@
    <string>FGO-py - hgjazhgj</string>
   </property>
   <property name="styleSheet">
-   <string notr="true">QWidget{font-family:"Microsoft YaHei UI";font-size:14px}</string>
+   <string notr="true">QWidget{font-family:"Microsoft YaHei UI";font-size:14px} QPushButton,QComboBox,QSpinBox{padding:1px 3px} QGroupBox{margin-top:14px} QGroupBox::title{subcontrol-origin:margin;top:0px}</string>
   </property>
   <widget class="QWidget" name="widget">
    <layout class="QVBoxLayout" name="verticalLayout">
@@ -91,7 +91,7 @@
                </widget>
               </item>
               <property name="verticalSpacing">
-               <number>3</number>
+               <number>2</number>
               </property>
              </layout>
             </item>
@@ -128,7 +128,7 @@
                </widget>
               </item>
               <property name="spacing">
-               <number>3</number>
+               <number>2</number>
               </property>
              </layout>
             </item>
@@ -165,7 +165,7 @@
                </widget>
               </item>
               <property name="spacing">
-               <number>3</number>
+               <number>2</number>
               </property>
              </layout>
             </item>
@@ -206,7 +206,7 @@
              </widget>
             </item>
             <property name="spacing">
-             <number>3</number>
+             <number>2</number>
             </property>
             <property name="alignment">
              <set>Qt::AlignTop</set>
@@ -286,6 +286,12 @@
                  </property>
                  <property name="text">
                   <string>把游戏停在目标关卡列表，并让目标关卡排在首位。每日任务请先手动选择种类和难度。</string>
+                 </property>
+                 <property name="maximumSize">
+                  <size>
+                   <width>16777215</width>
+                   <height>42</height>
+                  </size>
                  </property>
                 </widget>
                </item>
@@ -376,7 +382,7 @@
                 </widget>
                </item>
                <property name="verticalSpacing">
-                <number>3</number>
+                <number>2</number>
                </property>
               </layout>
              </widget>
@@ -425,7 +431,7 @@
                  </widget>
                 </item>
                 <property name="spacing">
-                 <number>3</number>
+                 <number>2</number>
                 </property>
                </layout>
               </item>
@@ -502,7 +508,7 @@
                  </widget>
                 </item>
                 <property name="spacing">
-                 <number>3</number>
+                 <number>2</number>
                 </property>
                </layout>
               </item>
@@ -539,7 +545,7 @@
                  </widget>
                 </item>
                 <property name="spacing">
-                 <number>3</number>
+                 <number>2</number>
                 </property>
                </layout>
               </item>
@@ -603,7 +609,7 @@
                </widget>
               </item>
               <property name="verticalSpacing">
-               <number>3</number>
+               <number>2</number>
               </property>
              </layout>
             </item>
@@ -632,7 +638,7 @@
                  </widget>
                 </item>
                 <property name="spacing">
-                 <number>3</number>
+                 <number>2</number>
                 </property>
                </layout>
               </item>
@@ -668,7 +674,7 @@
                  </widget>
                 </item>
                 <property name="spacing">
-                 <number>3</number>
+                 <number>2</number>
                 </property>
                </layout>
               </item>
@@ -701,17 +707,17 @@
                  </widget>
                 </item>
                 <property name="spacing">
-                 <number>3</number>
+                 <number>2</number>
                 </property>
                </layout>
               </item>
               <property name="spacing">
-               <number>3</number>
+               <number>2</number>
               </property>
              </layout>
             </item>
             <property name="spacing">
-             <number>3</number>
+             <number>2</number>
             </property>
             <property name="alignment">
              <set>Qt::AlignTop</set>
@@ -719,12 +725,12 @@
            </layout>
           </item>
           <property name="spacing">
-           <number>3</number>
+           <number>2</number>
           </property>
          </layout>
         </item>
         <property name="spacing">
-         <number>3</number>
+         <number>2</number>
         </property>
         <property name="leftMargin">
          <number>0</number>
@@ -742,7 +748,7 @@
        <property name="minimumSize">
         <size>
          <width>0</width>
-         <height>390</height>
+         <height>360</height>
         </size>
        </property>
       </widget>
@@ -766,7 +772,7 @@
      </widget>
     </item>
     <property name="spacing">
-     <number>3</number>
+     <number>2</number>
     </property>
     <property name="leftMargin">
      <number>6</number>

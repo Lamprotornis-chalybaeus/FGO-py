@@ -15,6 +15,8 @@ CONFIG={
 'friendPolicy':'first',
 'friendMaxRefresh':2,
 'dropDebug':False,
+'windowGeometry':'',
+'splitterState':'',
 'eventStoryMode':'pause',
 'eventAutoClaimRewards':False,
 'eventProgressLimit':1,
