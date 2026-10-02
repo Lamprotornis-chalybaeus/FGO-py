@@ -64,7 +64,8 @@ class NavigationGuard:
         self._previous=None
     def check(self):
         schedule.checkStop()
-        if time.monotonic()>=self.deadline:self.fail('timeout')
+        deadline=min(self.deadline,_deadline.get() or self.deadline)
+        if time.monotonic()>=deadline:self.fail('timeout')
     def fail(self,reason):
         raise ScriptStop(f'Navigation failed [{self.current_state}] {self.target}: {reason}')
     def stage(self,state,message):
@@ -124,7 +125,7 @@ def labels(detect):
         result.append(Label(str(span.text),tuple(int(v) for v in (*points.min(axis=0),*points.max(axis=0))),float(span.score)))
     # The small fixed return label fluctuates around .8 in full-screen OCR.
     # Read its own text band twice instead of relaxing the global threshold.
-    for rect in ((75,23,143,62),(60,20,160,65)):
+    for rect in ((70,25,150,60),(75,23,143,62),(60,20,160,65)):
         line=detect._crop(rect)
         text,score=OCR.ZHS.ocr_single_line(line)
         text2,score2=OCR.ZHS.ocr_single_line(cv2.resize(line,None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC))
@@ -241,9 +242,10 @@ def safeMenuPageCN(detect,items):
     return 'UNKNOWN'
 
 @boundedNavigation(120)
-def normalizeToTerminalCN():
-    guard=NavigationGuard('返回终端',120,80);guard.stage('NORMALIZE','正在返回终端…')
-    for _ in range(6):
+def normalizeToTerminalCN(guard=None):
+    guard=guard or NavigationGuard('返回终端',120,80)
+    guard.stage('NORMALIZE','正在返回终端…');unknownReads=0
+    for _ in range(8):
         guard.check();d=Detect(.3);items=labels(d);state=safeMenuPageCN(d,items)
         logger.debug(f'normalize state={state}, labels={[(i.text,i.box,i.score) for i in items]}')
         if state.startswith('UNSAFE'):guard.fail(f'{state}：战斗/剧情/奖励或确认弹窗不能自动退出')
@@ -255,6 +257,13 @@ def normalizeToTerminalCN():
             result=guard.wait(lambda frame:terminalHomeCN(frame,labels(frame)),'strict terminal home',25)
             publish('已回到终端');return result
         if terminalHomeCN(d,items):publish('已回到终端');return d
+        if state=='UNKNOWN':
+            # A loading/animated frame can temporarily hide the return text.
+            # Retry observation only; UNKNOWN never permits a click.
+            unknownReads+=1
+            if unknownReads>=3:guard.fail('UNKNOWN：连续三帧未确认可安全退出的菜单页，未点击')
+            publish('等待页面识别稳定…');schedule.sleep(.5);continue
+        unknownReads=0
         if state in ('FORMATION','FRIEND'):
             back=unique(items,'返回',(0,0,200,95))
             if not back:guard.fail(f'{state} 返回按钮未唯一确认')
@@ -282,23 +291,8 @@ def _tapTransition(guard,item,oldState,expected):
     guard.fail(f'click did not change {oldState} into {sorted(expected)}')
 
 def returnRootCN(guard=None):
-    guard=guard or NavigationGuard('返回主界面',60,30)
-    guard.stage('RETURN_ROOT','正在返回主界面…')
-    for _ in guard.steps():
-        d,items,state=_read(guard)
-        if state=='ROOT_CATEGORY':return d
-        if state in ('FREE_QUEST','DAILY','GATE','EVENT','FIRST_PART'):
-            item=unique(items,'关闭',(0,0,200,95))
-            _tapTransition(guard,item,state,{'MAP','ROOT_CATEGORY','GATE'})
-        elif state=='MAP':
-            item=unique(items,'管理室',(0,0,200,95))
-            _tapTransition(guard,item,state,{'ROOT_CATEGORY'})
-        elif state=='WEEKLY':
-            item=unique(items,'关闭',(0,0,200,120))
-            if not item:guard.fail('weekly return control is not uniquely recognized')
-            _tapTransition(guard,item,state,{'ROOT_CATEGORY'})
-        else:guard.fail(f'cannot safely return from {state}; no blind clicks')
-    guard.fail('return routing exceeded transitions')
+    """Shared safe terminal route for chapter, mission and daily navigation."""
+    return normalizeToTerminalCN(guard)
 
 def _scroll(guard,d,items,toTop):
     from fgoQuickQuest import _menuSwipe
