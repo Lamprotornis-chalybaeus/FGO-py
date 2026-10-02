@@ -366,8 +366,23 @@ def locateMapCN(quest,guard):
             # Confirm the actual node label before touching its map marker.
             if not visible and not verifiedMapLabel(d,p,title):
                 guard.fail('map node label is not uniquely confirmed; no map marker clicked')
-            confirm=Detect(.3);confirmedPoint=visibleMapNode(confirm,labels(confirm),title)
-            if not confirmedPoint or numpy.linalg.norm(numpy.asarray(confirmedPoint)-p)>15:guard.fail('map target is not settled or its Free Quest marker is missing')
+            # Map-marker glow can briefly hide the adjacent label in OCR.
+            # Retry the same strict verification without authorizing a tap
+            # from the atlas or relaxing either label/marker threshold.
+            settled=False
+            for _ in range(3):
+                guard.check()
+                confirm=Detect(.3);freshItems=labels(confirm)
+                if not mapChapterConfirmed(confirm,freshItems,chapter):continue
+                confirmedPoint=visibleMapNode(confirm,freshItems,title)
+                if not confirmedPoint and visible:
+                    # Reuse only the proposed crop box. visibleMapNode still
+                    # verifies two fresh local OCR reads and the fresh marker.
+                    confirmedPoint=visibleMapNode(confirm,items,title)
+                if confirmedPoint and numpy.linalg.norm(numpy.asarray(confirmedPoint)-p)<=15:
+                    settled=True;break
+            if not settled:guard.fail('map target is not settled or its Free Quest marker is missing')
+            guard.check()
             fgoDevice.device.touch(tuple(map(int,p)))
             schedule.sleep(.8)
             guard.wait(lambda frame:classify(frame)=='FREE_QUEST','waiting for Free Quest list')
