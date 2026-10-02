@@ -22,3 +22,9 @@ Log*.txt
 fgoConfig.json
 launch*
 halt*
+
+# Private screenshots and template metadata
+FGO-py/fgoImage/drop/local/
+FGO-py/fgoImage/friend/local/
+FGO-py/fgoImage/friend/templates.json
+FGO-py/fgoImage/friend/templates.json.tmp

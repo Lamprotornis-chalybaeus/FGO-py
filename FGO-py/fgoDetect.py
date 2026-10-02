@@ -160,7 +160,10 @@ class XDetectBase(metaclass=logMeta(logger)):
     def getFieldServantClassRank(self,pos):return(lambda x:x if x is None else classImg[0][x])(self._select(CLASS[125],(13+318*pos,618,117+318*pos,702)))
     def getFieldServantHp(self,pos):return self._ocrInt((200+317*pos,620,293+317*pos,644))
     def getFieldServantNp(self,pos):return self._ocrInt((220+317*pos,655,271+317*pos,680))
-    def getMaterial(self):return(lambda x:{materialImg[i][0]:x.count(i)for i in set(x)-{None}})([self._select(((i[1],None)for i in materialImg),(176+i%7*137,110+i//7*142,253+i%7*137,187+i//7*142),.02)for i in range(1,21)])
+    def getDropResult(self):
+        from fgoDrop import detect
+        return detect(self.im)
+    def getMaterial(self):return self.getDropResult().recognized
     def getSkillTargetCount(self):return(lambda x:numpy.bincount(numpy.diff(x))[1]+x[0])(cv2.dilate(numpy.max(cv2.threshold(numpy.max(self._crop((306,320,973,547)),axis=2),67,1,cv2.THRESH_BINARY)[1],axis=0).reshape(1,-1),numpy.ones((1,66),numpy.uint8)).ravel())if self._compare(self.tmpl.CROSS,(980,0,1280,300))else 0
     @retryOnError()
     @validate()
@@ -196,6 +199,15 @@ class XDetectBase(metaclass=logMeta(logger)):
 class XDetectCN(XDetectBase):
     tmpl=IMG_CN
     ocr=OCR.ZHS
+    def isChooseFriend(self):
+        if super().isChooseFriend():return True
+        # The original marker is tied to the first full row. When returning
+        # from formation, that row can be partly outside its fixed crop.
+        # Require three independent fixed CN controls instead.
+        for rect,expected in (((998,0,1275,85),'助战选择'),((75,23,145,63),'返回'),((889,95,973,128),'列表更新')):
+            text,score=OCR.ZHS.ocr_single_line(self._crop(rect))
+            if float(score)<.85 or re.sub(r'\s+','',str(text))!=expected:return False
+        return True
     def getAp(self):
         # Preserve the slash: the maximum can have two or three digits, and
         # current AP can exceed it. Concatenating digits and //1000 loses AP.

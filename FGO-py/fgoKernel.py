@@ -21,7 +21,9 @@ from fgoConst import VERSION
 __version__=VERSION
 __author__='hgjazhgj'
 import logging,numpy,pulp,random,re,time,threading
+from copy import deepcopy
 import fgoDevice
+import fgoDrop
 import fgoFriendPolicy
 import fgoNavigation
 from itertools import permutations
@@ -29,13 +31,15 @@ from functools import wraps
 from fgoDetect import Detect,XDetect,OCR
 from fgoFuse import fuse
 from fgoImageListener import ImageListener
+from fgoFriendTemplates import FriendTemplateStore
+from fgoProgress import BattleCompleted
 from fgoLogging import getLogger,logit
 from fgoMetadata import servantData,missionMat,missionTag,missionQuest
 from fgoReishift import reishift
 from fgoSchedule import ScriptStop,schedule
 logger=getLogger('Kernel')
 
-friendImg=ImageListener('fgoImage/friend/')
+friendImg=FriendTemplateStore('fgoImage/friend/')
 mailImg=ImageListener('fgoImage/mail/')
 mutex=threading.Lock()
 def serialize(lock):
@@ -519,6 +523,9 @@ class Battle:
     def __call__(self):
         self.start=time.time()
         self.material={}
+        self.dropStats={}
+        self.unknownDrops=[]
+        self.defeated=False
         while True:
             if Detect(0,.3).isTurnBegin():
                 self.turn+=1
@@ -531,13 +538,21 @@ class Battle:
             elif not self.rainbowBox and Detect.cache.isSpecialDropRainbowBox():self.rainbowBox=True
             elif Detect.cache.isBattleFinished():
                 logger.info('Battle Finished')
-                self.material=Detect(.4).getMaterial()
+                frame=Detect(.4)
+                try:
+                    drops=frame.getDropResult()
+                    self.material=drops.recognized;self.dropStats=drops.stats;self.unknownDrops=drops.unknown_crops
+                except Exception as e:
+                    logger.exception('Drop detection failed; continuing result processing')
+                    self.dropStats={'errors':[str(e)],'unknown_slots':0,'occupied_slots':0,'recognized_slots':0,'incomplete':True}
+                    self.unknownDrops=[{'reason':'entire result could not be analyzed'}]
                 if self.rainbowBox:
                     logger.warning('Special Drop')
                     schedule.checkSpecialDrop()
                     Detect.cache.save('fgoLog/SpecialDrop')
                 return True
             elif Detect.cache.isBattleDefeated():
+                self.defeated=True
                 logger.warning('Battle Defeated')
                 schedule.checkDefeated()
                 return False
@@ -549,11 +564,15 @@ class Battle:
             'turn':self.turn,
             'time':time.time()-self.start,
             'material':self.material,
+            'dropStats':getattr(self,'dropStats',{}),
+            'unknownDrops':getattr(self,'unknownDrops',[]),
+            'observedDefeated':getattr(self,'defeated',False),
         }
 class Main:
     teamIndex=0
     autoFormation=False
-    def __init__(self,appleTotal=0,appleKind=0,battleClass=Battle,friendPolicy=None,friendMaxRefresh=2):
+    def __init__(self,appleTotal=0,appleKind=0,battleClass=Battle,friendPolicy=None,friendMaxRefresh=2,onProgress=None):
+        self.onProgress=onProgress
         self.appleTotal=appleTotal
         self.appleKind=appleKind
         self.battleClass=battleClass
@@ -600,20 +619,41 @@ class Main:
                 fgoDevice.device.press('\xBB')
             self.battleCount+=1
             logger.info(f'Battle {self.battleCount}')
-            if self.battleProc():
+            try:won=self.battleProc()
+            except ScriptStop:
+                # Preserve the upstream immediate stop on defeat: no revive or
+                # result inputs. Record the confirmed outcome for display only.
+                if getattr(self.battleProc,'defeated',False):
+                    self.stoppedDefeats+=1
+                    self.completedAttempts+=1
+                    self.emitCompleted(False,self.battleProc.result)
+                raise
+            if won:
                 battleResult=self.battleProc.result
                 self.battleTurn+=battleResult['turn']
                 self.battleTime+=battleResult['time']
                 self.material={i:self.material.get(i,0)+battleResult['material'].get(i,0)for i in self.material|battleResult['material']}
+                fgoDrop.mergeStats(self.dropStats,battleResult.get('dropStats',{}))
+                self.unknownDrops.extend(battleResult.get('unknownDrops',[]))
                 fgoDevice.device.perform(' '*10,(400,)*10)
             else:
+                battleResult=self.battleProc.result
                 self.defeated+=1
                 fgoDevice.device.perform('CIK',(500,500,500))
+            self.completedAttempts+=1
+            self.emitCompleted(won,battleResult)
             schedule.checkStopLater()
+    def emitCompleted(self,won,battleResult):
+        event=BattleCompleted(self.completedAttempts,self.battleCount,self.defeated+self.stoppedDefeats,battleResult['turn'],battleResult['time'],won,deepcopy(self.result),deepcopy(battleResult))
+        if self.onProgress:self.onProgress(event)
     def prepare(self):
         self.start=time.time()
         self.material={}
+        self.dropStats={}
+        self.unknownDrops=[]
         self.battleCount=0
+        self.completedAttempts=0
+        self.stoppedDefeats=0
         self.battleTurn=0
         self.battleTime=0
         self.defeated=0
@@ -622,10 +662,15 @@ class Main:
             'type':'Main',
             'time':time.time()-self.start,
             'battle':self.battleCount,
+            'completedAttempts':self.completedAttempts,
+            'progressDefeats':self.defeated+self.stoppedDefeats,
+            'progressWins':self.completedAttempts-self.defeated-self.stoppedDefeats,
             'defeated':self.defeated,
             'turnPerBattle':self.battleTurn/(self.battleCount-self.defeated)if self.battleCount-self.defeated else 0,
             'timePerBattle':self.battleTime/(self.battleCount-self.defeated)if self.battleCount-self.defeated else 0,
             'material':self.material,
+            'dropStats':getattr(self,'dropStats',{}),
+            'unknownDrops':getattr(self,'unknownDrops',[]),
         }
     @logit(logger,logging.INFO)
     def eatApple(self):
@@ -658,14 +703,13 @@ class Main:
                     fgoDevice.device.perform('\xBAK',(500,1000))
                     refreshes+=1
                     nextRefreshAt=time.time()+10
-            action=fgoFriendPolicy.decision(policy,False,hasTemplates,refreshes,maxRefresh)
-            if action=='first':return fgoDevice.device.press('8')
-            if action=='stop':raise ScriptStop(f'严格助战模式在 {refreshes} 次刷新后仍未找到模板匹配')
+            # The refresh budget limits refreshes, not the initial list scan.
+            if policy=='first' or not hasTemplates:return fgoDevice.device.press('8')
             matched=False
             scrollGuard=fgoNavigation.NavigationGuard('friend list scan',60,100)
             for _ in scrollGuard.steps():
                 if time.time()>deadline:raise ScriptStop('扫描助战列表超时')
-                for name,img in sorted(friendImg.items()):
+                for name,img in friendImg.orderedItems():
                     if pos:=Detect.cache.findFriend(img):
                         fgoDevice.device.touch(pos)
                         ClassicTurn.friendInfo=(lambda r:(lambda p:[
@@ -679,7 +723,7 @@ class Main:
                 Detect(.4)
             action=fgoFriendPolicy.decision(policy,matched,hasTemplates,refreshes,maxRefresh)
             if action=='first':return fgoDevice.device.press('8')
-            if action=='stop':raise ScriptStop(f'严格助战模式在 {refreshes} 次刷新后仍未找到模板匹配')
+            if action=='stop':raise ScriptStop(f'未找到符合模板的助战（已刷新 {refreshes} 次）')
             schedule.sleep(max(0,nextRefreshAt-time.time()))
             fgoDevice.device.perform('\xBAK',(500,1000))
             refreshes+=1
