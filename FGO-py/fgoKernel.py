@@ -23,9 +23,10 @@ __author__='hgjazhgj'
 import logging,numpy,pulp,random,re,time,threading
 import fgoDevice
 import fgoFriendPolicy
+import fgoNavigation
 from itertools import permutations
 from functools import wraps
-from fgoDetect import Detect,XDetect
+from fgoDetect import Detect,XDetect,OCR
 from fgoFuse import fuse
 from fgoImageListener import ImageListener
 from fgoLogging import getLogger,logit
@@ -77,20 +78,28 @@ def setup():
     raise NotImplementedError
     if not fgoDevice.device.isInGame():
         fgoDevice.device.launch()
-        while not Detect(1).isGameLaunch():pass
-        while not Detect(1).isGameAnnounce():fgoDevice.device.press('\xBB')
+        fgoNavigation.legacyWait(lambda d:d.isGameLaunch(),'game launch',60)
+        guard=fgoNavigation.NavigationGuard('game announce',60)
+        for _ in guard.steps():
+            if Detect(1).isGameAnnounce():break
+            fgoDevice.device.press('\xBB')
         fgoDevice.device.press('\x08')
     elif False:...
 @serialize(mutex)
 def fpSummon():
-    while fuse.value<30:
+    fgoNavigation.refuseUnverifiedCNAction('友情召唤')
+    for _ in fgoNavigation.NavigationGuard('legacy FP summon',300,300).steps():
+        if fuse.value>=30:break
         if Detect().isSummonContinue():fgoDevice.device.perform('MK',(600,2700))
         fgoDevice.device.press('\x08')
 @serialize(mutex)
 def lottery():
+    fgoNavigation.refuseUnverifiedCNAction('活动抽奖')
     Detect().setupLottery()
     count=0
-    while(count:=0 if Detect().isLotteryContinue()else count+1)<5:
+    for _ in fgoNavigation.NavigationGuard('legacy lottery',300,300).steps():
+        count=0 if Detect().isLotteryContinue()else count+1
+        if count>=5:break
         for _ in range(random.randint(10,100)):fgoDevice.device.press('2')
 # @serialize(mutex)
 # def mining():
@@ -99,46 +108,71 @@ def lottery():
 #         fgoDevice.device.perform('9Z',(300,300))
 @serialize(mutex)
 def mail():
+    fgoNavigation.refuseUnverifiedCNAction('礼物箱处理')
     assert mailImg.flush()
     Detect().setupMailDone()
-    while True:
-        while any((pos:=Detect.cache.findMail(i[1]))and(fgoDevice.device.touch(pos),True)[-1]for i in mailImg.items()):
-            while not Detect().isMailDone():pass
+    guard=fgoNavigation.NavigationGuard('legacy mail scan',180,100)
+    for _ in guard.steps():
+        for _ in guard.steps():
+            if not any((pos:=Detect.cache.findMail(i[1]))and(fgoDevice.device.touch(pos),True)[-1]for i in mailImg.items()):break
+            guard.wait(lambda d:d.isMailDone(),'mail receipt')
+        guard.progress(fgoNavigation.stableCrop(Detect.cache,(73,166,920,680)))
         fgoDevice.device.swipe((400,600),(400,200))
         if Detect().isMailListEnd():break
 @serialize(mutex)
 def synthesis():
-    while True:
+    fgoNavigation.refuseUnverifiedCNAction('自动强化')
+    guard=fgoNavigation.NavigationGuard('legacy synthesis',180,100)
+    for _ in guard.steps():
         fgoDevice.device.perform('8',(1000,))
         for i,j in((i,j)for i in range(4)for j in range(7)):fgoDevice.device.touch((133+133*j,253+142*i),100)
         if Detect().isSynthesisFinished():break
         fgoDevice.device.perform('  KK\xBB\xBB\xBB\xBB\xBB\xBB\xBB\xBB\xBB\xBB\xBB\xBB\xBB\xBB\xBB',(800,300,300,1000,150,150,150,150,150,150,150,150,150,150,150,150,150,150,150))
-        while not Detect().isSynthesisBegin():fgoDevice.device.press('\xBB')
+        for _ in guard.steps():
+            if Detect().isSynthesisBegin():break
+            guard.progress(fgoNavigation.stableCrop(Detect.cache))
+            fgoDevice.device.press('\xBB')
 @serialize(mutex)
 def dailyFpSummon():
-    while not Detect(0,1).isMainInterface():pass
+    fgoNavigation.refuseUnverifiedCNAction('每日友情召唤')
+    if XDetect.region=='CN':fgoNavigation.returnRootCN()
+    else:fgoNavigation.legacyWait(lambda d:d.isMainInterface(),'FP summon root')
     fgoDevice.device.perform(' Z',(1000,2000))
-    while not Detect(.5).isMainInterface():pass
-    while not Detect(1.5).isSummonFp():fgoDevice.device.press('\xBC')
+    fgoNavigation.legacyWait(lambda d:d.isMainInterface(),'FP summon menu')
+    guard=fgoNavigation.NavigationGuard('FP summon tabs',30,30)
+    for _ in guard.steps():
+        if Detect(1.5).isSummonFp():break
+        guard.progress(fgoNavigation.stableCrop(Detect.cache));fgoDevice.device.press('\xBC')
     fgoDevice.device.perform('\xBDJ',(800,3000))
-    while not Detect(.5).isSummonContinue():fgoDevice.device.press(' ')
+    guard=fgoNavigation.NavigationGuard('FP summon completion',45,60)
+    for _ in guard.steps():
+        if Detect(.5).isSummonContinue():break
+        fgoDevice.device.press(' ')
     fgoDevice.device.perform('\x67\x67',(1200,2000))
 @serialize(mutex)
 def dailyStorySummon():
-    while not Detect(0,1).isMainInterface():pass
+    fgoNavigation.refuseUnverifiedCNAction('剧情召唤')
+    if XDetect.region=='CN':fgoNavigation.returnRootCN()
+    else:fgoNavigation.legacyWait(lambda d:d.isMainInterface(),'story summon root')
     fgoDevice.device.press(' ')
     if not Detect(1).isSummonStory():
         fgoDevice.device.perform(' \x67',(1000,2000))
         return
     fgoDevice.device.press('\xBD')
-    while not Detect(2.5).isMainInterface():pass
+    fgoNavigation.legacyWait(lambda d:d.isMainInterface(),'story summon menu')
     fgoDevice.device.perform('GJ',(800,3000))
-    while not Detect(.5).isSummonFinish():fgoDevice.device.press(' ')
+    for _ in fgoNavigation.NavigationGuard('story summon completion',45,60).steps():
+        if Detect(.5).isSummonFinish():break
+        fgoDevice.device.press(' ')
     fgoDevice.device.perform('\x67\x67',(1200,2000))
 @serialize(mutex)
 def summonHistory():
+    fgoNavigation.refuseUnverifiedCNAction('召唤记录导航')
     Detect().setupSummonHistory()
-    while not Detect.cache.isSummonHistoryListEnd():
+    guard=fgoNavigation.NavigationGuard('summon history scan',120,100)
+    for _ in guard.steps():
+        if Detect.cache.isSummonHistoryListEnd():break
+        guard.progress(fgoNavigation.stableCrop(Detect.cache,(147,157,1105,547)))
         fgoDevice.device.swipe((930,500),(930,200))
         Detect(.4).getSummonHistory()
     return{'type':'SummonHistory'}|dict(zip(('value','file'),Detect.cache.saveSummonHistory()))
@@ -161,8 +195,10 @@ def bench(times=20,touch=True,screenshot=True):
         'screenshot':(sum(screenshotBench)-max(screenshotBench)-min(screenshotBench))*1000/(times-2)if screenshot else None,
     }
 @serialize(mutex)
+@fgoNavigation.boundedNavigation(180)
 def goto(quest):
-    while not Detect(0,1).isMainInterface():pass
+    if XDetect.region=='CN':return fgoNavigation.gotoFreeQuestCN(tuple(quest))
+    fgoNavigation.legacyWait(lambda d:d.isMainInterface(),'return to legacy menu')
     fgoDevice.device.press(' ')
     fgoDevice.device.perform(*((' ',(600,))if Detect(.6).isTerminal()else('S',(1500,))))
     reishift(quest)
@@ -170,18 +206,31 @@ def goto(quest):
     for _ in range(4):
         if Detect(.4).isQuestListBegin():break
         fgoDevice.device.swipe((1000,200),(1000,600))
-    while not Detect(.4).isQuestFreeContains(quest[0]):fgoDevice.device.swipe((1000,600),(1000,200))
-    while not Detect(.4).isQuestFreeFirst(quest[0]):fgoDevice.device.swipe((1000,395),(1000,300))
+    fgoNavigation.legacyScroll(lambda d:d.isQuestFreeContains(quest[0]),'find Free Quest',(1000,600),(1000,200))
+    fgoNavigation.legacyScroll(lambda d:d.isQuestFreeFirst(quest[0]),'place Free Quest',(1000,395),(1000,300))
+@fgoNavigation.boundedNavigation(240)
 def _weeklyMissionDetailed():
-    while not Detect(0,1).isMainInterface():pass
+    guard=fgoNavigation.NavigationGuard('weeklyMission',240,60)
+    guard.stage('WEEKLY','正在读取每周任务…')
+    if XDetect.region=='CN':fgoNavigation.returnRootCN(guard)
+    else:fgoNavigation.legacyWait(lambda d:d.isMainInterface(),'weekly mission home')
     fgoDevice.device.perform('B',(800,))
-    while not Detect(.4).isWeeklyMission():pass
-    fgoDevice.device.perform('2N',(100,1000))
-    Detect().setupWeeklyMission()
-    while not Detect.cache.isWeeklyMissionListEnd():
-        fgoDevice.device.swipe((1000,600),(1000,300))
-        Detect(.4).getWeeklyMission()
-    parsed=Detect.cache.saveWeeklyMissionDetailed()
+    guard.wait(lambda d:d.isWeeklyMission(),'weekly mission panel')
+    if XDetect.region=='CN':
+        detect=Detect(.2);items=fgoNavigation.labels(detect)
+        tab=fgoNavigation.unique(items,'周常',(700,95,850,180))
+        if not tab:guard.fail('weekly tab is not uniquely recognized')
+        fgoDevice.device.touch(tab.center);schedule.sleep(.8)
+    else:fgoDevice.device.perform('2N',(100,1000))
+    if XDetect.region=='CN':parsed=fgoNavigation.readWeeklyRowsCN(guard)
+    else:
+        Detect().setupWeeklyMission()
+        for _ in guard.steps():
+            if Detect.cache.isWeeklyMissionListEnd():break
+            guard.progress(fgoNavigation.stableCrop(Detect.cache,(603,250,1092,710)))
+            fgoDevice.device.swipe((1000,600),(1000,300))
+            Detect(.4).getWeeklyMission()
+        parsed=Detect.cache.saveWeeklyMissionDetailed()
     rows=parsed['tasks']
     rowCompleted=sum(count<=0 for _,_,count in rows)
     recognized=max(len(rows),parsed['explicitCompleted'])
@@ -201,13 +250,15 @@ def _weeklyMissionDetailed():
             unsupported+=1
             logger.error(f'Invalid Target [{"|".join(target)}],{minion},{count}')
     if supported:
-        prob.solve(pulp.PULP_CBC_CMD(msg=False))
+        status=prob.solve(pulp.PULP_CBC_CMD(msg=False,timeLimit=30))
+        if status!=pulp.LpStatusOptimal:guard.fail('weekly quest solver did not finish optimally; no queue generated')
         objective=prob.objective.value()
         quests=[(tuple(int(i)for i in v.name.split('_')),int(v.varValue))for v in prob.variables()if v.varValue]
     else:
         objective=0
         quests=[]
     fgoDevice.device.press('\x67')
+    if XDetect.region=='CN':guard.wait(lambda d:fgoNavigation.classify(d)=='ROOT_CATEGORY','weekly panel close')
     recognitionError=not rows and not parsed['explicitCompleted']
     report={
         'type':'WeeklyMission',
@@ -513,9 +564,11 @@ class Main:
         self.prepare()
         while True:
             self.battleProc=self.battleClass()
-            while True:
+            navGuard=fgoNavigation.NavigationGuard('battle preparation',180,300)
+            for _ in navGuard.steps():
                 if Detect(.3,.3).isMainInterface():
                     if self.battleCount==battleTotal:return logger.info('Operation Unit Completed')
+                    if XDetect.region=='CN':fgoNavigation.checkCurrentQuest()
                     fgoDevice.device.press('84L'[questIndex])
                     questIndex=0
                     if Detect(1.2).isBattleContinue():fgoDevice.device.press('K')
@@ -524,7 +577,7 @@ class Main:
                         return logger.info('No Storm Pot')
                     if Detect(.7,.3).isApEmpty()and not self.eatApple():return logger.info('Ap Empty')
                     self.chooseFriend()
-                    while not Detect(0,.3).isBattleFormation():pass
+                    navGuard.wait(lambda d:d.isBattleFormation(),'battle formation')
                     if self.teamIndex and Detect.cache.getTeamIndex()+1!=self.teamIndex:fgoDevice.device.perform('\x70\x71\x72\x73\x74\x75\x76\x77\x78\x79\x7A\x7B\x7C\x7D\x7E'[self.teamIndex-1],(1000,))
                     if self.autoFormation:fgoDevice.device.perform('\xDEL ',(1000,1500,1000))
                     fgoDevice.device.perform(' M ',(2000,2000,10000))
@@ -592,8 +645,9 @@ class Main:
         refreshes=0
         nextRefreshAt=0
         deadline=time.time()+180
-        while True:
-            while True:
+        navGuard=fgoNavigation.NavigationGuard('friend selection',180,300)
+        for _ in navGuard.steps():
+            for _ in navGuard.steps():
                 if time.time()>deadline:raise ScriptStop('等待助战列表超时，请检查游戏界面')
                 detect=Detect(0,.3)
                 if detect.isChooseFriend():break
@@ -608,7 +662,8 @@ class Main:
             if action=='first':return fgoDevice.device.press('8')
             if action=='stop':raise ScriptStop(f'严格助战模式在 {refreshes} 次刷新后仍未找到模板匹配')
             matched=False
-            while True:
+            scrollGuard=fgoNavigation.NavigationGuard('friend list scan',60,100)
+            for _ in scrollGuard.steps():
                 if time.time()>deadline:raise ScriptStop('扫描助战列表超时')
                 for name,img in sorted(friendImg.items()):
                     if pos:=Detect.cache.findFriend(img):
@@ -619,6 +674,7 @@ class Main:
                         ])(r.group())if r else[[[-1,-1,-1,-1],[-1,-1,-1,-1],[-1,-1,-1,-1]],[-1,-1]])(re.match('([0-9X]{3}[0-9A-FX]){3}[0-9X][0-9A-FX]$',name.replace('-','')[-14:].upper()))
                         return name
                 if Detect.cache.isFriendListEnd():break
+                scrollGuard.progress(fgoNavigation.stableCrop(Detect.cache,(13,166,1233,710)))
                 fgoDevice.device.swipe((400,600),(400,200))
                 Detect(.4)
             action=fgoFriendPolicy.decision(policy,matched,hasTemplates,refreshes,maxRefresh)
@@ -636,12 +692,19 @@ class Operation(list,Main):
         self.wait=wait
     def __call__(self):
         super().prepare()
-        if not self:super().__call__()
+        if not self:
+            fgoNavigation.checkCurrentQuest()
+            return super().__call__()
         while self:
             quest,times=self[0]
-            del self[0]
             goto(quest)
             if self.wait:schedule.sleep(max(self.apLookup.get(quest,23)*times-Detect.cache.getAp(),0)*300)
-            super().__call__(quest[-1],self.battleCount+times if times else None)
+            before=self.battleCount
+            try:super().__call__(quest[-1],self.battleCount+times if times else None)
+            finally:
+                remaining=max(0,times-(self.battleCount-before)) if times else 0
+                if times and not remaining:del self[0]
+                else:self[0]=(quest,remaining)
+            if not times or remaining:return
     def prepare(self):pass
     def getAp(self):return sum(self.apLookup.get(i,23)*j for i,j in self)

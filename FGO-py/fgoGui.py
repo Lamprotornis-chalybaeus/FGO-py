@@ -16,6 +16,7 @@ pyplot.ion()
 class MainWindow(QMainWindow,Ui_fgoMainWindow):
     signalFuncBegin=Signal()
     signalFuncEnd=Signal(object)
+    signalNavigation=Signal(str)
     def __init__(self,config,parent=None):
         super().__init__(parent)
         self.color={
@@ -40,6 +41,7 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.MENU_TRAY_FORCEQUIT.triggered.connect(QApplication.quit)
         self.signalFuncBegin.connect(self.funcBegin)
         self.signalFuncEnd.connect(self.funcEnd)
+        self.signalNavigation.connect(self.LBL_WEEKLY_STATUS.setText)
         self.operation=fgoKernel.Operation()
         self.dailyEntries=[]
         self._dailyScanPending=False
@@ -171,6 +173,7 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.MENU_SCRIPT.setEnabled(False)
         self.timer.start(500)
     def funcEnd(self,msg):
+        if msg[0]!='Done' and ('Navigation failed' in msg[0] or '导航' in msg[0] or '前置检查' in msg[0]):self.LBL_WEEKLY_STATUS.setText(msg[0])
         self.BTN_MAIN.setEnabled(True)
         self.BTN_BATTLE.setEnabled(True)
         self.BTN_CLASSIC.setEnabled(True)
@@ -345,7 +348,7 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
             if not self.operation:
                 QMessageBox.information(self,'FGO-py','计划关卡队列为空。请先添加关卡。')
                 return
-            operation=fgoGuiOperation.GuiQueueOperation(self.operation,self.operation)
+            operation=fgoGuiOperation.GuiQueueOperation(self.operation,self.operation,onNavigation=self.signalNavigation.emit)
         self.runFunc(operation)
     def friendPolicyChanged(self,index):
         policy=fgoFriendPolicy.policyName(index)
@@ -359,13 +362,13 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
     def openFriendTemplates(self):os.startfile(os.path.abspath('fgoImage/friend'))
     def runMain(self):
         self.operation.battleClass=fgoKernel.Battle
-        if self.operation:self.runFunc(fgoGuiOperation.GuiQueueOperation(self.operation,self.operation,self.operation.battleClass))
+        if self.operation:self.runFunc(fgoGuiOperation.GuiQueueOperation(self.operation,self.operation,self.operation.battleClass,onNavigation=self.signalNavigation.emit))
         else:self.runFunc(fgoKernel.Main(self.operation.appleTotal,self.operation.appleKind,fgoKernel.Battle,self.operation.friendPolicy,self.operation.friendMaxRefresh))
     def runBattle(self):self.runFunc(fgoKernel.Battle())
     def runClassic(self):
         if not Teamup(self).exec():return
         battleClass=lambda:fgoKernel.Battle(fgoKernel.ClassicTurn)
-        if self.operation:self.runFunc(fgoGuiOperation.GuiQueueOperation(self.operation,self.operation,battleClass))
+        if self.operation:self.runFunc(fgoGuiOperation.GuiQueueOperation(self.operation,self.operation,battleClass,onNavigation=self.signalNavigation.emit))
         else:self.runFunc(fgoKernel.Main(self.operation.appleTotal,self.operation.appleKind,battleClass,self.operation.friendPolicy,self.operation.friendMaxRefresh))
     def pause(self,x):
         if not x and not self.isDeviceAvailable():return self.BTN_PAUSE.setChecked(True)

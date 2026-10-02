@@ -203,12 +203,23 @@ class XDetectCN(XDetectBase):
         result=[]
         mission=''
         malformed=0
-        for i in(i for i in lines if'完成'not in i and'进行'not in i and'获得'not in i and'举办'not in i):
-            if mission and i and i[0].isdigit():
-                if'『'in mission:
-                    try:count=(lambda x:int(x[1])-int(x[0]))(i.split('/')if'/'in i else(i[:len(i)>>1],i[len(i)+1>>1:]))
-                    except(ValueError,IndexError):malformed+=1
-                    else:result.append((re.findall('『(.*?)』',mission),'从者'not in mission,count))
+        for i in lines:
+            i=i.strip()
+            if not i or any(t in i for t in ('目标进行度','任务进行度','任务进度','举办时间','领取期限')) or i.strip('-— ') in ('完成','已完成','可领取'):continue
+            if mission and re.fullmatch(r'\d+\s*/\s*\d+',i):
+                a,b=map(int,re.split(r'\s*/\s*',i))
+                if a>b:malformed+=1
+                else:
+                    targets=re.findall(r'[『「【](.*?)[』」】]',mission)
+                    # Unquoted task descriptions are represented honestly as
+                    # unsupported targets, rather than silently discarded.
+                    result.append((targets or [mission],'从者'not in mission,b-a))
+                mission=''
+            elif mission and i and i[0].isdigit() and i.isdigit():
+                # Preserve the upstream OCR fallback for a missing slash.
+                try:count=int(i[len(i)+1>>1:])-int(i[:len(i)>>1])
+                except ValueError:malformed+=1
+                else:result.append((re.findall(r'[『「【](.*?)[』」】]',mission) or [mission],'从者'not in mission,count))
                 mission=''
             else:mission+=i
         return{'lines':lines,'tasks':result,'explicitCompleted':sum('已完成'in i or i.strip() in ('完成','-完成-') for i in lines),'malformed':malformed}

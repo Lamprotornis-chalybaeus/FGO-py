@@ -3,24 +3,36 @@ import fgoDevice
 from fgoDetect import Detect
 from fgoLogging import getLogger
 from fgoSchedule import schedule
+from fgoSchedule import ScriptStop
+from fgoDetect import XDetect
+from fgoNavigation import NavigationGuard,legacyWait,legacyScroll,mapCamera
 logger=getLogger('Reishift')
 
 class List:
     def __init__(self,name):self.name=name
     def __call__(self):
-        while not Detect(0,1).isMainInterface():pass
-        while not Detect(.4).isQuestListBegin():fgoDevice.device.swipe((1000,200),(1000,600))
-        while not((p:=Detect(.4).findChapter(self.name))and(fgoDevice.device.touch(p),True)[1]):fgoDevice.device.swipe((1000,600),(1000,200))
+        if XDetect.region=='CN':raise ScriptStop('CN legacy chapter routing is disabled; use bounded OCR navigation')
+        legacyWait(lambda d:d.isMainInterface(),f'legacy chapter {self.name}')
+        legacyScroll(lambda d:d.isQuestListBegin(),f'chapter list top {self.name}',(1000,200),(1000,600))
+        detect=legacyScroll(lambda d:d.findChapter(self.name),f'chapter {self.name}',(1000,600),(1000,200))
+        fgoDevice.device.touch(detect.findChapter(self.name))
+        legacyWait(lambda d:d.isMainInterface(),f'chapter transition {self.name}')
 class Map:
     poly=numpy.array([(230,40),(230,200),(40,200),(40,450),(150,450),(220,520),(630,520),(630,680),(980,680),(980,570),(1240,570),(1240,40)])
     def __init__(self,name,coord):
         self.name=name
         self.coord=numpy.asarray(coord)
     def __call__(self):
-        while not Detect(1).isMainInterface():pass
+        guard=NavigationGuard(f'map {self.name}',60,40)
+        legacyWait(lambda d:d.isMainInterface(),guard.target)
         schedule.sleep(1)
         fgoDevice.device.press('\xBF')
-        while cv2.pointPolygonTest(self.poly,p:=(640,360)+(v:=self.coord-Detect(1).findMapCamera(self.name[:-1])),False)<=0:(lambda v:fgoDevice.device.swipe((640,360)+v,(640,360)-v))(v*min(590/abs(v[0]),310/abs(v[1]),.5))
+        for _ in guard.steps():
+            camera=mapCamera(Detect(1),self.name[:-1]);guard.progress(tuple(numpy.round(camera/5)))
+            v=self.coord-camera;p=(640,360)+v
+            if cv2.pointPolygonTest(self.poly,tuple(map(float,p)),False)>0:break
+            shift=v/max(abs(v[0])/295,abs(v[1])/155,2)
+            fgoDevice.device.swipe((640,360)+shift,(640,360)-shift)
         fgoDevice.device.perform('  ',(300,300))
         fgoDevice.device.touch(p)
 class Mictlan:
@@ -30,7 +42,8 @@ class Mictlan:
         self.floor=floor
         self.coord=coord
     def __call__(self):
-        while not Detect(1).isMainInterface():pass
+        if XDetect.region=='CN':raise ScriptStop('Navigation failed [MAP]: Mictlan CN navigation is unverified; manual navigation required')
+        legacyWait(lambda d:d.isMainInterface(),f'Mictlan {self.name}')
         schedule.sleep(1.6)
         fgoDevice.device.touch(self.elevator[[1,2,3,4,5,6,7,8,7][self.floor]],2000)
         fgoDevice.device.touch(self.elevator[self.floor],2000)
@@ -43,7 +56,8 @@ class OrdaelCall:
         self.coord=coord
         self.move=move
     def __call__(self):
-        while not Detect(1).isMainInterface():pass
+        if XDetect.region=='CN':raise ScriptStop('Navigation failed [MAP]: Ordeal Call CN navigation is unverified; manual navigation required')
+        legacyWait(lambda d:d.isMainInterface(),f'Ordeal Call {self.name}')
         schedule.sleep(1)
         fgoDevice.device.touch(self.landmark,1600)
         if self.coord:

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import time
 import fgoKernel
 import fgoQuickQuest
+import fgoNavigation
 from fgoSchedule import schedule
 
 @dataclass(frozen=True)
@@ -16,10 +17,12 @@ class QuestTask:
 
 class GuiQueueOperation:
     """GUI-only adapter; Kernel.Operation and CLI command forms remain numeric/metadata-only."""
-    def __init__(self,queue,settings,battleClass=None):
+    def __init__(self,queue,settings,battleClass=None,navigationOnly=False,onNavigation=None):
         self.queue=queue
         self.settings=settings
         self.battleClass=battleClass or fgoKernel.Battle
+        self.navigationOnly=navigationOnly
+        self.onNavigation=onNavigation
         self._start=0
         self._battle=0
         self._defeated=0
@@ -41,19 +44,32 @@ class GuiQueueOperation:
     def __call__(self):
         self._start=time.time()
         self._battle=self._defeated=self._turns=0;self._battleTime=0;self._material={}
+        total=len(self.queue);index=0
         while self.queue:
+            index+=1
             task=self.queue[0]
             if isinstance(task,QuestTask):kind,target,times=task.type,task.target,task.repetitions
             else:
                 target,times=task;kind='metadata'
+            if kind not in ('daily','metadata'):raise fgoKernel.ScriptStop(f'未知 GUI 队列任务类型：{kind}')
+            title=target.title if kind=='daily' else f'{fgoNavigation.questTitle(target[:2])} → {fgoNavigation.questTitle(target)}'
+            context=f'当前任务：{index}/{total} {title}；剩余计划：{times}场'
+            def notify(message):
+                if self.onNavigation:self.onNavigation(f'{context}\n{message}')
+            notify('正在开始导航…')
+            if self.navigationOnly:
+                with fgoNavigation.feedback(notify):
+                    ready=fgoQuickQuest.gotoDailyEntry(target) if kind=='daily' else fgoKernel.goto(target)
+                return ready
             if kind=='daily':
-                fgoQuickQuest.gotoDailyEntry(target)
+                with fgoNavigation.feedback(notify):fgoQuickQuest.gotoDailyEntry(target)
                 runner=fgoKernel.Main(appleTotal=self.settings.appleTotal,appleKind=self.settings.appleKind,battleClass=self.battleClass,friendPolicy=self.settings.friendPolicy,friendMaxRefresh=self.settings.friendMaxRefresh)
                 try:runner(0,times or None)
                 finally:self._recordProgress(runner,task,times)
             elif kind=='metadata':
                 runner=fgoKernel.Operation([(tuple(target),times)],appleTotal=self.settings.appleTotal,appleKind=self.settings.appleKind,battleClass=self.battleClass,friendPolicy=self.settings.friendPolicy,friendMaxRefresh=self.settings.friendMaxRefresh,wait=self.settings.wait)
-                try:runner()
+                try:
+                    with fgoNavigation.feedback(notify):runner()
                 finally:self._recordProgress(runner,task,times)
             else:raise fgoKernel.ScriptStop(f'未知 GUI 队列任务类型：{kind}')
             # AP shortage or an early stop must not silently consume the rest of

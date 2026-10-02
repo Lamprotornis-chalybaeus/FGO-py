@@ -216,8 +216,11 @@ def _eventMap(items):
     return bool(hasMapHeader and (hasNode or hasEventControls))
 
 def _openEventMap(detect,items):
+    import fgoNavigation
+    guard=fgoNavigation.NavigationGuard('活动入口',90,20)
     closes=scrolls=waits=0
     for _ in range(20):
+        guard.check()
         state=classifyEventState(items,_detectFlags(detect))
         if state in ('event_map','mission_list','mission_gate','story','start_confirmation','support','formation','battle','battle_result','ap_empty','battle_defeated','friend_request'):return detect,items
         gateHeader=any(_text(i)=='迦勒底之门' and _center(i)[0]>=900 and _center(i)[1]<95 for i in items)
