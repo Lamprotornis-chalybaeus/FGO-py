@@ -66,8 +66,11 @@ class Farming:
     def __call__(self):
         time.sleep(100)
         while not self.stop:
-            if not fgoDevice.device.available:continue
-            time.sleep(self.run()+30)
+            if not fgoDevice.device.available:
+                time.sleep(30)
+                continue
+            delay=self.run()
+            time.sleep(30 if delay is None else max(0,delay)+30)
     @serialize(mutex)
     def run(self):
         from fgoFarming import farming
