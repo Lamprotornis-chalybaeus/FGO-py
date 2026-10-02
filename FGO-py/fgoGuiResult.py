@@ -11,12 +11,15 @@ def duration(seconds):
 
 class RunResultDialog(QDialog):
     def __init__(self,result,message='Done',parent=None):
-        super().__init__(parent);self.setWindowTitle('周回结果');self.resize(580,480);layout=QVBoxLayout(self)
+        super().__init__(parent);self.setWindowTitle('周回结果');layout=QVBoxLayout(self)
         attempts=result.get('battle',1);defeats=result.get('progressDefeats',result.get('defeated',int(result.get('observedDefeated',False))));wins=result.get('progressWins',attempts-defeats)
         summary=(f'{message}\n已进行 {attempts} 场；胜 {wins} / 负 {defeats}\n总耗时 {duration(result.get("time",0))}；平均回合 {result.get("turnPerBattle",result.get("turn",0)):.1f}；平均耗时 {duration(result.get("timePerBattle",result.get("time",0)))}')
-        label=QLabel(summary);label.setWordWrap(True);layout.addWidget(label)
+        self.summaryLabel=QLabel(summary);self.summaryLabel.setWordWrap(True);layout.addWidget(self.summaryLabel)
         self.table=QTableWidget(0,3);self.table.setHorizontalHeaderLabels(['图标','名称','数量']);self.table.horizontalHeader().setSectionResizeMode(1,QHeaderView.ResizeMode.Stretch);self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers);layout.addWidget(self.table,1)
         stats=result.get('dropStats',{});items=dict(result.get('material',{}));items.update(stats.get('currency',{}));self.table.setRowCount(len(items))
+        # A navigation stop has no drops: do not enlarge the dialog with an
+        # empty table. Larger actual result sets keep their scrolling table.
+        self.table.setVisible(bool(items))
         for row,(name,count) in enumerate(items.items()):
             icon=QTableWidgetItem();path=templateIconPath(name)
             if path:icon.setIcon(QIcon(str(path)))
@@ -27,3 +30,4 @@ class RunResultDialog(QDialog):
         self.debugButton=QPushButton('打开掉落诊断目录');self.debugButton.setVisible(bool(folders));layout.addWidget(self.debugButton)
         if folders:self.debugButton.clicked.connect(lambda:os.startfile(str(folders[0].parent)))
         close=QPushButton('关闭');close.clicked.connect(self.accept);layout.addWidget(close)
+        self.resize(520,300 if not items else min(460,260+30*min(len(items),6)))

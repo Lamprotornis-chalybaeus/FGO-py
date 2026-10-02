@@ -17,6 +17,7 @@ CONFIG={
 'dropDebug':False,
 'windowGeometry':'',
 'splitterState':'',
+'guiLayoutVersion':0,
 'eventStoryMode':'pause',
 'eventAutoClaimRewards':False,
 'eventProgressLimit':1,

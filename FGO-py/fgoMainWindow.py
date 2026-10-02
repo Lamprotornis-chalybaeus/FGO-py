@@ -27,6 +27,7 @@ class Ui_fgoMainWindow(object):
     def setupUi(self, fgoMainWindow):
         if not fgoMainWindow.objectName():
             fgoMainWindow.setObjectName(u"fgoMainWindow")
+        fgoMainWindow.resize(850, 580)
         fgoMainWindow.setFocusPolicy(Qt.StrongFocus)
         fgoMainWindow.setStyleSheet(u"QWidget{font-family:\"Microsoft YaHei UI\";font-size:14px} QPushButton,QComboBox,QSpinBox{padding:1px 3px} QGroupBox{margin-top:14px} QGroupBox::title{subcontrol-origin:margin;top:0px}")
         fgoMainWindow.resize(900, 680)
@@ -90,7 +91,7 @@ class Ui_fgoMainWindow(object):
         self.SPLIT_RUN.setOrientation(Qt.Vertical)
         self.RUN_CONTROLS = QWidget(self.SPLIT_RUN)
         self.RUN_CONTROLS.setObjectName(u"RUN_CONTROLS")
-        self.RUN_CONTROLS.setMinimumSize(QSize(0, 360))
+        self.RUN_CONTROLS.setMinimumSize(QSize(0, 350))
         self.LAYOUT_TOP = QVBoxLayout(self.RUN_CONTROLS)
         self.LAYOUT_TOP.setSpacing(2)
         self.LAYOUT_TOP.setObjectName(u"LAYOUT_TOP")
@@ -505,7 +506,7 @@ class Ui_fgoMainWindow(object):
         self.TXT_LOG.setObjectName(u"TXT_LOG")
         self.TXT_LOG.setReadOnly(True)
         self.TXT_LOG.setMaximumBlockCount(2000)
-        self.TXT_LOG.setMinimumSize(QSize(0, 200))
+        self.TXT_LOG.setMinimumSize(QSize(0, 160))
         self.SPLIT_RUN.addWidget(self.TXT_LOG)
 
         self.verticalLayout.addWidget(self.SPLIT_RUN)

@@ -27,6 +27,8 @@ class GuiLogHandler(logging.Handler):
             except RuntimeError:logging.getLogger('fgo').removeHandler(self)
 
 class MainWindow(QMainWindow,Ui_fgoMainWindow):
+    COMPACT_SIZE=(850,580)
+    GUI_LAYOUT_VERSION=2
     signalFuncBegin=Signal()
     signalFuncEnd=Signal(object)
     signalNavigation=Signal(str)
@@ -61,7 +63,7 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.signalLog.connect(self.appendLog)
         self.SPLIT_RUN.setChildrenCollapsible(False)
         self.SPLIT_RUN.setStretchFactor(0,0);self.SPLIT_RUN.setStretchFactor(1,1)
-        self.SPLIT_RUN.setSizes([365,210])
+        self.SPLIT_RUN.setSizes([350,170])
         self._queueSnapshot=()
         self._lastProgress=None
         self.LBL_WEEKLY_STATUS.setMaximumHeight(88)
@@ -82,7 +84,11 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.BTN_DAILY_REFRESH.clicked.connect(self.refreshDailyQuests)
         self.worker=Thread()
         self.config=config
-        self.resize(950,650)
+        self.resize(*self.COMPACT_SIZE)
+        self.compactWindowAction=QAction('紧凑窗口',self)
+        self.compactWindowAction.setStatusTip('恢复紧凑窗口和日志分隔条；字体及系统显示缩放保持不变。')
+        self.MENU_CONTROL.addAction(self.compactWindowAction)
+        self.compactWindowAction.triggered.connect(self.compactWindow)
         fgoDrop.debug=bool(config.get('dropDebug',False))
         self.dropDebugAction=QAction('保存掉落诊断（本机）',self);self.dropDebugAction.setCheckable(True);self.dropDebugAction.setChecked(fgoDrop.debug);self.MENU_SETTINGS.addAction(self.dropDebugAction)
         self.dropDebugAction.toggled.connect(lambda value:(setattr(fgoDrop,'debug',value),self.config.__setitem__('dropDebug',value)))
@@ -128,6 +134,17 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
                 if value:(self.restoreGeometry if widgetName=='window' else self.SPLIT_RUN.restoreState)(QByteArray(value))
             except (ValueError,TypeError):logger.warning('Ignored invalid saved GUI geometry')
         safe=self.minimumSizeHint();self.resize(max(self.width(),safe.width()),max(self.height(),safe.height()))
+        # Saved geometry from the earlier large layout otherwise defeats a new
+        # default. Migrate once; subsequent user resizing remains persistent.
+        if config.get('guiLayoutVersion',0)<self.GUI_LAYOUT_VERSION:
+            self.compactWindow()
+        self.config['guiLayoutVersion']=self.GUI_LAYOUT_VERSION
+    def compactWindow(self):
+        if self.isVisible():self.showNormal()
+        else:self.setWindowState(Qt.WindowState.WindowNoState)
+        safe=self.minimumSizeHint()
+        self.resize(max(self.COMPACT_SIZE[0],safe.width()),max(self.COMPACT_SIZE[1],safe.height()))
+        self.SPLIT_RUN.setSizes([350,170])
     def keyPressEvent(self,key):
         if self.MENU_CONTROL_MAPKEY.isChecked()and not key.modifiers()&~Qt.KeyboardModifier.KeypadModifier:
             try:fgoDevice.device.press(chr(key.nativeVirtualKey()))
