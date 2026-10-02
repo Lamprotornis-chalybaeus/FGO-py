@@ -7,7 +7,9 @@ $ProjectRoot=Split-Path -Parent $PSScriptRoot
 $PythonPath=Join-Path $ProjectRoot '.venv\Scripts\python.exe'
 $SpecPath=Join-Path $ProjectRoot 'FGO-py\fgoBuildCN.spec'
 $PortableRoot=Join-Path $DistRoot 'FGO-py-CN'
-# COLLECT recreates its output. Preserve existing portable user data first.
+# COLLECT deletes its output directory. Build in a fresh staging directory so
+# an Explorer/current-directory handle cannot remove the installed candidate.
+$StagingRoot=Join-Path $ProjectRoot ('build\portable-staging-'+[guid]::NewGuid().ToString('N'))
 $BackupRoot=Join-Path $ProjectRoot ('build\user-data-'+[guid]::NewGuid().ToString('N'))
 $WritablePaths=@('config','logs','fgoLog','fgoTemp','fgoImage\friend\local','fgoImage\drop\local','fgoImage\friend\templates.json')
 foreach ($RelativePath in $WritablePaths) {
@@ -18,9 +20,11 @@ foreach ($RelativePath in $WritablePaths) {
         Copy-Item -LiteralPath $ExistingPath -Destination $BackupPath -Recurse -Force
     }
 }
-& $PythonPath -m PyInstaller --noconfirm --distpath $DistRoot --workpath (Join-Path $ProjectRoot 'build\cn') $SpecPath
+& $PythonPath -m PyInstaller --noconfirm --distpath $StagingRoot --workpath (Join-Path $ProjectRoot 'build\cn') $SpecPath
 if ($LASTEXITCODE -ne 0) {throw 'PyInstaller build failed'}
-$PortableRoot=Join-Path $DistRoot 'FGO-py-CN'
+$StagedPortableRoot=Join-Path $StagingRoot 'FGO-py-CN'
+New-Item -ItemType Directory -Path $PortableRoot -Force | Out-Null
+Copy-Item -Path (Join-Path $StagedPortableRoot '*') -Destination $PortableRoot -Recurse -Force
 foreach ($Folder in @('logs','config','fgoLog','fgoTemp','fgoImage\friend\local','fgoImage\drop\local')) {New-Item -ItemType Directory -Path (Join-Path $PortableRoot $Folder) -Force | Out-Null}
 foreach ($RelativePath in $WritablePaths) {
     $SavedPath=Join-Path $BackupRoot $RelativePath
