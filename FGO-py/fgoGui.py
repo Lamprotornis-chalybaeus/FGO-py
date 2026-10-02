@@ -1,4 +1,4 @@
-import os,sys,time,platform,logging
+import os,sys,time,platform,logging,subprocess
 from threading import Thread
 from PySide6.QtCore import Qt,QLocale,QTranslator,QTimer,Signal,QSignalBlocker,QByteArray
 from PySide6.QtGui import QAction,QIcon
@@ -7,6 +7,7 @@ from matplotlib import pyplot
 import fgoDrop
 from fgoProgress import formatProgress,currentProgress
 from fgoGuiResult import RunResultDialog
+from fgoPaths import licenseFile
 from fgoGuiFriendTemplates import FriendTemplateDialog
 import fgoDevice
 import fgoKernel
@@ -563,7 +564,7 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
 <a href="https://paypal.me/hgjazhgjpp">Paypal</a><br/>
 {self.tr('B站大会员每月')}<a href="https://account.bilibili.com/account/big/myPackage">{self.tr('领')}</a>{self.tr('5B币券')}<a href="https://space.bilibili.com/2632341">{self.tr('充电')}</a>
 ''')
-    def license(self):os.system(f'start notepad ../LICENSE')
+    def license(self):subprocess.Popen(['notepad.exe',str(licenseFile())],shell=False)
 
 def main(config):
     app=QApplication(sys.argv)

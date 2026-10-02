@@ -25,6 +25,10 @@ def configFile(file='fgoConfig.json'):
     p=Path(file)
     return p if p.is_absolute() else paths.configRoot/p
 
+def licenseFile(frozen=None):
+    frozen=getattr(sys,'frozen',False) if frozen is None else frozen
+    return (paths.resourceRoot if frozen else paths.appRoot.parent)/'LICENSE'
+
 def initialize():
     # This local onedir uses contents_directory='.'; legacy relative read-only
     # assets therefore resolve through appRoot regardless of the launch cwd.
