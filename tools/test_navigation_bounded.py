@@ -51,6 +51,39 @@ class NavigationTests(unittest.TestCase):
         d=Frame();d.isMainInterface=lambda:False
         self.assertEqual(nav.classify(d,[label('通知',110,40)]),'UNKNOWN')
     def test_modal_overrides_home(self):self.assertEqual(nav.classify(Frame(),[label('通知',110,40),label('是否开始关卡',640,350)]),'BLOCKED')
+    def test_fuyuki_identity_uses_prefix_and_exact_era(self):
+        frame=Frame();frame._crop=lambda rect:frame.im[rect[1]:rect[3],rect[0]:rect[2]]
+        items=[label('管理室',110,40),label('燃烧污染都市各木',1080,28)]
+        with patch.object(nav.OCR.ZHS,'ocr_single_line',side_effect=[('燃烧污染都市',.94),('燃烧污染都市',.95),('D.2004',.93),('D.2004',.94)]):
+            self.assertEqual(nav.classify(frame,items),'MAP')
+            self.assertTrue(nav.mapChapterConfirmed(frame,items,(1,0)))
+            self.assertFalse(nav.mapChapterConfirmed(frame,items,(1,1)))
+    def test_wrong_era_does_not_confirm_fuyuki(self):
+        frame=Frame();frame._crop=lambda rect:frame.im[rect[1]:rect[3],rect[0]:rect[2]]
+        items=[label('管理室',110,40),label('燃烧污染都市各木',1080,28)]
+        with patch.object(nav.OCR.ZHS,'ocr_single_line',side_effect=[('燃烧污染都市',.94),('燃烧污染都市',.95),('D.2005',.93),('D.2005',.94)]):
+            self.assertEqual(nav.classify(frame,items),'UNKNOWN')
+            self.assertFalse(nav.mapChapterConfirmed(frame,items,(1,0)))
+    def test_header_double_read_disagreement_stops(self):
+        frame=Frame();frame._crop=lambda rect:frame.im[rect[1]:rect[3],rect[0]:rect[2]]
+        with patch.object(nav.OCR.ZHS,'ocr_single_line',side_effect=[('燃烧污染都市',.94),('燃烧污染城市',.95),('D.2004',.93),('D.2004',.94)]):
+            self.assertFalse(nav.confirmedFuyukiHeaderCN(frame,[label('燃烧污染都市各木',1080,28)]))
+    def test_other_chapter_header_cannot_be_fuyuki(self):
+        frame=Frame()
+        with patch.object(nav.OCR.ZHS,'ocr_single_line') as ocr:
+            self.assertFalse(nav.mapChapterConfirmed(frame,[label('邪龙百年战争奥尔良',1080,28)],(1,0)))
+            ocr.assert_not_called()
+    def test_fixed_header_does_not_replace_return_control(self):
+        with patch.object(nav,'confirmedFuyukiHeaderCN',return_value=True):
+            self.assertEqual(nav.classify(Frame(),[label('燃烧污染都市各木',1080,28)]),'UNKNOWN')
+    def test_map_pan_uses_verified_same_chapter_anchor(self):
+        with patch.object(nav,'visibleMapNode',return_value=(640,360)),patch.object(nav,'mapCamera') as atlas:
+            camera=nav.visibleMapCameraCN(Frame(),[],(1,0))
+            numpy.testing.assert_array_equal(camera,fgoReishift.place[(1,0,0)].coord)
+            atlas.assert_not_called()
+    def test_map_pan_without_verified_node_keeps_atlas_guard(self):
+        with patch.object(nav,'visibleMapNode',return_value=None),patch.object(nav,'mapCamera',side_effect=nav.ScriptStop('atlas match unreliable')):
+            with self.assertRaisesRegex(nav.ScriptStop,'atlas match unreliable'):nav.visibleMapCameraCN(Frame(),[],(1,0))
     def test_missing_chapter_at_bottom_stops(self):
         frame=Frame();items=[label('通知',110,40)]
         with patch.object(nav,'returnRootCN',return_value=frame),patch.object(nav,'_read',return_value=(frame,items,'ROOT_CATEGORY')),patch.object(nav,'_scroll',side_effect=[(frame,items,'ROOT_CATEGORY',True),(frame,items,'ROOT_CATEGORY',True)]):

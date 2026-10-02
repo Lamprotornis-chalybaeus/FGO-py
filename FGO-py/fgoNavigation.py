@@ -140,6 +140,33 @@ def unique(items,text,region,substring=False):
     if len(matches)>1:raise ScriptStop(f'Navigation failed: ambiguous OCR target “{text}”')
     return matches[0] if matches else None
 
+def confirmedFuyukiHeaderCN(detect,items):
+    """Confirm the fixed map identity without guessing a misread 冬 character."""
+    if hasattr(detect,'_navFuyukiHeader'):return detect._navFuyukiHeader
+    prefix=compact('燃烧污染都市')
+    proposals=[i for i in items if i.score>=.8 and i.center[0]>=850 and i.center[1]<60 and compact(i.text).startswith(prefix)]
+    if len(proposals)!=1:return False
+    reads=[]
+    for rect in ((900,0,1178,55),(1170,51,1278,85)):
+        line=detect._crop(rect)
+        a,sa=OCR.ZHS.ocr_single_line(line)
+        b,sb=OCR.ZHS.ocr_single_line(cv2.resize(line,None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC))
+        reads.append((a,b,float(sa),float(sb)))
+    # Exclude the animated map behind 冬木 and the A glyph in A.D.
+    # Both fixed text bands must match exactly at both scales.
+    expected=(prefix,compact('D.2004'))
+    valid=all(min(sa,sb)>=.85 and compact(a)==compact(b)==key for (a,b,sa,sb),key in zip(reads,expected))
+    detect._navFuyukiHeader=bool(valid)
+    logger.debug(f'CN map header identity: confirmed={valid}, reads={reads}')
+    return bool(valid)
+
+def mapChapterConfirmed(detect,items,chapter):
+    header=[i for i in items if i.score>=.8 and i.center[0]>=850 and i.center[1]<95]
+    recognized={key for key in mapImg if len(key)==2 and any(compact(questTitle(key)) in compact(i.text) for i in header)}
+    if len(recognized)>1:raise ScriptStop('Navigation failed [MAP]: conflicting chapter headers')
+    if recognized:return recognized=={tuple(chapter)}
+    return tuple(chapter)==(1,0) and confirmedFuyukiHeaderCN(detect,items)
+
 def classify(detect,items=None):
     items=labels(detect) if items is None else items
     # Modal overlays override recognizable backgrounds.
@@ -155,7 +182,7 @@ def classify(detect,items=None):
         if any('关卡举办时间' in i.text for i in items):return 'EVENT'
         if any('自由关卡' in compact(i.text) for i in items if i.center[0]>750):return 'FREE_QUEST'
     manager=unique(items,'管理室',(0,0,200,95))
-    if manager and menu and any(any(compact(questTitle(key)) in compact(i.text) for key in mapImg if len(key)==2) for i in header):return 'MAP'
+    if manager and menu and (any(any(compact(questTitle(key)) in compact(i.text) for key in mapImg if len(key)==2) for i in header) or confirmedFuyukiHeaderCN(detect,items)):return 'MAP'
     if detect.isWeeklyMission() and any('任务' in i.text for i in items):return 'WEEKLY'
     return 'UNKNOWN'
 
@@ -238,7 +265,7 @@ def gotoChapterCN(chapter,guard=None):
                 if not tags or min(a,b)<.85 or compact(text)!=compact(title) or compact(text2)!=compact(title):guard.fail('chapter title could not be independently verified')
                 logger.info(f'chapter OCR fallback: {text}/{a:.3f}, {text2}/{b:.3f}, category={[i.text for i in tags]}')
             d,items,state=_tapTransition(guard,item,state,{'MAP'})
-            if not unique(items,title,(850,0,1280,95),True):guard.fail('selected chapter map title does not match')
+            if not mapChapterConfirmed(d,items,chapter):guard.fail('selected chapter map title does not match')
             guard.stage('MAP',f'已进入{title}')
             return d
         if not top:
@@ -302,6 +329,20 @@ def visibleMapNode(detect,items,title):
     if numpy.count_nonzero(cyan)<90:return None
     return point if verifiedMapLabel(detect,point,title,label) else None
 
+def visibleMapCameraCN(detect,items,chapter):
+    """Use a verified visible node for panning, never to authorize a target tap."""
+    from fgoReishift import Map,place
+    if tuple(chapter)!=(1,0):return mapCamera(detect,chapter)
+    for key,route in place.items():
+        if len(key)!=3 or tuple(key[:2])!=tuple(chapter) or not isinstance(route,Map):continue
+        point=visibleMapNode(detect,items,questTitle(tuple(key)+(0,)))
+        if point:
+            camera=route.coord-(numpy.asarray(point)-(640,360))
+            logger.info(f'Map pan anchor: chapter={chapter}, node={key}, point={point}, camera={camera.tolist()}')
+            return camera
+    return mapCamera(detect,chapter)
+
+
 def locateMapCN(quest,guard):
     from fgoReishift import Map,place
     from fgoQuickQuest import _menuSwipe
@@ -311,9 +352,11 @@ def locateMapCN(quest,guard):
     previous=None;stalled=0
     for _ in guard.steps():
         d,items,state=_read(guard)
-        if state!='MAP' or not unique(items,questTitle(chapter),(850,0,1280,95),True):guard.fail('chapter map is no longer confirmed')
+        if state!='MAP' or not mapChapterConfirmed(d,items,chapter):
+            logger.warning(f'Map confirmation failed: state={state}, expected={chapter}, controls={[(i.text,i.score) for i in items if i.center[0]<200 and i.center[1]<95]}, headers={[(i.text,i.score) for i in items if i.center[0]>=850 and i.center[1]<95]}')
+            guard.fail('chapter map is no longer confirmed')
         visible=visibleMapNode(d,items,title)
-        camera=route.coord-(numpy.array(visible)-(640,360)) if visible else mapCamera(d,chapter)
+        camera=route.coord-(numpy.array(visible)-(640,360)) if visible else visibleMapCameraCN(d,items,chapter)
         if previous is not None:
             stalled=stalled+1 if numpy.linalg.norm(camera-previous)<5 else 0
             guard.no_progress_count=stalled
