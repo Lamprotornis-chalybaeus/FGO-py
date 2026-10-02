@@ -42,6 +42,18 @@ def _center(item):
     box=_box(item)
     return ((box[0]+box[2])//2,(box[1]+box[3])//2)
 
+def _reliable(item):return float(getattr(item,'score',0))>=.8
+
+def _unsafeEventOverlay(items):
+    """Reject foreground choices before acting on still-visible menu rows."""
+    central=[i for i in items if 280<=_center(i)[0]<=1020 and 150<=_center(i)[1]<=650]
+    text=' '.join(_text(i) for i in central)
+    if any(token in text for token in ('请选择','选择奖励','奖励选择','任选','二选一')):return True
+    if any(token in text for token in ('ap不足','ap恢复','ap回复','恢复ap','体力不足','购买','购入','圣晶石恢复','使用苹果')):return True
+    cancel=any(_text(i) in ('取消','cancel','否','no') for i in central)
+    confirm=any(_text(i) in ('确认','确定','ok','confirm','是','yes','开始') for i in central)
+    return bool(cancel and confirm and ('是否' in text or any(token in text for token in ('恢复','回复','购买','领取奖励','奖励'))))
+
 def _rows(items,delta=84):
     rows=[]
     for item in sorted(items,key=lambda value:_center(value)[1]):
@@ -54,7 +66,7 @@ def _rows(items,delta=84):
     return rows
 
 def _eventAnchor(items):
-    matches=[item for item in items if '活动举办时间' in _text(item) and _center(item)[0]>=640 and 95<_center(item)[1]<600]
+    matches=[item for item in items if '活动举办时间' in _text(item) and _reliable(item) and _center(item)[0]>=640 and 95<_center(item)[1]<600]
     return matches[0] if len(matches)==1 else None
 
 def _isMainTitle(text):
@@ -66,12 +78,14 @@ def findNextMainQuest(items):
     for row in _rows(items):
         rowItems=row['items']
         rowText=' '.join(_text(item) for item in rowItems)
-        titleItems=[item for item in rowItems if _isMainTitle(_text(item))]
+        positiveItems=[item for item in rowItems if _reliable(item)]
+        titleItems=[item for item in positiveItems if _isMainTitle(_text(item))]
         if not titleItems:continue
         if any(token in rowText for token in ('已完成','通关','clear','complete')):continue
-        isNew=any(token in rowText for token in ('new','新!','新！'))
-        explicitMain=any(token in rowText for token in ('主线','mainquest','mainstory'))
-        hasAp=any(re.search(r'ap\s*\d+',_text(item)) for item in rowItems)
+        positiveText=' '.join(_text(item) for item in positiveItems)
+        isNew=any(token in positiveText for token in ('new','新!','新！'))
+        explicitMain=any(token in positiveText for token in ('主线','mainquest','mainstory'))
+        hasAp=any(re.search(r'ap\s*\d+',_text(item)) for item in positiveItems)
         explicitEpisode=any(any(token in _text(item) for token in ('序幕','终幕','epilogue','prologue')) or bool(re.search(r'第[0-9一二三四五六七八九十]+[节幕]',_text(item))) for item in titleItems)
         if not (isNew or explicitMain or explicitEpisode) or not (hasAp or explicitEpisode):continue
         title=min(titleItems,key=lambda item:_center(item)[0])
@@ -79,7 +93,7 @@ def findNextMainQuest(items):
         candidates.append((0 if isNew else 1,y,title,(x,y),rowText))
     if not candidates:return None
     _,_,title,position,rowText=min(candidates,key=lambda v:(v[0],v[1]))
-    restrictions=[str(i.text) for i in items if any(t in _text(i) for t in ('编制需符合要求','编队限制','限定编队')) and abs(_center(i)[1]-position[1])<=110]
+    restrictions=[str(i.text) for i in items if any(t in _text(i) for t in ('编制需符合要求','编队限制','限定编队','只能使用npc从者','请使用指定编队','固定编队出击')) and abs(_center(i)[1]-position[1])<=110]
     return {'title':str(title.text),'position':position,'rowText':rowText,'restrictions':restrictions}
 
 def findMissionGate(items):
@@ -102,8 +116,9 @@ def _isStory(items,flags=None):
     return bool(controls and dialogue)
 
 def _isStartQuestConfirmation(items):
-    text=' '.join(_text(item) for item in items)
-    return '是否开始关卡' in text and sum(1 for item in items if _text(item)=='开始')==1 and sum(1 for item in items if _text(item)=='取消')==1
+    positive=[item for item in items if _reliable(item)]
+    text=' '.join(_text(item) for item in positive)
+    return '是否开始关卡' in text and sum(1 for item in positive if _text(item)=='开始')==1 and sum(1 for item in positive if _text(item)=='取消')==1
 
 def classifyEventState(items,flags=None):
     flags=flags or {}
@@ -112,6 +127,7 @@ def classifyEventState(items,flags=None):
     if flags.get('ap_empty'):return 'ap_empty'
     if flags.get('defeated'):return 'battle_defeated'
     if flags.get('friend_request'):return 'friend_request'
+    if _unsafeEventOverlay(items):return 'unsafe_modal'
     if flags.get('choose_friend'):return 'support'
     if flags.get('formation'):return 'formation'
     if flags.get('battle'):return 'battle'
@@ -126,45 +142,47 @@ def classifyEventState(items,flags=None):
 
 def findSkipButton(items):
     candidates=[item for item in items if _text(item) in ('skip','跳过') and _center(item)[0]>=850 and _center(item)[1]<=180]
-    return _center(candidates[0]) if len(candidates)==1 else None
+    return _center(candidates[0]) if len(candidates)==1 and _reliable(candidates[0]) else None
 
 def findSkipConfirmation(items):
-    text=' '.join(_text(item) for item in items)
+    text=' '.join(_text(item) for item in items if _reliable(item))
     if not any(token in text for token in ('跳过剧情','跳过故事','skipstory')):return None
     if not any(token in text for token in ('取消','cancel')):return None
     candidates=[item for item in items if _text(item) in ('确认','确定','ok','confirm')]
-    return _center(candidates[0]) if len(candidates)==1 else None
+    return _center(candidates[0]) if len(candidates)==1 and _reliable(candidates[0]) else None
 
 def findClaimableMissionReward(items):
+    if _unsafeEventOverlay(items):return None
     for row in _rows(items,delta=60):
         rowText=' '.join(_text(item) for item in row['items'])
-        if not any(token in rowText for token in ('已完成','可领取')):continue
+        positiveText=' '.join(_text(item) for item in row['items'] if _reliable(item))
+        if not any(token in positiveText for token in ('已完成','可领取')):continue
         if any(token in rowText for token in ('选择奖励','请选择','任选','兑换','商店')):continue
         buttons=[item for item in row['items'] if _text(item) in ('领取','领取奖励')]
-        if len(buttons)==1:return _center(buttons[0])
+        if len(buttons)==1 and _reliable(buttons[0]):return _center(buttons[0])
     return None
 
 def findMissionListEntry(items):
     candidates=[item for item in items if _text(item) in ('任务进行度','任务进度','活动任务','任务列表') and 600<=_center(item)[0]<=1120 and _center(item)[1]<360]
-    return _center(candidates[0]) if len(candidates)==1 else None
+    return _center(candidates[0]) if len(candidates)==1 and _reliable(candidates[0]) else None
 
 def _missionReturnButton(items):
     candidates=[item for item in items if _text(item) in ('关闭','返回') and _center(item)[0]<250 and _center(item)[1]<120]
-    return _center(candidates[0]) if len(candidates)==1 else None
+    return _center(candidates[0]) if len(candidates)==1 and _reliable(candidates[0]) else None
 
 def findEventBattleStart(items):
     tokens=('开始任务','开始战斗','出击')
     candidates=[item for item in items if _text(item) in tokens and _center(item)[0]>=800 and _center(item)[1]>=470]
-    return _center(candidates[0]) if len(candidates)==1 else None
+    return _center(candidates[0]) if len(candidates)==1 and _reliable(candidates[0]) else None
 
 def findBattleProgressButton(items):
     tokens=('下一步','继续','next')
     candidates=[item for item in items if _text(item) in tokens and _center(item)[0]>=800 and _center(item)[1]>=470]
-    return _center(candidates[0]) if len(candidates)==1 else None
+    return _center(candidates[0]) if len(candidates)==1 and _reliable(candidates[0]) else None
 
 def _missionListConfirmed(items):
-    text=' '.join(_text(item) for item in items)
-    return any(token in text for token in ('活动任务列表','活动任务','任务列表','已达成的任务','missionlist','eventmissions'))
+    titles=[i for i in items if _text(i) in ('活动任务列表','活动任务','eventmissions') and _reliable(i) and 100<=_center(i)[0]<=1240 and 0<=_center(i)[1]<180]
+    return len(titles)==1 and not _unsafeEventOverlay(items)
 
 def _detectFlags(detect):
     return {
@@ -222,10 +240,10 @@ def _openEventMap(detect,items):
     for _ in range(20):
         guard.check()
         state=classifyEventState(items,_detectFlags(detect))
-        if state in ('event_map','mission_list','mission_gate','story','start_confirmation','support','formation','battle','battle_result','ap_empty','battle_defeated','friend_request'):return detect,items
+        if state in ('event_map','mission_list','mission_gate','story','start_confirmation','support','formation','battle','battle_result','ap_empty','battle_defeated','friend_request','unsafe_modal'):return detect,items
         gateHeader=any(_text(i)=='迦勒底之门' and _center(i)[0]>=900 and _center(i)[1]<95 for i in items)
-        close=[i for i in items if _text(i)=='关闭' and _center(i)[0]<200 and _center(i)[1]<95]
-        home=any(_text(i)=='通知' and _center(i)[0]<200 and _center(i)[1]<95 for i in items)
+        close=[i for i in items if _text(i)=='关闭' and _reliable(i) and _center(i)[0]<200 and _center(i)[1]<95]
+        home=any(_text(i)=='通知' and _reliable(i) and _center(i)[0]<200 and _center(i)[1]<95 for i in items)
         if (state=='daily_quest' or gateHeader) and len(close)==1:
             if closes>=2:raise ScriptStop('返回活动入口的目录层级异常，已停止')
             fgoDevice.device.touch(_center(close[0]));closes+=1;waits=0
@@ -258,15 +276,19 @@ def _missionRewardGate(items,autoClaim):
     return {'state':'claimable','position':position,'message':'仅发现明确标为已完成/可领取的奖励。'}
 
 def _claimMissionRewards(detect,items):
+    if _unsafeEventOverlay(items):return detect,items,{'state':'unsafe_modal','claimed':0,'message':'活动任务存在奖励选择或确认弹窗，已停止；没有点击背景领取或返回按钮。'}
     if not _missionListConfirmed(items):return None,items,{'state':'mission_blocked','message':'当前页面未可靠识别为活动任务列表；没有领取奖励。'}
     claimed=0
     for _ in range(20):
+        if _unsafeEventOverlay(items):return detect,items,{'state':'unsafe_modal','claimed':claimed,'message':'活动任务存在奖励选择或确认弹窗，已停止；没有点击背景领取或返回按钮。'}
+        if not _missionListConfirmed(items):return detect,items,{'state':'mission_blocked','claimed':claimed,'message':'活动任务顶部标题不再被可靠确认，已停止；没有继续领取或返回。'}
         position=findClaimableMissionReward(items)
         if position:
             fgoDevice.device.touch(position);claimed+=1
             for _ in range(8):
                 detect,items,state=_waitClassified(1)
                 if state=='event_map':return detect,items,{'state':'event_map','claimed':claimed,'message':f'已领取 {claimed} 项明确完成的活动任务奖励并返回活动地图。'}
+                if state=='unsafe_modal':return detect,items,{'state':'unsafe_modal','claimed':claimed,'message':'领取后出现奖励选择或确认弹窗，已停止；没有点击背景按钮。'}
                 if state!='mission_list':return detect,items,{'state':'mission_blocked','claimed':claimed,'message':'领取后出现未识别的任务奖励界面，已停止。'}
                 if findClaimableMissionReward(items)!=position:break
                 schedule.sleep(.2)
@@ -331,6 +353,7 @@ def progress(maxNodes=1,storyMode=EVENT_STORY_PAUSE,autoClaim=False,friendPolicy
     for _ in range(maxNodes+20):
         flags=_detectFlags(detect)
         state=classifyEventState(items,flags)
+        if state=='unsafe_modal':return {'type':'EventProgress','state':'unsafe_modal','nodes':nodes,'battles':battles,'message':'活动界面存在奖励选择、AP恢复、购买或确认弹窗，已停止；没有点击背景控件。'}
         if state in ('ap_empty','battle_defeated','friend_request','mission_gate'):
             messages={'ap_empty':'AP 不足，已停止；没有使用任何 AP 恢复。','battle_defeated':'战败界面，已停止；没有复活。','friend_request':'好友申请界面，请手动处理后继续。','mission_gate':'活动任务条件阻挡：'+'；'.join(findMissionGate(items))}
             return {'type':'EventProgress','state':'blocked','nodes':nodes,'battles':battles,'message':messages[state]}
