@@ -1,8 +1,12 @@
 import argparse,os,sys
 from fgoConst import VERSION
+from fgoPaths import initialize,paths
 
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
-with open("../.git/HEAD")as f:head=f.read().strip()
+initialize()
+try:
+    with open(paths.appRoot.parent/'.git'/'HEAD',encoding='utf-8')as f:head=f.read().strip()
+except OSError:head='master' if getattr(sys,'frozen',False) else ''
+import fgoLogging
 
 parser=argparse.ArgumentParser(description=f'FGO-py {VERSION}')
 parser.add_argument('entrypoint',help='Program entry point (default: %(default)s)',type=str.lower,choices=['gui','cli','web'],default='gui'if head.endswith('master')else'cli',nargs='?')
@@ -11,7 +15,12 @@ parser.add_argument('-l','--loglevel',help='Change the console log level (defaul
 parser.add_argument('-c','--config',help='Config file path (default: %(default)s)',type=str,default='fgoConfig.json')
 parser.add_argument('-r','--readonly',help='Do not save configuration file on exit',action='store_false')
 parser.add_argument('--no-color',help='Disable colored console output',action='store_true')
+parser.add_argument('--self-check',help='Check local portable data/imports without operating the game',action='store_true')
 arg=parser.parse_args()
+if arg.self_check:
+    from fgoDiagnostics import selfCheck
+    selfCheck()
+    sys.exit(0)
 
 if arg.no_color:os.environ['NO_COLOR']='1'
 
@@ -20,7 +29,6 @@ match arg.entrypoint:
     case'cli':from fgoCli import main
     case'web':from fgoWebServer import main
 
-import fgoLogging
 fgoLogging.logger.handlers[-1].setLevel(arg.loglevel)
 
 from fgoConfig import Config
