@@ -145,7 +145,44 @@ class DailyQuestTests(unittest.TestCase):
             fgoGuiOperation.GuiQueueOperation(queue,FakeSettings())()
         operation.assert_called_once()
         self.assertEqual(operation.call_args.args[0],[(quest,2)])
+        self.assertIs(operation.call_args.kwargs['wait'],False)
         self.assertEqual(runner.calls,[()])
+
+    def test_metadata_queue_handoff_does_not_wait_for_total_ap(self):
+        quest=(1,0,7,0);queue=[fgoGuiOperation.QuestTask.metadata(quest,20),fgoGuiOperation.QuestTask.metadata((1,0,2,0),20)];before=queue[:];events=[]
+        from fgoDetect import XDetectCN
+        with patch.object(fgoKernel,'goto',side_effect=lambda q:events.append(('goto',q))), \
+             patch.object(fgoKernel.Main,'__call__',side_effect=fgoKernel.ScriptStop('handoff sentinel; no game input')) as main, \
+             patch.object(XDetectCN,'getAp',side_effect=AssertionError('must not estimate total queue AP')), \
+             patch.object(fgoKernel.schedule,'sleep',side_effect=AssertionError('must not wait for AP')):
+            with self.assertRaisesRegex(fgoKernel.ScriptStop,'handoff sentinel'):
+                fgoGuiOperation.GuiQueueOperation(queue,FakeSettings(),onNavigation=events.append)()
+        main.assert_called_once_with(0,20)
+        self.assertIn(('goto',quest),events)
+        self.assertTrue(any(isinstance(e,str) and '正在进入关卡' in e for e in events))
+        self.assertEqual(queue,before)
+
+class CnApTests(unittest.TestCase):
+    def detector(self):
+        from fgoDetect import XDetectCN
+        d=XDetectCN.__new__(XDetectCN);d.im=numpy.zeros((720,1280,3),numpy.uint8);return d
+    def test_current_ap_preserves_overflow_and_maximum_digit_width(self):
+        from fgoDetect import OCR
+        for text,expected in [('723/70',723),('23/70',23),('0/70',0),('144/144',144),('1072/170',1072)]:
+            with self.subTest(text=text),patch.object(OCR.EN,'ocr_single_line',return_value=(text,.96)):
+                self.assertEqual(self.detector().getAp(),expected)
+    def test_missing_slash_stops_instead_of_dividing_digits(self):
+        from fgoDetect import OCR
+        with patch.object(OCR.EN,'ocr_single_line',return_value=('72370',.96)):
+            with self.assertRaisesRegex(fgoKernel.ScriptStop,'AP识别失败'):self.detector().getAp()
+    def test_disagreeing_ap_reads_stop(self):
+        from fgoDetect import OCR
+        with patch.object(OCR.EN,'ocr_single_line',side_effect=[('723/70',.96),('72/70',.96)]):
+            with self.assertRaisesRegex(fgoKernel.ScriptStop,'不一致'):self.detector().getAp()
+    def test_uncertain_ap_read_stops(self):
+        from fgoDetect import OCR
+        with patch.object(OCR.EN,'ocr_single_line',return_value=('723/70',.84)):
+            with self.assertRaisesRegex(fgoKernel.ScriptStop,'AP识别失败'):self.detector().getAp()
 
 
 class EventProgressTests(unittest.TestCase):

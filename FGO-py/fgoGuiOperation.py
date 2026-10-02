@@ -67,7 +67,7 @@ class GuiQueueOperation:
                 try:runner(0,times or None)
                 finally:self._recordProgress(runner,task,times)
             elif kind=='metadata':
-                runner=fgoKernel.Operation([(tuple(target),times)],appleTotal=self.settings.appleTotal,appleKind=self.settings.appleKind,battleClass=self.battleClass,friendPolicy=self.settings.friendPolicy,friendMaxRefresh=self.settings.friendMaxRefresh,wait=self.settings.wait)
+                runner=fgoKernel.Operation([(tuple(target),times)],appleTotal=self.settings.appleTotal,appleKind=self.settings.appleKind,battleClass=self.battleClass,friendPolicy=self.settings.friendPolicy,friendMaxRefresh=self.settings.friendMaxRefresh,wait=False)
                 try:
                     with fgoNavigation.feedback(notify):runner()
                 finally:self._recordProgress(runner,task,times)

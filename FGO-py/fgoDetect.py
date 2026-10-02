@@ -5,7 +5,7 @@ from fgoFuse import fuse
 from fgoLogging import getLogger,logMeta
 from fgoMetadata import servantData,servantImg,classImg,materialImg,chapterImg,mapImg,questImg
 from fgoOcr import Ocr
-from fgoSchedule import schedule
+from fgoSchedule import ScriptStop,schedule
 logger=getLogger('Detect')
 
 IMG=type('IMG',(),{i[:-4].upper():(lambda x:(x[...,:3],x[...,3]))(cv2.imread(f'fgoImage/{i}',cv2.IMREAD_UNCHANGED))for i in os.listdir('fgoImage')if i.endswith('.png')})
@@ -196,6 +196,16 @@ class XDetectBase(metaclass=logMeta(logger)):
 class XDetectCN(XDetectBase):
     tmpl=IMG_CN
     ocr=OCR.ZHS
+    def getAp(self):
+        # Preserve the slash: the maximum can have two or three digits, and
+        # current AP can exceed it. Concatenating digits and //1000 loses AP.
+        line=self._crop((236,664,323,684))
+        reads=[OCR.EN.ocr_single_line(line),OCR.EN.ocr_single_line(cv2.resize(line,None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC))]
+        parsed=[re.fullmatch(r'([0-9]{1,5})\s*/\s*([0-9]{1,3})',str(text).strip()) for text,_ in reads]
+        if min(float(score) for _,score in reads)<.85 or not all(parsed):raise ScriptStop('CN AP识别失败：未确认当前AP/上限，已停止')
+        values=[tuple(map(int,match.groups())) for match in parsed]
+        if values[0]!=values[1] or values[0][1]<=0:raise ScriptStop('CN AP识别失败：两次读数不一致或上限无效，已停止')
+        return values[0][0]
     def isBattleContinue(self):return self._compare(self.tmpl.BATTLECONTINUE,(455,85,835,144))
     @classmethod
     def saveWeeklyMissionDetailed(cls):

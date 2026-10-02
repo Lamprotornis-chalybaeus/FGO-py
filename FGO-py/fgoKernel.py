@@ -699,6 +699,7 @@ class Operation(list,Main):
             quest,times=self[0]
             goto(quest)
             if self.wait:schedule.sleep(max(self.apLookup.get(quest,23)*times-Detect.cache.getAp(),0)*300)
+            fgoNavigation.publish('导航完成，正在进入关卡并选择助战…')
             before=self.battleCount
             try:super().__call__(quest[-1],self.battleCount+times if times else None)
             finally:
