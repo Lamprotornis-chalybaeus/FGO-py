@@ -180,11 +180,23 @@ def classify(detect,items=None):
         if any('迦勒底之门' in i.text for i in header):return 'GATE'
         if any('第一部' in i.text for i in header):return 'FIRST_PART'
         if any('关卡举办时间' in i.text for i in items):return 'EVENT'
-        if any('自由关卡' in compact(i.text) for i in items if i.center[0]>750):return 'FREE_QUEST'
+        if any('自由关卡' in compact(i.text) for i in items if i.center[0]>750) or cnFreeQuestReturn(detect,items):return 'FREE_QUEST'
     manager=unique(items,'管理室',(0,0,200,95))
     if manager and menu and (any(any(compact(questTitle(key)) in compact(i.text) for key in mapImg if len(key)==2) for i in header) or confirmedFuyukiHeaderCN(detect,items)):return 'MAP'
     if detect.isWeeklyMission() and any('任务' in i.text for i in items):return 'WEEKLY'
     return 'UNKNOWN'
+
+def cnFreeQuestReturn(detect,items):
+    """Strict local verification when global OCR misses the returned green card."""
+    if XDetect.region!='CN' or not unique(items,'关闭',(0,0,200,95)) or not detect.isMainInterface():return False
+    if any('每日任务' in i.text or '关卡举办时间' in i.text for i in items):return False
+    if not any(mapChapterConfirmed(detect,items,key) for key in mapImg if len(key)==2):return False
+    for rect,expected,model in (((775,157,855,188),'自由关卡',OCR.ZHS),((775,199,895,235),None,OCR.EN)):
+        crop=detect._crop(rect);a,sa=model.ocr_single_line(crop);b,sb=model.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC))
+        if min(sa,sb)<.85 or compact(a)!=compact(b):return False
+        if expected and compact(a)!=compact(expected):return False
+        if not expected and not re.fullmatch(r'ap[1-9]\d*',compact(a)):return False
+    return True
 
 def _signature(items):
     return tuple(sorted((compact(i.text),i.center[0]//8,i.center[1]//8) for i in items if i.center[0]>640 and 95<i.center[1]<580))
