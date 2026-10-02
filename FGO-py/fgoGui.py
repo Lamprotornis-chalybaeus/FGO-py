@@ -376,13 +376,14 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         for entry in self.dailyEntries:self.CBB_QUEST.addItem(entry.title,entry)
         self.CBB_QUEST.setEnabled(bool(self.dailyEntries) and not self._dailyScanPending)
     def refreshDailyQuests(self):
-        if self._dailyScanPending or not self.isDeviceAvailable():return
+        if self.worker.is_alive() or self._dailyScanPending or not self.isDeviceAvailable():return
         self._dailyScanPending=True
-        self.dailyEntries=[]
-        self.CBB_QUEST.clear()
         self.CBB_QUEST.setEnabled(False)
         self.LBL_WEEKLY_STATUS.setText('正在校验每日任务卡片，扫描至列表末端后返回顶部……')
-        self.runFunc(fgoQuickQuest.scanDailyQuestsCN)
+        def scan():
+            import fgoNavigation
+            with fgoNavigation.feedback(self.signalNavigation.emit):return fgoQuickQuest.refreshDailyQuestsCN()
+        self.runFunc(scan)
     def quickFarm(self):
         if not self.isDeviceAvailable():return
         mode=fgoQuickFarm.modeName(self.CBB_QUICKMODE.currentIndex())

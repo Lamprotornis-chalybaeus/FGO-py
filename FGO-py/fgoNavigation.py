@@ -186,6 +186,9 @@ def classify(detect,items=None):
     if detect.isWeeklyMission() and any('任务' in i.text for i in items):return 'WEEKLY'
     return 'UNKNOWN'
 
+def _signature(items):
+    return tuple(sorted((compact(i.text),i.center[0]//8,i.center[1]//8) for i in items if i.center[0]>640 and 95<i.center[1]<580))
+
 def cnFreeQuestReturn(detect,items):
     """Strict local verification when global OCR misses the returned green card."""
     if XDetect.region!='CN' or not unique(items,'关闭',(0,0,200,95)) or not detect.isMainInterface():return False
@@ -198,8 +201,70 @@ def cnFreeQuestReturn(detect,items):
         if not expected and not re.fullmatch(r'ap[1-9]\d*',compact(a)):return False
     return True
 
-def _signature(items):
-    return tuple(sorted((compact(i.text),i.center[0]//8,i.center[1]//8) for i in items if i.center[0]>640 and 95<i.center[1]<580))
+def terminalHomeCN(detect,items):
+    if classify(detect,items)!='ROOT_CATEGORY':return False
+    directory=any(i.score>=.85 and 640<i.center[0]<1230 and 95<i.center[1]<720 and
+                  (compact(i.text)=='迦勒底之门' or any(compact(questTitle(k))==compact(i.text) for k in chapterImg if len(k)==2)) for i in items)
+    return bool(directory and unique(items,'通知',(0,0,200,95)))
+
+def expandedMenuCN(detect,items):
+    terminal=unique(items,'终端',(40,600,215,700))
+    if not terminal or not unique(items,'关闭',(1080,420,1280,520)):return None
+    controls=0
+    for text,rect in (('编队',(260,617,347,666)),('强化',(430,617,520,666)),('召唤',(598,617,688,666)),('好友',(932,617,1025,666))):
+        if unique(items,text,rect):controls+=1;continue
+        crop=detect._crop(rect);a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC))
+        if min(sa,sb)>=.85 and compact(a)==compact(b)==compact(text):controls+=1
+    if controls<3:return None
+    image,alpha=detect.tmpl.MENU
+    # Keep the neutral button frame; translucent blue corners depend on the
+    # current map backdrop and are not a stable feature of expanded MENU.
+    mask=numpy.where((image.max(axis=2)-image.min(axis=2)<20)&(image.min(axis=2)>170),alpha,0).astype(numpy.uint8)
+    if not detect._compare((image,mask),(1104,434,1267,497)):return None
+    crop=detect._crop(terminal.box);a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC))
+    return terminal if min(sa,sb)>=.85 and compact(a)==compact(b)=='终端' else None
+
+def safeMenuPageCN(detect,items):
+    if any(getattr(detect,m,lambda:False)() for m in ('isTurnBegin','isBattleFinished','isBattleDefeated','isApEmpty')):return 'UNSAFE_BATTLE_OR_AP'
+    if any(getattr(detect,m,lambda:False)() for m in ('isBattleContinue','isSkillCastFailed','isAddFriend','isSummonContinue')):return 'UNSAFE_MODAL'
+    if any('是否' in i.text or compact(i.text) in ('确定','确认','取消','ok','cancel','请选择奖励','选择奖励') for i in items if 300<i.center[0]<1100 and 150<i.center[1]<650):return 'UNSAFE_MODAL'
+    text=compact(' '.join(i.text for i in items))
+    if any(t in text for t in ('skip','跳过剧情','跳过故事','奖励选择','二选一')):return 'UNSAFE_STORY_OR_REWARD'
+    state=classify(detect,items)
+    if state=='BLOCKED':return 'UNSAFE_MODAL'
+    if state in ('ROOT_CATEGORY','FREE_QUEST','MAP','DAILY','GATE','EVENT','FIRST_PART','WEEKLY'):return state
+    if getattr(detect,'isBattleFormation',lambda:False)():return 'FORMATION'
+    if getattr(detect,'isChooseFriend',lambda:False)():return 'FRIEND'
+    from fgoEventProgress import _eventMap,_eventAnchor
+    if detect.isMainInterface() and (_eventMap(items) or _eventAnchor(items)):return 'EVENT'
+    if detect.isMainInterface() and any(i.score>=.85 and i.center[1]<95 and compact(i.text) in ('编队','强化','召唤','商店','好友','个人空间') for i in items):return 'MENU_PAGE'
+    return 'UNKNOWN'
+
+@boundedNavigation(120)
+def normalizeToTerminalCN():
+    guard=NavigationGuard('返回终端',120,80);guard.stage('NORMALIZE','正在返回终端…')
+    for _ in range(6):
+        guard.check();d=Detect(.3);items=labels(d);state=safeMenuPageCN(d,items)
+        logger.debug(f'normalize state={state}, labels={[(i.text,i.box,i.score) for i in items]}')
+        if state.startswith('UNSAFE'):guard.fail(f'{state}：战斗/剧情/奖励或确认弹窗不能自动退出')
+        if terminal:=expandedMenuCN(d,items):
+            # On the terminal itself its menu tile is disabled. Close the
+            # positively confirmed menu, then require the full home proof.
+            target=unique(items,'关闭',(1080,420,1280,520)) if unique(items,'通知',(0,0,200,95)) else terminal
+            fgoDevice.device.touch(target.center)
+            result=guard.wait(lambda frame:terminalHomeCN(frame,labels(frame)),'strict terminal home',25)
+            publish('已回到终端');return result
+        if terminalHomeCN(d,items):publish('已回到终端');return d
+        if state in ('FORMATION','FRIEND'):
+            back=unique(items,'返回',(0,0,200,95))
+            if not back:guard.fail(f'{state} 返回按钮未唯一确认')
+            fgoDevice.device.touch(back.center);schedule.sleep(1);continue
+        if state not in ('FREE_QUEST','MAP','DAILY','GATE','EVENT','FIRST_PART','WEEKLY','MENU_PAGE'):guard.fail(f'{state}：未确认可安全退出的菜单页')
+        menu=unique(items,'菜单',(1080,590,1280,710))
+        if not menu or not d.isMainInterface():guard.fail('MENU文字与模板未共同确认')
+        fgoDevice.device.touch(menu.center)
+        guard.wait(lambda frame:bool(expandedMenuCN(frame,labels(frame))),'expanded MENU',15)
+    guard.fail('安全返回链超过上限')
 
 def _read(guard):
     guard.check();d=Detect(.2);items=labels(d);state=classify(d,items)

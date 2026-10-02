@@ -272,6 +272,9 @@ def openDailyPageCN():
             if not moved:raise ScriptStop('已到导航列表顶部，但未唯一识别迦勒底之门/每日任务入口')
             lastTap=None
         else:
+            if action=='daily':
+                from fgoNavigation import publish
+                publish('正在打开每日任务…')
             if action=='close':
                 if closes>=DAILY_NAV_CLOSE_LIMIT:raise ScriptStop('返回主界面超过 3 层导航上限，已停止')
                 closes+=1
@@ -306,6 +309,8 @@ def scanDailyQuestsCN():
     if not _isDailyPage(detect):
         openDailyPageCN()
         detect=Detect(.3)
+    from fgoNavigation import publish
+    publish('正在扫描每日任务…')
     detect,_=_scrollToTop();entries=[];screens=0;stalled=0
     deadline=time.monotonic()+DAILY_SCROLL_TIMEOUT
     while time.monotonic()<deadline:
@@ -347,7 +352,16 @@ def scanDailyQuestsCN():
         _scrollToTop()
         entries=combined
     if not entries:raise ScriptStop('未校验到完整每日任务卡片，请检查识别日志')
+    publish(f'已确认 {len(entries)} 项任务')
     return {'type':'DailyQuestScan','entries':entries,'screens':screens,'complete':True,'reachedEnd':True,'restoredTop':True,'reverified':len(missing)}
+
+def refreshDailyQuestsCN():
+    from fgoNavigation import normalizeToTerminalCN,publish
+    if XDetect.region!='CN':raise ScriptStop('每日任务刷新仅支持国服中文界面')
+    normalizeToTerminalCN()
+    publish('正在进入迦勒底之门…')
+    openDailyPageCN()
+    return scanDailyQuestsCN()
 
 def gotoDailyEntry(entry):
     """Return to top, then scroll the matched dynamic title into the first visible quest-card row."""
