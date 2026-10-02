@@ -98,7 +98,7 @@ class DropTests(unittest.TestCase):
         from fgoDetect import OCR
         im=self.image([0]);x,y,r,b=drop.slotRect(0,True)
         with patch.object(OCR.EN,'ocr_single_line',return_value=('+7,400',.95)):result=drop.detect(im,[('QP',im[y:b,x:r].copy(),'currency')],False)
-        self.assertEqual(result.recognized,{});self.assertEqual(result.currency,{'QP':7400});self.assertEqual(result.recognized_slots,1)
+        self.assertEqual(result.recognized,{});self.assertEqual(result.currency,{'QP':7400,'baseQP':7400});self.assertEqual(result.recognized_slots,1)
     def test_ambiguous_match_stays_unknown(self):
         im=self.image([1]);x,y,r,b=drop.slotRect(1,True);icon=im[y:b,x:r].copy();result=drop.detect(im,[('A',icon,'material'),('B',icon,'material')],False);self.assertEqual(result.unknown_slots,1)
     def test_recognized_and_unknown_sum_to_occupied(self):

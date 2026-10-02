@@ -33,13 +33,14 @@ from fgoFuse import fuse
 from fgoImageListener import ImageListener
 from fgoFriendTemplates import FriendTemplateStore
 from fgoProgress import BattleCompleted
+from fgoPaths import paths
 from fgoLogging import getLogger,logit
 from fgoMetadata import servantData,missionMat,missionTag,missionQuest
 from fgoReishift import reishift
 from fgoSchedule import ScriptStop,schedule
 logger=getLogger('Kernel')
 
-friendImg=FriendTemplateStore('fgoImage/friend/')
+friendImg=FriendTemplateStore(paths.dataRoot/'fgoImage'/'friend')
 mailImg=ImageListener('fgoImage/mail/')
 mutex=threading.Lock()
 def serialize(lock):

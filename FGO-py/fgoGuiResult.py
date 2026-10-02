@@ -1,7 +1,7 @@
 """Scrollable run summary; unknown drops are always explicitly disclosed."""
 from pathlib import Path
 import os
-from fgoDrop import templateIconPath
+from fgoDrop import templateIconPath,currencyLabel
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QDialog,QVBoxLayout,QLabel,QTableWidget,QTableWidgetItem,QHeaderView,QPushButton,QApplication
@@ -20,10 +20,10 @@ class RunResultDialog(QDialog):
         for row,(name,count) in enumerate(items.items()):
             icon=QTableWidgetItem();path=templateIconPath(name)
             if path:icon.setIcon(QIcon(str(path)))
-            self.table.setItem(row,0,icon);self.table.setItem(row,1,QTableWidgetItem(QApplication.translate('material',name)));self.table.setItem(row,2,QTableWidgetItem(str(count)))
+            self.table.setItem(row,0,icon);self.table.setItem(row,1,QTableWidgetItem(QApplication.translate('material',currencyLabel(name))));self.table.setItem(row,2,QTableWidgetItem(str(count)))
         unknown=stats.get('unknown_slots',len(result.get('unknownDrops',[])));self.unknownLabel=QLabel(f'未识别掉落：{unknown} 格。未识别项未计入上述数量。'+('\n掉落诊断失败，结果可能不完整。' if stats.get('incomplete') or stats.get('errors') else ''));self.unknownLabel.setWordWrap(True);layout.addWidget(self.unknownLabel)
         folders=[Path(p) for p in stats.get('debug_dirs',[]) if Path(p).is_dir()]
-        if stats.get('currency_amount_unknown'):self.unknownLabel.setText(self.unknownLabel.text()+f'\n另有 {stats["currency_amount_unknown"]} 格货币金额无法确认，未计入表格数量。')
+        if stats.get('currency_amount_unknown'):self.unknownLabel.setText(self.unknownLabel.text()+f'\nQP掉落（金额未知）×{stats["currency_amount_unknown"]}；未计入QP总额。')
         self.debugButton=QPushButton('打开掉落诊断目录');self.debugButton.setVisible(bool(folders));layout.addWidget(self.debugButton)
         if folders:self.debugButton.clicked.connect(lambda:os.startfile(str(folders[0].parent)))
         close=QPushButton('关闭');close.clicked.connect(self.accept);layout.addWidget(close)

@@ -3,9 +3,10 @@ from dataclasses import dataclass,field,asdict
 from pathlib import Path
 import json,time,re,cv2,numpy as np
 from fgoLogging import getLogger
+from fgoPaths import paths
 logger=getLogger('Drop')
 debug=False
-debugRoot=Path(__file__).resolve().parents[2]/'logs'/'drops'
+debugRoot=paths.logRoot/'drops'
 
 @dataclass
 class DropResult:
@@ -25,26 +26,39 @@ class DropResult:
 def templates():
     from fgoMetadata import materialImg
     out=[(name,image,'material') for name,image in materialImg if image is not None]
-    root=Path(__file__).with_name('fgoImage')/'drop'
+    root=paths.dataRoot/'fgoImage'/'drop'
     for manifest in sorted(root.glob('**/*.json')):
         try:
             info=json.loads(manifest.read_text(encoding='utf-8'))
             image=manifest.with_suffix('.png')
             pixels=cv2.imread(str(image))
-            if pixels is not None and info.get('verified') and info.get('name'):out.append((info['name'],pixels,info.get('category','local')))
+            if pixels is not None and verifiedManifest(info):
+                row=(info['name'],pixels,info.get('category','local'))
+                out.append(row+(info,) if info.get('match_region')=='card' or info.get('dropped_qp') else row)
         except Exception as e:logger.warning(f'Ignored invalid drop manifest {manifest.name}: {e}')
     return out
 
+def verifiedManifest(info):
+    if not info.get('verified') or not info.get('name'):return False
+    if info.get('verification')=='external':
+        evidence=info.get('evidence',{})
+        return bool(evidence.get('visual',{}).get('passed') and evidence.get('visual',{}).get('reference_url') and evidence.get('semantic',{}).get('passed') and evidence.get('semantic',{}).get('source_url'))
+    return True # Existing manually confirmed local and legacy manifests.
+
 def templateIconPath(name):
-    root=Path(__file__).with_name('fgoImage')
+    if name in ('baseQP','droppedQP'):name='QP'
+    root=paths.dataRoot/'fgoImage'
     legacy=root/'material'/f'{name}.png'
     if legacy.is_file():return legacy
     for manifest in sorted((root/'drop').glob('**/*.json')):
         try:
             info=json.loads(manifest.read_text(encoding='utf-8'));pixels=manifest.with_suffix('.png')
-            if info.get('verified') and info.get('name')==name and pixels.is_file():return pixels
+            if verifiedManifest(info) and info.get('name')==name and pixels.is_file():return pixels
         except (OSError,ValueError):continue
     return None
+
+def currencyLabel(name):
+    return {'baseQP':'基础QP','droppedQP':'敌人掉落QP'}.get(name,name)
 
 def slotRect(i,inner=False):
     if inner:return(176+i%7*137,110+i//7*142,253+i%7*137,187+i//7*142)
@@ -63,22 +77,28 @@ def detect(image,candidates=None,saveDebug=None):
         if not occupied(crop):continue
         result.occupied_slots+=1
         x0,y0,x1,y1=slotRect(i,True);icon=image[y0:y1,x0:x1];matches=[]
-        for name,template,category in candidates:
-            if category=='currency' and i!=0:continue
+        for candidate in candidates:
+            name,template,category=candidate[:3];info=candidate[3] if len(candidate)>3 else {}
+            if category=='currency' and i!=0 and not info.get('dropped_qp'):continue
             if i==0 and category!='currency':continue
-            if template.shape[0]>icon.shape[0] or template.shape[1]>icon.shape[1]:continue
-            score=float(cv2.minMaxLoc(cv2.matchTemplate(icon,template,cv2.TM_SQDIFF_NORMED))[0])
+            pixels=crop[:118,:118] if info.get('match_region')=='card' else icon
+            if template.shape[0]>pixels.shape[0] or template.shape[1]>pixels.shape[1]:continue
+            score=float(cv2.minMaxLoc(cv2.matchTemplate(pixels,template,cv2.TM_SQDIFF_NORMED))[0])
             if np.isfinite(score) and score<.02:matches.append((name,score,category))
         identities={name for name,_,_ in matches}
         row={'slot':i,'rect':slotRect(i),'inner_rect':slotRect(i,True),'matches':[(n,s) for n,s,_ in matches],'name':None}
         if len(identities)==1:
             name,score,category=min(matches,key=lambda m:m[1]);row.update(name=name,score=score,category=category)
             if category=='currency':
+                currencyName='baseQP' if name=='QP' and i==0 else 'droppedQP' if name=='QP' else name
                 # Currency amount is separate from the legacy material dict.
                 from fgoDetect import OCR
                 text,confidence=OCR.EN.ocr_single_line(image[y+91:y+119,x+15:x+113])
+                row['amount_ocr']={'text':str(text),'confidence':float(confidence)}
                 number=re.fullmatch(r'\+?\s*(\d{1,3}(?:,\d{3})+|\d+)',str(text).strip())
-                if number and float(confidence)>=.85:result.currency[name]=int(number[1].replace(',',''))
+                if number and float(confidence)>=.85:
+                    amount=int(number[1].replace(',',''));result.currency[currencyName]=result.currency.get(currencyName,0)+amount
+                    if name=='QP':result.currency['QP']=result.currency.get('QP',0)+amount
                 else:row['amount_unknown']=True;result.currency_amount_unknown+=1
             else:result.recognized[name]=result.recognized.get(name,0)+1
             result.recognized_slots+=1
