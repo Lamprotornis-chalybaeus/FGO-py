@@ -10,7 +10,8 @@ import fgoPaths
 class LicensePathTests(unittest.TestCase):
     def setUp(self):
         self.previous=os.getcwd();self.temp=tempfile.TemporaryDirectory(prefix='FGO license spaces ')
-        self.root=Path(self.temp.name)
+        # Windows CI may expose the temp root through an 8.3 alias.
+        self.root=Path(self.temp.name).resolve()
         self.cwd=[self.root/'Unrelated cwd one',self.root/'Unrelated cwd two']
         for folder in self.cwd:folder.mkdir()
     def tearDown(self):os.chdir(self.previous);self.temp.cleanup()
