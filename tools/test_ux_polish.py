@@ -63,6 +63,13 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(run.result['startedBattles'],1)
         self.assertEqual(run.result['completedAttempts'],0)
         self.assertEqual(q[0].repetitions,20)
+    def test_live_normalize_failure_before_main_keeps_queue_and_zero_counts(self):
+        q=[queueModule.QuestTask.metadata((1,0,2,0),1)]
+        run=queueModule.GuiQueueOperation(q,self.settings())
+        with patch.object(kernel,'goto',side_effect=kernel.ScriptStop('Navigation failed [NORMALIZE]: UNKNOWN')):
+            with self.assertRaisesRegex(kernel.ScriptStop,'NORMALIZE'):run()
+        self.assertEqual(q[0].repetitions,1)
+        self.assertEqual([run.result[k] for k in ('startedBattles','completedAttempts','wins','defeats')],[0]*4)
     def test_worker_owns_queue_mutation(self):
         ids=[];q=[queueModule.QuestTask.metadata((1,0,2,0),2)];run=queueModule.GuiQueueOperation(q,self.settings(),onProgress=lambda p:ids.append(threading.get_ident()))
         with patch.object(kernel,'Operation',SimulatedRunner):
