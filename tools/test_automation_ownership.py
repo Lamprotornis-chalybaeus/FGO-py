@@ -64,6 +64,17 @@ class GuiWorkerTests(unittest.TestCase):
         with patch.object(gui.QMessageBox,'warning',return_value=QMessageBox.StandardButton.Yes),patch.object(gui.QMessageBox,'information') as notice,patch.object(kernel.schedule,'stop') as stop:
             self.assertFalse(self.window.askQuit())
         self.window.worker.join.assert_called_once_with(timeout=5);stop.assert_called_once_with('Quit');notice.assert_called_once()
+    def test_worker_retains_owner_through_scheduler_cleanup(self):
+        self.window.config['notifyEnable']=False
+        thread=Mock();thread.is_alive.return_value=False
+        with patch.object(self.window,'isDeviceAvailable',return_value=True),patch.object(gui,'Thread',return_value=thread) as factory:
+            self.window.runFunc(lambda:None)
+        with patch.object(kernel.schedule,'reset',side_effect=lambda:self.assertTrue(kernel.automationOwner.isOwner())):
+            factory.call_args.kwargs['target']()
+        self.assertFalse(kernel.automationOwner.isOwner())
+    def test_unprepared_main_exposes_zero_statistics(self):
+        result=kernel.Main().result
+        self.assertEqual([result[k] for k in ('startedBattles','completedAttempts','wins','defeats')],[0]*4)
     def test_completion_clears_active_flag(self):
         self.window.result=None
         self.window._runActive=True;self.window.funcEnd(('Done',gui.QSystemTrayIcon.MessageIcon.Information))

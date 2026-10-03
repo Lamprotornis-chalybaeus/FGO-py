@@ -66,6 +66,7 @@ class BattleFlow:
     def __init__(self,reader,schedule,*,trace=None,clock=time.monotonic,poll=.2,network=None):
         self.reader,self.schedule,self.clock=reader,schedule,clock
         self.poll=poll;self.trace=trace or FlowTrace(clock=clock)
+        self.deadline=None
         self.network=network;self.observation=None;self.detect=None;self.networkHandled=False
     def observe(self):
         self.schedule.checkStop();self.schedule.checkSuspend()
@@ -78,6 +79,8 @@ class BattleFlow:
         return self.observation
     def action(self,name,callback):
         self.schedule.checkStop()
+        if self.deadline is not None and self.clock()>=self.deadline:
+            self.fail(FlowTimeout,'TIMEOUT battle total before input',(),0)
         self.trace.record(self.observation.state if self.observation else BattleFlowState.UNKNOWN,
             self.observation.evidence if self.observation else (),name)
         return callback()
@@ -87,6 +90,7 @@ class BattleFlow:
         raise exception(f'Flow {kind}: from={summary["from"]} expected={"|".join(summary["expected"])} elapsed={elapsed:.2f} last_input={summary["last_input"]} evidence={evidence}')
     def waitForFlowState(self,expected,*,timeout,transition_name,allowed_intermediate=(),on_skill_error=None):
         expected=set(expected);allowed=set(allowed_intermediate);start=self.clock()
+        if self.deadline is not None:timeout=min(timeout,max(0,self.deadline-start))
         skillHandled=self.trace.last_input=='skill_cast_failed_recover'
         self.waitFrom=self.trace.state
         while self.clock()-start<timeout:

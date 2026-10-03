@@ -10,7 +10,7 @@ datas.extend((str(file),'.') for file in app.glob('*.qm'))
 datas.extend((str(file),'.') for file in app.glob('*.ts'))
 datas.extend([(str(app/'fgoIcon.ico'),'.'),(str(app/'fgoTeamup.ini'),'.'),(str(repo/'LICENSE'),'.')])
 for package in ('airtest','pponnxcr','pulp'):datas.extend(collect_data_files(package))
-modules=['fgoProgress','fgoFriendTemplates','fgoGuiFriendTemplates','fgoGuiResult','fgoNavigation','fgoQuickQuest','fgoEventProgress','fgoPaths']
+modules=['fgoBattleFlow','fgoFlowTrace','fgoAutomation','fgoProgress','fgoFriendTemplates','fgoGuiFriendTemplates','fgoGuiResult','fgoNavigation','fgoQuickQuest','fgoEventProgress','fgoPaths']
 originalPath=os.environ.get('PATH','')
 # DLL discovery must not inherit Codex's unrelated Poppler/ICU toolchain.
 # Qt uses Windows' native unversioned ICU API, not Poppler's versioned ICU.

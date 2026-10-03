@@ -46,7 +46,7 @@ class WaitTests(unittest.TestCase):
     def test_timeout_retains_last_input_and_expected(self):
         flow,clock=self.make([frame('FORMATION'),frame()])
         flow.observe();flow.action('start_quest',lambda:None)
-        with self.assertRaisesRegex(FlowTimeout,'expected=TURN_BEGIN.*last_input=start_quest'):
+        with self.assertRaisesRegex(FlowTimeout,'from=FORMATION expected=TURN_BEGIN.*last_input=start_quest'):
             flow.waitForFlowState({S.TURN_BEGIN},timeout=1,transition_name='start')
         self.assertGreaterEqual(clock.now,1)
     def test_trace_only_logs_changes_and_actions(self):

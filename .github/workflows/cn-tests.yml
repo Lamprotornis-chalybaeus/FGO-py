@@ -2,7 +2,7 @@ name: CN portable tests
 
 on:
   push:
-    branches: [cn-dev]
+    branches: [cn-dev, fix/battle-cycle-state-machine]
   pull_request:
   workflow_dispatch:
 

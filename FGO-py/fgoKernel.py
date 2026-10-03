@@ -556,7 +556,8 @@ class Battle:
         self.flow=getattr(self,'flow',None) or BattleFlow(lambda:Detect(0,0),schedule,
             trace=FlowTrace(root=paths.logRoot/'flow'),network=handleNetworkError)
         flow=self.flow;S=BattleFlowState
-        deadline=flow.clock()+self.totalTimeout;progress=flow.clock();last=None
+        deadline=flow.clock()+self.totalTimeout;progress=flow.clock()
+        previousDeadline=flow.deadline;flow.deadline=deadline
         token=_activeBattleFlow.set(flow)
         try:
             while flow.clock()<deadline:
@@ -582,10 +583,11 @@ class Battle:
                     flow.fail(FlowTimeout,'UNEXPECTED battle state',{S.TURN_BEGIN,S.BATTLE_RESULT,S.DEFEATED},flow.clock()-progress)
                 if flow.clock()-progress>=self.unknownTimeout:
                     flow.fail(FlowTimeout,'TIMEOUT battle progress',{S.TURN_BEGIN,S.BATTLE_RESULT,S.DEFEATED},flow.clock()-progress)
-                last=state
                 schedule.sleep(.2)
             flow.fail(FlowTimeout,'TIMEOUT battle total',{S.BATTLE_RESULT,S.DEFEATED},self.totalTimeout)
-        finally:_activeBattleFlow.reset(token)
+        finally:
+            flow.deadline=previousDeadline
+            _activeBattleFlow.reset(token)
     @property
     def result(self):
         return{
@@ -604,6 +606,7 @@ class Main:
         self.battleClass=battleClass
         self.friendPolicy=friendPolicy
         self.friendMaxRefresh=friendMaxRefresh
+        self.resetCounters()
     def makeFlow(self):
         return BattleFlow(lambda:Detect(0,0),schedule,
             trace=FlowTrace(root=paths.logRoot/'flow'),network=handleNetworkError)
@@ -674,7 +677,9 @@ class Main:
         event=BattleCompleted(self.completedAttempts,self.startedBattles,self.defeats,battleResult['turn'],battleResult['time'],won,deepcopy(self.result),deepcopy(battleResult))
         if self.onProgress:self.onProgress(event)
     def prepare(self):
-        self.start=time.time();self.flow=self.makeFlow()
+        self.resetCounters();self.flow=self.makeFlow()
+    def resetCounters(self):
+        self.start=time.time()
         self.startedBattles=self.battleCount=self.completedAttempts=0
         self.wins=self.defeats=self.defeated=self.stoppedDefeats=0
         self.battleTurn=0;self.battleTime=0;self.completionReason=''

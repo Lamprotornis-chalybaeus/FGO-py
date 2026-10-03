@@ -183,10 +183,13 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         if not self.isDeviceAvailable():return
         self._runActive=True
         def f():
+            lease=fgoKernel.automationOwner.claim();owned=False
+            self.result=None
             try:
+                lease.__enter__();owned=True
                 self.result=None
                 self.signalFuncBegin.emit()
-                with fgoKernel.automationOwner.claim():self.result=func()
+                self.result=func()
             except fgoKernel.ScriptStop as e:
                 if 'Stop Appointment Effected' in str(e):
                     logger.info('Reached appointed battle limit')
@@ -199,11 +202,17 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
                 msg=(repr(e),QSystemTrayIcon.MessageIcon.Critical)
             else:msg=('Done',QSystemTrayIcon.MessageIcon.Information)
             finally:
-                self.result=getattr(func,'result',self.result)
-                fgoKernel.fuse.reset()
-                fgoKernel.schedule.reset()
-                if self.config.notifyEnable and not all(success:=[i(msg[0])for i in self.notifier]):logger.critical(f'Notify post failed {success.count(False)} of {len(success)}')
-                self.signalFuncEnd.emit(msg)
+                try:
+                    if owned:
+                        self.result=getattr(func,'result',self.result)
+                        fgoKernel.fuse.reset()
+                        fgoKernel.schedule.reset()
+                        if self.config.notifyEnable and not all(success:=[i(msg[0])for i in self.notifier]):logger.critical(f'Notify post failed {success.count(False)} of {len(success)}')
+                finally:
+                    # Keep ownership through global scheduler cleanup. A denied
+                    # worker must never reset the active worker's schedule.
+                    if owned:lease.__exit__(None,None,None)
+                    self.signalFuncEnd.emit(msg)
         try:
             self.worker=Thread(target=f,name=f'{getattr(func,"__qualname__",repr(func).replace(" ",""))}')
             self.worker.start()

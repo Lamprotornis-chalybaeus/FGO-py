@@ -55,6 +55,23 @@ class BattleWaitTests(unittest.TestCase):
             with self.assertRaises(kernel.BattlePhaseEnded) as error:kernel.waitForTurnBegin('skill')
             self.assertEqual(error.exception.state,S.DEFEATED)
         finally:kernel._activeBattleFlow.reset(token)
+    def test_skill_wait_cannot_exceed_whole_battle_deadline(self):
+        clock=Clock();turns=[]
+        def turn(n):
+            turns.append(n);clock.now=.8
+            kernel.waitForTurnBegin('nested skill',timeout=45)
+        battle=kernel.Battle(turnClass=lambda:turn);battle.totalTimeout=1
+        battle.flow=self.flow(clock,lambda:frame('TURN_BEGIN' if not turns else 'LOADING'))
+        with patch.object(kernel,'schedule',clock):
+            with self.assertRaises(FlowTimeout):battle()
+        self.assertLess(clock.now,1.3);self.assertIsNone(battle.flow.deadline)
+    def test_persistent_skill_modal_is_not_repeatedly_clicked(self):
+        clock=Clock();flow=self.flow(clock,lambda:frame('SKILL_CAST_FAILED'));token=kernel._activeBattleFlow.set(flow)
+        try:
+            with patch.object(kernel.fgoDevice.device,'press') as press:
+                with self.assertRaises(FlowTimeout):kernel.waitForTurnBegin('skill',timeout=1)
+            press.assert_called_once_with('J')
+        finally:kernel._activeBattleFlow.reset(token)
     def test_user_stop_checked_on_each_poll(self):
         class StoppedClock(Clock):
             def checkStop(self):
