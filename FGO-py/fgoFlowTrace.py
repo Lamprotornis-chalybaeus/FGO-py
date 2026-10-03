@@ -36,9 +36,9 @@ class FlowTrace:
         safe={'TURN_BEGIN','BATTLE_RESULT','FORMATION','CONTINUE','DEFEATED','LOADING'}
         if image is not None and getattr(image,'shape',None)==(720,1280,3):
             self.frames=(self.frames+[(image.copy(),getattr(state,'name',str(state)) in safe)])[-2:]
-    def failure(self,kind,expected,elapsed,evidence=()):
-        summary={'kind':kind,'from':self.state,'expected':sorted(getattr(s,'name',str(s)) for s in expected),'elapsed':elapsed,'last_input':self.last_input,'evidence':tuple(evidence),'battle_sequence':self.battle_sequence}
-        self.logger.error('[FLOW][%s] from=%s expected=%s elapsed=%.2f last_input=%s evidence=%s',kind,self.state,'|'.join(summary['expected']),elapsed,self.last_input,tuple(evidence))
+    def failure(self,kind,expected,elapsed,evidence=(),from_state=None):
+        summary={'kind':kind,'from':from_state or self.state,'last_observed':self.state,'expected':sorted(getattr(s,'name',str(s)) for s in expected),'elapsed':elapsed,'last_input':self.last_input,'evidence':tuple(evidence),'battle_sequence':self.battle_sequence}
+        self.logger.error('[FLOW][%s] from=%s expected=%s elapsed=%.2f last_input=%s evidence=%s',kind,summary['from'],'|'.join(summary['expected']),elapsed,self.last_input,tuple(evidence))
         if self.root is None:return summary
         try:
             folder=self.root/datetime.fromtimestamp(self.wall()).strftime('%Y%m%d-%H%M%S-%f')

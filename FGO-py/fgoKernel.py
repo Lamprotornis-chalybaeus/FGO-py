@@ -31,6 +31,8 @@ from fgoDetect import Detect,XDetect,OCR
 from fgoFuse import fuse
 from fgoImageListener import ImageListener
 from fgoFriendTemplates import FriendTemplateStore
+from fgoBattleFlow import BattleCycle,BattleFlow,BattleFlowState,FriendSelectionResult,FlowTimeout
+from fgoFlowTrace import FlowTrace
 from fgoProgress import BattleCompleted
 from fgoPaths import paths
 from fgoLogging import getLogger,logit
@@ -59,6 +61,10 @@ def guardian():
             fgoDevice.device.press('K')
         prev=XDetect.cache
 threading.Thread(target=guardian,daemon=True,name='Guardian').start()
+def handleNetworkError(detect):
+    if not detect.isNetworkError():return False
+    fgoDevice.device.press('K')
+    return True
 class Farming:
     def __init__(self):
         self.logger=getLogger('Farming')
@@ -561,90 +567,89 @@ class Main:
         self.battleClass=battleClass
         self.friendPolicy=friendPolicy
         self.friendMaxRefresh=friendMaxRefresh
+    def makeFlow(self):
+        return BattleFlow(lambda:Detect(0,0),schedule,
+            trace=FlowTrace(root=paths.logRoot/'flow'),network=handleNetworkError)
+    def press(self,key):return fgoDevice.device.press(key)
+    def verifyQuest(self):
+        if XDetect.region=='CN':fgoNavigation.checkCurrentQuest()
+    def checkSpecialModal(self):schedule.checkKizunaReisou()
+    def prepareFormation(self,flow):
+        S=BattleFlowState
+        if not flow.observation or flow.observation.state!=S.FORMATION:
+            flow.fail(FlowTimeout,'UNVERIFIED formation',{S.FORMATION},0)
+        if self.teamIndex and flow.detect.getTeamIndex()+1!=self.teamIndex:
+            flow.action('select_existing_team',lambda:fgoDevice.device.press(chr(0x70+self.teamIndex-1)))
+            deadline=flow.clock()+10
+            while flow.clock()<deadline:
+                obs=flow.observe()
+                if obs.state==S.FORMATION and flow.detect.getTeamIndex()+1==self.teamIndex:break
+                schedule.sleep(.2)
+            else:flow.fail(FlowTimeout,'TIMEOUT team selection',{S.FORMATION},10)
+        if self.autoFormation:
+            flow.action('existing_auto_formation',lambda:fgoDevice.device.perform('\xDEL ',(1000,1500,1000)))
+            obs=flow.observe()
+            if obs.state==S.TURN_BEGIN:return
+            if obs.state!=S.FORMATION:
+                return flow.waitForFlowState({S.TURN_BEGIN},timeout=90,transition_name='auto formation start')
+        flow.action('start_quest',lambda:self.press(' '))
+        return flow.waitForFlowState({S.TURN_BEGIN},timeout=90,transition_name='formation start',allowed_intermediate={S.FORMATION,S.STARTING,S.LOADING})
     @serialize(mutex)
     def __call__(self,questIndex=0,battleTotal=None):
         self.prepare()
-        while True:
-            self.battleProc=self.battleClass()
-            navGuard=fgoNavigation.NavigationGuard('battle preparation',180,300)
-            for _ in navGuard.steps():
-                if Detect(.3,.3).isMainInterface():
-                    if self.battleCount==battleTotal:return logger.info('Operation Unit Completed')
-                    if XDetect.region=='CN':fgoNavigation.checkCurrentQuest()
-                    fgoDevice.device.press('84L'[questIndex])
-                    questIndex=0
-                    if Detect(1.2).isBattleContinue():fgoDevice.device.press('K')
-                    elif Detect.cache.isSkillCastFailed():
-                        fgoDevice.device.press('J')
-                        return logger.info('No Storm Pot')
-                    if Detect(.7,.3).isApEmpty()and not self.eatApple():return logger.info('Ap Empty')
-                    self.chooseFriend()
-                    navGuard.wait(lambda d:d.isBattleFormation(),'battle formation')
-                    if self.teamIndex and Detect.cache.getTeamIndex()+1!=self.teamIndex:fgoDevice.device.perform('\x70\x71\x72\x73\x74\x75\x76\x77\x78\x79\x7A\x7B\x7C\x7D\x7E'[self.teamIndex-1],(1000,))
-                    if self.autoFormation:fgoDevice.device.perform('\xDEL ',(1000,1500,1000))
-                    fgoDevice.device.perform(' M ',(2000,2000,10000))
-                    break
-                elif Detect.cache.isBattleContinue():
-                    if self.battleCount==battleTotal:
-                        fgoDevice.device.press('F')
-                        return logger.info('Operation Unit Completed')
-                    fgoDevice.device.press('K')
-                    if Detect(.7,.3).isApEmpty()and not self.eatApple():return logger.info('Ap Empty')
-                    self.chooseFriend()
-                    schedule.sleep(6)
-                    break
-                elif Detect.cache.isSkillCastFailed():
-                    fgoDevice.device.press('J')
-                    return logger.info('No Storm Pot')
-                elif Detect.cache.isTurnBegin():break
-                elif Detect.cache.isAddFriend():fgoDevice.device.perform('X',(300,))
-                elif Detect.cache.isSpecialDropSuspended():fgoDevice.device.perform('\x1B',(300,))
-                fgoDevice.device.press('\xBB')
-            self.battleCount+=1
-            logger.info(f'Battle {self.battleCount}')
+        cycle=BattleCycle(self,self.flow)
+        # Every iteration has bounded preparation, battle and settlement phases.
+        while battleTotal is None or self.completedAttempts<battleTotal:
+            if not cycle.prepare(questIndex):return
+            questIndex=0
+            self.startedBattles+=1;self.battleCount=self.startedBattles
+            self.flow.trace.battle_sequence=self.startedBattles
+            logger.info(f'[BATTLE] #{self.startedBattles} confirmed TURN_BEGIN')
+            self.battleProc=self.battleClass();self.battleProc.flow=self.flow
             try:won=self.battleProc()
             except ScriptStop:
-                # Preserve the upstream immediate stop on defeat: no revive or
-                # result inputs. Record the confirmed outcome for display only.
                 if getattr(self.battleProc,'defeated',False):
-                    self.stoppedDefeats+=1
-                    self.completedAttempts+=1
+                    self.recordCompleted(False,self.battleProc.result)
                     self.emitCompleted(False,self.battleProc.result)
                 raise
-            if won:
-                battleResult=self.battleProc.result
-                self.battleTurn+=battleResult['turn']
-                self.battleTime+=battleResult['time']
-                fgoDevice.device.perform(' '*10,(400,)*10)
-            else:
-                battleResult=self.battleProc.result
-                self.defeated+=1
-                fgoDevice.device.perform('CIK',(500,500,500))
-            self.completedAttempts+=1
-            self.emitCompleted(won,battleResult)
-            schedule.checkStopLater()
+            battleResult=self.battleProc.result
+            self.recordCompleted(won,battleResult)
+            if not won:
+                self.emitCompleted(False,battleResult)
+                raise ScriptStop('Battle Defeated; no revival input')
+            try:cycle.settleBattleResult()
+            finally:self.emitCompleted(won,battleResult)
+            try:schedule.checkStopLater()
+            except ScriptStop as error:
+                if 'Stop Appointment Effected' not in str(error):raise
+                self.completionReason='Done: reached appointed battle limit'
+                cycle.finish();return
+        self.completionReason='Done: reached battle limit'
+        cycle.finish()
+    def recordCompleted(self,won,battleResult):
+        self.completedAttempts+=1
+        if won:
+            self.wins+=1;self.battleTurn+=battleResult['turn'];self.battleTime+=battleResult['time']
+        else:self.defeats+=1
+        self.defeated=self.defeats
+        assert self.wins+self.defeats==self.completedAttempts<=self.startedBattles
     def emitCompleted(self,won,battleResult):
-        event=BattleCompleted(self.completedAttempts,self.battleCount,self.defeated+self.stoppedDefeats,battleResult['turn'],battleResult['time'],won,deepcopy(self.result),deepcopy(battleResult))
+        event=BattleCompleted(self.completedAttempts,self.startedBattles,self.defeats,battleResult['turn'],battleResult['time'],won,deepcopy(self.result),deepcopy(battleResult))
         if self.onProgress:self.onProgress(event)
     def prepare(self):
-        self.start=time.time()
-        self.battleCount=0
-        self.completedAttempts=0
-        self.stoppedDefeats=0
-        self.battleTurn=0
-        self.battleTime=0
-        self.defeated=0
+        self.start=time.time();self.flow=self.makeFlow()
+        self.startedBattles=self.battleCount=self.completedAttempts=0
+        self.wins=self.defeats=self.defeated=self.stoppedDefeats=0
+        self.battleTurn=0;self.battleTime=0;self.completionReason=''
     @property
     def result(self):return{
-            'type':'Main',
-            'time':time.time()-self.start,
-            'battle':self.battleCount,
-            'completedAttempts':self.completedAttempts,
-            'progressDefeats':self.defeated+self.stoppedDefeats,
-            'progressWins':self.completedAttempts-self.defeated-self.stoppedDefeats,
-            'defeated':self.defeated,
-            'turnPerBattle':self.battleTurn/(self.battleCount-self.defeated)if self.battleCount-self.defeated else 0,
-            'timePerBattle':self.battleTime/(self.battleCount-self.defeated)if self.battleCount-self.defeated else 0,
+            'type':'Main','time':time.time()-self.start,
+            'battle':self.completedAttempts,'startedBattles':self.startedBattles,
+            'completedAttempts':self.completedAttempts,'wins':self.wins,'defeats':self.defeats,
+            'progressDefeats':self.defeats,'progressWins':self.wins,'defeated':self.defeats,
+            'turnPerBattle':self.battleTurn/self.wins if self.wins else 0,
+            'timePerBattle':self.battleTime/self.wins if self.wins else 0,
+            'completionReason':self.completionReason,
         }
     @logit(logger,logging.INFO)
     def eatApple(self):
@@ -655,7 +660,8 @@ class Main:
         logger.warning('Eat Apple')
         return self.appleTotal+1
     @logit(logger,logging.INFO)
-    def chooseFriend(self):
+    def chooseFriend(self,flow=None):
+        flow=flow or self.makeFlow()
         policy=self.friendPolicy or 'prefer'  # CLI retains template-first behavior, now with a finite bound.
         maxRefresh=max(0,min(10,int(self.friendMaxRefresh)))
         hasTemplates=bool(friendImg.flush())
@@ -664,55 +670,66 @@ class Main:
         refreshes=0
         nextRefreshAt=0
         continueWait=None
-        deadline=time.time()+180
+        deadline=time.monotonic()+180
         navGuard=fgoNavigation.NavigationGuard('friend selection',180,300)
         for _ in navGuard.steps():
             for _ in navGuard.steps():
-                if time.time()>deadline:raise ScriptStop('等待助战列表超时，请检查游戏界面')
-                detect=Detect(0,.3)
+                if time.monotonic()>deadline:raise ScriptStop('等待助战列表超时，请检查游戏界面')
+                flow.observe();detect=flow.detect
                 if XDetect.region=='CN' and detect.isBattleContinue():
                     if continueWait is None:
                         continueWait=time.monotonic()
                         fgoNavigation.publish('等待连续出击确认结束；尚未选择助战…')
                     if time.monotonic()-continueWait>=15:
                         raise ScriptStop('连续出击确认未消失；未选择助战，未进入下一场')
+                    schedule.sleep(.2)
                     continue
                 continueWait=None
                 if detect.isChooseFriend():break
-                if detect.isBattleFormation():return
+                if detect.isBattleFormation():return FriendSelectionResult(False,refreshes=refreshes)
                 if detect.isNoFriend():
                     if refreshes>=maxRefresh:raise ScriptStop(f'助战列表为空，已达到最大刷新次数 {maxRefresh}')
-                    schedule.sleep(max(0,nextRefreshAt-time.time()))
+                    schedule.sleep(max(0,nextRefreshAt-time.monotonic()))
                     fgoDevice.device.perform('\xBAK',(500,1000))
                     refreshes+=1
-                    nextRefreshAt=time.time()+10
+                    nextRefreshAt=time.monotonic()+10
+                schedule.sleep(.2)
             else:
                 raise ScriptStop('等待助战列表未达到预期状态；未选择助战，未进入下一场')
             # The refresh budget limits refreshes, not the initial list scan.
-            if policy=='first' or not hasTemplates:return fgoDevice.device.press('8')
+            if policy=='first' or not hasTemplates:
+                flow.action('select_first_support',lambda:self.press('8'))
+                return self.finishFriendSelection(flow,None,refreshes)
             matched=False
             scrollGuard=fgoNavigation.NavigationGuard('friend list scan',60,100)
             for _ in scrollGuard.steps():
-                if time.time()>deadline:raise ScriptStop('扫描助战列表超时')
+                if time.monotonic()>deadline:raise ScriptStop('扫描助战列表超时')
                 for name,img in friendImg.orderedItems():
                     if pos:=Detect.cache.findFriend(img):
-                        fgoDevice.device.touch(pos)
+                        flow.action('select_support_template',lambda:fgoDevice.device.touch(pos))
                         ClassicTurn.friendInfo=(lambda r:(lambda p:[
                             [[-1 if p[i*4+j]=='X'else int(p[i*4+j],16)for j in range(4)]for i in range(3)],
                             [-1 if p[i+12]=='X'else int(p[i+12],16)for i in range(2)],
                         ])(r.group())if r else[[[-1,-1,-1,-1],[-1,-1,-1,-1],[-1,-1,-1,-1]],[-1,-1]])(re.match('([0-9X]{3}[0-9A-FX]){3}[0-9X][0-9A-FX]$',name.replace('-','')[-14:].upper()))
-                        return name
+                        return self.finishFriendSelection(flow,name,refreshes)
                 if Detect.cache.isFriendListEnd():break
                 scrollGuard.progress(fgoNavigation.stableCrop(Detect.cache,(13,166,1233,710)))
                 fgoDevice.device.swipe((400,600),(400,200))
                 Detect(.4)
             action=fgoFriendPolicy.decision(policy,matched,hasTemplates,refreshes,maxRefresh)
-            if action=='first':return fgoDevice.device.press('8')
+            if action=='first':
+                flow.action('select_first_support',lambda:self.press('8'))
+                return self.finishFriendSelection(flow,None,refreshes)
             if action=='stop':raise ScriptStop(f'未找到符合模板的助战（已刷新 {refreshes} 次）')
-            schedule.sleep(max(0,nextRefreshAt-time.time()))
+            schedule.sleep(max(0,nextRefreshAt-time.monotonic()))
             fgoDevice.device.perform('\xBAK',(500,1000))
             refreshes+=1
-            nextRefreshAt=time.time()+10
+            nextRefreshAt=time.monotonic()+10
+    def finishFriendSelection(self,flow,template,refreshes):
+        flow.waitForFlowState({BattleFlowState.FORMATION},timeout=30,
+            transition_name='friend selection exit',allowed_intermediate={BattleFlowState.FRIEND})
+        return FriendSelectionResult(True,template,refreshes)
+
 class Operation(list,Main):
     apLookup={i:j for i,j in zip(missionQuest,missionMat[0])}
     def __init__(self,data=(),*args,wait=True,**kwargs):
@@ -729,10 +746,10 @@ class Operation(list,Main):
             goto(quest)
             if self.wait:schedule.sleep(max(self.apLookup.get(quest,23)*times-Detect.cache.getAp(),0)*300)
             fgoNavigation.publish('导航完成，正在进入关卡并选择助战…')
-            before=self.battleCount
-            try:super().__call__(quest[-1],self.battleCount+times if times else None)
+            before=self.completedAttempts
+            try:super().__call__(quest[-1],self.completedAttempts+times if times else None)
             finally:
-                remaining=max(0,times-(self.battleCount-before)) if times else 0
+                remaining=max(0,times-(self.completedAttempts-before)) if times else 0
                 if times and not remaining:del self[0]
                 else:self[0]=(quest,remaining)
             if not times or remaining:return
