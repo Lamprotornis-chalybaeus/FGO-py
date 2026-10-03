@@ -220,6 +220,7 @@ class GuiStartupTests(unittest.TestCase):
         self.assertEqual(sequence,['construct','show','schedule','event-loop','connect'])
         exit.assert_called_once_with(0)
 
+    @unittest.skipUnless(os.environ.get('FGO_RUN_LOCAL_INTEGRATION')=='1','local deployment launcher check; explicit opt-in required')
     def test_launcher_has_exactly_one_gui_invocation_and_no_start_wait(self):
         script=(ROOT.parent/'start-fgo-py.cmd').read_text(encoding='utf-8').lower()
         lines=[line.strip() for line in script.splitlines() if line.strip()]

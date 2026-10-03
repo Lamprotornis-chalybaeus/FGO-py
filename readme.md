@@ -1,3 +1,13 @@
+## CN development branch
+
+**Development / Experimental CN branch** — main development: `cn-dev`.
+
+CN navigation fixes, dynamic daily quests, GUI improvements, bounded navigation and additional regression tests. Repeated-farming transitions remain under investigation; this is not a stable release.
+
+[Development status](docs/CN-DEV-STATUS.md) · [Known issues](docs/CURRENT-ISSUES.md) · [Testing](docs/TESTING.md) · [Fork notice](CN-FORK-NOTICE.md)
+
+---
+
 > 已添加日服支持  
 > 已添加美服支持([#111](https://github.com/hgjazhgj/FGO-py/pull/111))  
 > 已添加台服支持([#114](https://github.com/hgjazhgj/FGO-py/pull/114))  

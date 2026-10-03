@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
 jobs:
   main:
+    # Retained upstream workflow; disabled in CN forks.
+    if: github.repository == 'hgjazhgj/FGO-py'
     name: Draft Exectuable
     runs-on: windows-latest
     steps:

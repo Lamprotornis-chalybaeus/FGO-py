@@ -98,7 +98,9 @@ class QuickFarmTests(unittest.TestCase):
         import subprocess,tempfile
         source=ROOT/'FGO-py'/'fgoMainWindow.ui'
         generated=ROOT/'FGO-py'/'fgoMainWindow.py'
-        uic=Path(r'C:\FGO-Automation\FGO-py\.venv\Scripts\pyside6-uic.exe')
+        import sysconfig
+        uic=Path(sysconfig.get_path('scripts'))/'pyside6-uic.exe'
+        self.assertTrue(uic.is_file(),'pyside6-uic must be installed with the CI-pinned PySide6')
         with tempfile.TemporaryDirectory() as folder:
             output=Path(folder)/'generated.py'
             subprocess.run([str(uic),str(source),'-o',str(output)],check=True,cwd=str(ROOT/'FGO-py'))

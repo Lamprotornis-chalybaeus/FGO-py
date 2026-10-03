@@ -3,6 +3,8 @@ on:
   workflow_dispatch:
 jobs:
   main:
+    # Retained upstream workflow; disabled in CN forks.
+    if: github.repository == 'hgjazhgj/FGO-py'
     name: Gitee Mirror on Push
     runs-on: ubuntu-latest
     steps:

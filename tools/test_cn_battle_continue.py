@@ -9,14 +9,15 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import unittest
 from pathlib import Path
 
 import cv2
 import numpy as np
 
-REPO = Path(r"C:\FGO-Automation\FGO-py")
+REPO = Path(__file__).resolve().parents[1]
 APP = REPO / "FGO-py"
-LOGS = Path(r"C:\FGO-Automation\logs")
+LOGS = Path(os.environ.get("FGO_PRIVATE_FIXTURE_DIR", str(REPO.parent / "logs")))
 os.chdir(APP)
 sys.path.insert(0, str(APP))
 from fgoConst import PACKAGE_TO_REGION  # noqa: E402
@@ -78,14 +79,14 @@ def synthetic_template(template, rect):
     return image
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--continue-screenshot", type=Path, default=LOGS / "battle-continue-cn-20261001.png")
     parser.add_argument("--friend-request-screenshot", type=Path, default=LOGS / "diag-after-result.png")
     parser.add_argument("--main-screenshot", type=Path, default=LOGS / "diag-nav-2.png")
     parser.add_argument("--daily-list-screenshot", type=Path, default=LOGS / "diag-nav-4.png")
     parser.add_argument("--battle-screenshot", type=Path, default=LOGS / "diag-battle-sample.png")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     popup = load_image(args.continue_screenshot)
     d = detector(popup)
@@ -123,6 +124,13 @@ def main():
     assert_state("upstream AP-empty template probe", ap_probe, battle_continue=False, skill_error=False, ap_empty=True)
 
     print("PASS: CN-specific change; JP/NA/TW templates and shared skill/AP templates are untouched.")
+
+
+@unittest.skipUnless(os.environ.get('FGO_RUN_LOCAL_INTEGRATION')=='1',
+                     'private saved-screenshot integration check; explicit opt-in required')
+class LocalContinueScreenshotTests(unittest.TestCase):
+    def test_private_saved_screenshots(self):
+        main([])
 
 
 if __name__ == "__main__":

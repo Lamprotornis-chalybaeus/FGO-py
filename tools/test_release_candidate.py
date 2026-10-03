@@ -62,6 +62,7 @@ class PortableTests(unittest.TestCase):
         text=(APP/'fgoBuildCN.spec').read_text(encoding='utf-8');self.assertIn('COLLECT(',text);self.assertIn('console=False',text)
         for name in ('fgoProgress','fgoFriendTemplates','fgoGuiResult','fgoNavigation','fgoEventProgress'):self.assertIn(name,text)
         self.assertNotIn('fgoConfig.json',text)
+    @unittest.skipUnless(os.environ.get('FGO_RUN_LOCAL_INTEGRATION')=='1','local deployment launcher check; explicit opt-in required')
     def test_pythonw_launcher_does_not_run_cmd(self):
         text=(APP.parents[1]/'start-fgo-py-gui.vbs').read_text(encoding='utf-8');self.assertIn('pythonw.exe',text);self.assertNotIn('cmd.exe',text);self.assertIn('1, False',text)
     def test_build_does_not_bundle_foreign_icu(self):
