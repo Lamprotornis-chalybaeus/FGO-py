@@ -2,6 +2,7 @@ from fgoAndroid import Android
 from fgoDetect import setup
 from fgoLogging import getLogger
 from fgoSchedule import schedule
+from fgoAutomation import noteDeviceInput
 logger=getLogger('Device')
 
 helpers={}
@@ -37,16 +38,23 @@ class Device:
         else:
             self.I=self.O=self.createDevice(name)
             self.name=self.I.name
-        self.press=self.I.press
-        self.swipe=self.I.swipe
         setup(self.O)
     @staticmethod
     def createDevice(name,*args,**kwargs):
         return Android(convert(name),*args,**kwargs)
     @property
     def available(self):return self.I.available and(self.I is self.O or self.O.available)
+    def press(self,key):
+        noteDeviceInput('press '+repr(key))
+        return self.I.press(key)
+    def swipe(self,begin,end):
+        noteDeviceInput('swipe '+repr((begin,end)))
+        return self.I.swipe(begin,end)
     def perform(self,pos,wait):[(self.press(i),schedule.sleep(j*.001))for i,j in zip(pos,wait)]
-    def touch(self,pos,wait=0):(self.I.touch(pos),schedule.sleep(wait*.001))
+    def touch(self,pos,wait=0):
+        noteDeviceInput('touch '+repr(pos))
+        self.I.touch(pos)
+        schedule.sleep(wait*.001)
     enumDevices=Android.enumDevices
     def __getattr__(self,attr):return getattr(self.I,attr,getattr(self.O,attr))
 

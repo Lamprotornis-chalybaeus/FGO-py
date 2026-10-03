@@ -54,6 +54,20 @@ class WaitTests(unittest.TestCase):
         flow.observe();flow.action('choose_friend',lambda:None)
         flow.waitForFlowState({S.FORMATION},timeout=5,transition_name='friend exit',allowed_intermediate={S.FRIEND})
         self.assertEqual([(r.from_state,r.to_state,r.action) for r in flow.trace.records],[('UNKNOWN','FRIEND',''),('FRIEND','FRIEND','choose_friend'),('FRIEND','FORMATION','')])
+    def test_network_unknown_flicker_does_not_repeat_confirmation(self):
+        calls=[];flow,clock=self.make([frame('NETWORK_ERROR'),frame(),frame('NETWORK_ERROR')])
+        flow.network=lambda detect:calls.append('K')
+        with self.assertRaises(FlowTimeout):flow.waitForFlowState({S.TURN_BEGIN},timeout=1,transition_name='network')
+        self.assertEqual(calls,['K'])
+    def test_second_network_episode_after_confirmed_turn_can_recover(self):
+        calls=[];flow,clock=self.make([frame('NETWORK_ERROR'),frame('TURN_BEGIN'),frame('NETWORK_ERROR'),frame('TURN_BEGIN')])
+        flow.network=lambda detect:calls.append('K')
+        for _ in range(2):flow.waitForFlowState({S.TURN_BEGIN},timeout=1,transition_name='network')
+        self.assertEqual(calls,['K','K'])
+    def test_skill_unknown_flicker_does_not_repeat_confirmation(self):
+        calls=[];flow,clock=self.make([frame('SKILL_CAST_FAILED'),frame(),frame('SKILL_CAST_FAILED')])
+        with self.assertRaises(FlowTimeout):flow.waitForFlowState({S.TURN_BEGIN},timeout=1,transition_name='skill',on_skill_error=lambda:calls.append('J'))
+        self.assertEqual(calls,['J'])
     def test_ambiguous_state_stops_before_any_action(self):
         flow,_=self.make([frame('FORMATION','TURN_BEGIN')])
         with self.assertRaises(AmbiguousState):flow.observe()

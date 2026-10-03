@@ -1,6 +1,7 @@
 """One logical automation owner; guardian is notification-only."""
 from contextlib import contextmanager
 import threading
+from contextvars import ContextVar
 from fgoSchedule import ScriptStop
 
 NETWORK_ERROR_EVENT=threading.Event()
@@ -22,3 +23,9 @@ class AutomationOwner:
             self._lock.release()
 
 automationOwner=AutomationOwner()
+
+# Optional per-worker journal; no observer changes input behavior.
+INPUT_OBSERVER=ContextVar('device_input_observer',default=None)
+def noteDeviceInput(action):
+    observer=INPUT_OBSERVER.get()
+    if observer:observer(action)

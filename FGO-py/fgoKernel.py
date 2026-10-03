@@ -24,7 +24,7 @@ import logging,numpy,pulp,random,re,time,threading
 from copy import deepcopy
 from contextvars import ContextVar
 import fgoDevice
-from fgoAutomation import automationOwner,NETWORK_ERROR_EVENT,GUARDIAN_STOP
+from fgoAutomation import automationOwner,NETWORK_ERROR_EVENT,GUARDIAN_STOP,INPUT_OBSERVER
 import fgoFriendPolicy
 import fgoNavigation
 from itertools import permutations
@@ -559,11 +559,13 @@ class Battle:
         deadline=flow.clock()+self.totalTimeout;progress=flow.clock()
         previousDeadline=flow.deadline;flow.deadline=deadline
         token=_activeBattleFlow.set(flow)
+        inputToken=INPUT_OBSERVER.set(flow.deviceInput)
+        lastProgressState=flow.trace.state
         try:
             while flow.clock()<deadline:
                 observation=flow.observe();state=observation.state
                 if state==S.TURN_BEGIN:
-                    self.turn+=1;progress=flow.clock()
+                    self.turn+=1;progress=flow.clock();lastProgressState=state.name
                     try:self.turnProc(self.turn)
                     except BattlePhaseEnded as ended:state=ended.state
                 if state==S.BATTLE_RESULT:
@@ -582,11 +584,12 @@ class Battle:
                 elif state not in {S.TURN_BEGIN,S.UNKNOWN,S.LOADING,S.BATTLE_RESULT,S.DEFEATED}:
                     flow.fail(FlowTimeout,'UNEXPECTED battle state',{S.TURN_BEGIN,S.BATTLE_RESULT,S.DEFEATED},flow.clock()-progress)
                 if flow.clock()-progress>=self.unknownTimeout:
-                    flow.fail(FlowTimeout,'TIMEOUT battle progress',{S.TURN_BEGIN,S.BATTLE_RESULT,S.DEFEATED},flow.clock()-progress)
+                    flow.fail(FlowTimeout,'TIMEOUT battle progress',{S.TURN_BEGIN,S.BATTLE_RESULT,S.DEFEATED},flow.clock()-progress,from_state=lastProgressState)
                 schedule.sleep(.2)
-            flow.fail(FlowTimeout,'TIMEOUT battle total',{S.BATTLE_RESULT,S.DEFEATED},self.totalTimeout)
+            flow.fail(FlowTimeout,'TIMEOUT battle total',{S.BATTLE_RESULT,S.DEFEATED},self.totalTimeout,from_state=lastProgressState)
         finally:
             flow.deadline=previousDeadline
+            INPUT_OBSERVER.reset(inputToken)
             _activeBattleFlow.reset(token)
     @property
     def result(self):

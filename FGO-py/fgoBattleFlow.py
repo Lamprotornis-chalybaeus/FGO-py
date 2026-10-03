@@ -72,6 +72,7 @@ class BattleFlow:
         self.schedule.checkStop();self.schedule.checkSuspend()
         self.detect=self.reader()
         self.observation=observeBattleFlow(self.detect,clock=self.clock)
+        if self.observation.state not in {BattleFlowState.NETWORK_ERROR,BattleFlowState.UNKNOWN,BattleFlowState.LOADING}:self.networkHandled=False
         self.trace.frame(getattr(self.detect,'im',None),self.observation.state)
         self.trace.record(self.observation.state,self.observation.evidence)
         if self.observation.state==BattleFlowState.AMBIGUOUS:
@@ -84,9 +85,16 @@ class BattleFlow:
         self.trace.record(self.observation.state if self.observation else BattleFlowState.UNKNOWN,
             self.observation.evidence if self.observation else (),name)
         return callback()
-    def fail(self,exception,kind,expected,elapsed):
+    def deviceInput(self,action):
+        # Observe input names/coordinates, never game/account data.
+        self.schedule.checkStop()
+        if self.deadline is not None and self.clock()>=self.deadline:
+            self.fail(FlowTimeout,'TIMEOUT battle total before input',(),0)
+        self.trace.record(self.observation.state if self.observation else BattleFlowState.UNKNOWN,
+            self.observation.evidence if self.observation else (),action)
+    def fail(self,exception,kind,expected,elapsed,*,from_state=None):
         evidence=self.observation.evidence if self.observation else ()
-        summary=self.trace.failure(kind,expected,elapsed,evidence,getattr(self,'waitFrom',None))
+        summary=self.trace.failure(kind,expected,elapsed,evidence,from_state or getattr(self,'waitFrom',None))
         raise exception(f'Flow {kind}: from={summary["from"]} expected={"|".join(summary["expected"])} elapsed={elapsed:.2f} last_input={summary["last_input"]} evidence={evidence}')
     def waitForFlowState(self,expected,*,timeout,transition_name,allowed_intermediate=(),on_skill_error=None):
         expected=set(expected);allowed=set(allowed_intermediate);start=self.clock()
@@ -95,17 +103,16 @@ class BattleFlow:
         self.waitFrom=self.trace.state
         while self.clock()-start<timeout:
             observation=self.observe();state=observation.state
-            if state in expected:return observation
+            if state in expected:self.waitFrom=None;return observation
             if state==BattleFlowState.NETWORK_ERROR and self.network:
                 if not self.networkHandled:
                     self.action('network_error_confirm',lambda:self.network(self.detect));self.networkHandled=True
             else:
-                self.networkHandled=False
                 if state==BattleFlowState.SKILL_CAST_FAILED and on_skill_error:
                     if not skillHandled:self.action('skill_cast_failed_recover',on_skill_error);skillHandled=True
                 elif state not in allowed|{BattleFlowState.UNKNOWN,BattleFlowState.LOADING}:
                     self.fail(FlowTimeout,'UNEXPECTED_STATE '+transition_name,expected,self.clock()-start)
-                else:skillHandled=False
+                elif state not in {BattleFlowState.UNKNOWN,BattleFlowState.LOADING}:skillHandled=False
             self.schedule.sleep(self.poll)
         self.fail(FlowTimeout,'TIMEOUT '+transition_name,expected,self.clock()-start)
 
