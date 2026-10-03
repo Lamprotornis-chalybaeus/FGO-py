@@ -96,7 +96,7 @@ class DailyQuestTests(unittest.TestCase):
         # the true bottom. Animated background pixels are deliberately ignored.
         thumbs=[]
         for index in range(12):thumbs.extend([(100+index*20,210+index*20),(120+index*20,230+index*20)])
-        thumbs.extend([(462,575),(462,575),(462,575),(99,213),(99,213),(99,213)])
+        thumbs.extend([(462,575),(462,575),(462,575),(462,575),(99,213),(99,213),(99,213),(99,213)])
         with patch.object(daily.XDetect,'region','CN'), \
              patch.object(daily,'Detect',return_value=detect), \
              patch.object(daily,'_isDailyPage',return_value=True), \

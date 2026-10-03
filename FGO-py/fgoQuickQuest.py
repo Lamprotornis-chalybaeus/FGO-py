@@ -11,7 +11,9 @@ DAILY_SCAN_TIMEOUT=600
 DAILY_NAV_SCROLL_LIMIT=10
 DAILY_NAVIGATION_LIMIT=20
 DAILY_NAV_CLOSE_LIMIT=3
-DAILY_TITLE_REGION=(750,105,1120,610)
+# Locate title/AP rows in the left text column; full titles are read separately.
+# Exclude timers, infinity icons and recommendation text from expensive OCR.
+DAILY_TITLE_REGION=(750,105,910,610)
 DAILY_VIEWPORT=(620,140,1120,675)
 DIFFICULTIES=('极级','超级','上级','中级','初级')
 
@@ -57,7 +59,12 @@ def _readDailyTitle(image,center):
         if gray:line=cv2.cvtColor(cv2.cvtColor(line,cv2.COLOR_BGR2GRAY),cv2.COLOR_GRAY2BGR)
         name,score=OCR.ZHS.ocr_single_line(line)
         if score>=.85 and _valid_daily_title(name):reads.setdefault(_title_key(name),[]).append(name)
-    for height,gray in ((20,False),(32,False),(28,True)):read(height,gray)
+    for height,gray in ((20,False),(32,False)):read(height,gray)
+    winners=[names for names in reads.values() if len(names)>=2]
+    # Two equal first reads have the same outcome as the old three-read vote:
+    # one additional vote cannot create a second winning pair.
+    if len(winners)==1:return _format_title(winners[0][0],_difficulty(winners[0][0]))
+    read(28,True)
     winners=[names for names in reads.values() if len(names)>=2]
     if not winners:
         # A broad line can drop a narrow glyph (弓). Re-read the same pixels
@@ -217,6 +224,15 @@ def _swipe(detect,toTop,distance=180):
 
 def _scrollToTop():
     detect=Detect(.2)
+    # The confirmed CN scrollbar supports direct dragging. This avoids dozens
+    # of short swipes on long lists; verify the endpoint, never assume success.
+    android=getattr(fgoDevice.device,'I',None)
+    if XDetect.region=='CN' and isinstance(android,fgoDevice.Android) and android.name and _isDailyPage(detect):
+        thumb=_scrollbar(detect.im)
+        if thumb[0]>105:
+            _menuSwipe((1258,sum(thumb)//2),(1258,100));schedule.sleep(.7)
+            detect=Detect(.2)
+            if not _isDailyPage(detect):raise ScriptStop('每日任务返回顶部时页面已变化，已停止')
     deadline=time.monotonic()+DAILY_SCROLL_TIMEOUT;stalled=0
     while time.monotonic()<deadline:
         thumb=_scrollbar(detect.im)
@@ -226,6 +242,25 @@ def _scrollToTop():
         if stalled>=3:raise ScriptStop('每日任务滚动条连续未向顶部移动，已停止定位')
         detect=after
     raise ScriptStop('每日任务列表返回顶部超时，已停止定位')
+
+def _observeDailyScanPage(detect,scrollIndex=0,toTop=False):
+    """Return both the verified entries and the frame after bounded recovery."""
+    from fgoNavigation import publish
+    try:return detect,_settledDailyEntriesAt(detect,scrollIndex)
+    except ScriptStop as error:
+        if '标题未通过双重校验' not in str(error):raise
+    # Repeating identical pixels cannot recover a clipped/aliased glyph. Move
+    # back into the already scanned overlap, never forward past unread cards.
+    for attempt in range(2):
+        if not _isDailyPage(detect):raise ScriptStop('每日任务标题复核时页面已变化，未发布列表')
+        _scrollbar(detect.im)
+        publish(f'正在调整每日任务标题位置复核：第 {scrollIndex+1} 屏，{attempt+1}/2…')
+        detect,_=_swipe(detect,not toTop,60)
+        if not _isDailyPage(detect):raise ScriptStop('每日任务标题复核时页面已变化，未发布列表')
+        try:return detect,_dailyEntriesAt(detect,scrollIndex)
+        except ScriptStop as error:
+            if '标题未通过双重校验' not in str(error):raise
+    raise ScriptStop(f'每日任务第 {scrollIndex+1} 屏换位复核仍未通过；未发布不完整列表')
 
 def _isDailyPage(detect):return _dailyHeader(detect)
 
@@ -363,13 +398,16 @@ def scanDailyQuestsCN():
     detect,_=_scrollToTop();entries=[];screens=0;stalled=0
     deadline=time.monotonic()+DAILY_SCAN_TIMEOUT
     while time.monotonic()<deadline:
+        detect,observed=_observeDailyScanPage(detect,screens)
         thumb=_scrollbar(detect.im)
-        entries.extend(_settledDailyEntriesAt(detect,screens));screens+=1
+        entries.extend(observed);screens+=1
         publish(f'正在扫描每日任务：第 {screens} 屏，已核验 {len(deduplicateDailyEntries(entries))} 项…')
         after,_=_swipe(detect,False,280);newThumb=_scrollbar(after.im)
         if thumb[1]>=574 and abs(newThumb[0]-thumb[0])<=1:
-            entries.extend(_settledDailyEntriesAt(after,screens));screens+=1
-            detect=after;break
+            detect,observed=_observeDailyScanPage(after,screens)
+            entries.extend(observed);screens+=1
+            if _scrollbar(detect.im)[1]>=574:break
+            stalled=0;continue
         stalled=stalled+1 if newThumb[0]<=thumb[0]+1 else 0
         if stalled>=3:raise ScriptStop('每日任务滚动条连续未向末端移动，未发布不完整列表')
         detect=after
@@ -380,12 +418,15 @@ def scanDailyQuestsCN():
     # partial OCR collection as complete.
     reverse=[];stalled=0;deadline=time.monotonic()+DAILY_SCAN_TIMEOUT
     while time.monotonic()<deadline:
-        reverse.extend(_settledDailyEntriesAt(detect,screens));screens+=1
+        detect,observed=_observeDailyScanPage(detect,screens,True)
+        reverse.extend(observed);screens+=1
         publish(f'正在返回校验每日任务：第 {screens} 屏…')
         thumb=_scrollbar(detect.im);after,_=_swipe(detect,True,280);newThumb=_scrollbar(after.im)
         if thumb[0]<=105 and abs(newThumb[0]-thumb[0])<=1:
-            reverse.extend(_settledDailyEntriesAt(after,screens));screens+=1
-            break
+            detect,observed=_observeDailyScanPage(after,screens,True)
+            reverse.extend(observed);screens+=1
+            if _scrollbar(detect.im)[0]<=105:break
+            stalled=0;continue
         stalled=stalled+1 if newThumb[0]>=thumb[0]-1 else 0
         if stalled>=3:raise ScriptStop('每日任务返回校验滚动没有进展，未发布列表')
         detect=after
