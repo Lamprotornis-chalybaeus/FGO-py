@@ -26,7 +26,7 @@ class FullDailyTests(unittest.TestCase):
     def test_broad_ocr_agreement_cannot_bypass_single_line_verification(self):
         spans=[item('每日替换搜集种火<枪·篇>极级',31,135,295,20),item('AP40',33,205,63,28)]
         title='每日替换搜集种火<枪·暗篇>极级'
-        with patch.object(daily.OCR.ZHS,'detect_and_ocr',return_value=spans),patch.object(daily.OCR.ZHS,'ocr_single_line',side_effect=[(title,.98),(title,.97)]):
+        with patch.object(daily.OCR.ZHS,'detect_and_ocr',return_value=spans),patch.object(daily.OCR.ZHS,'ocr_single_line',side_effect=[(title,.98),(title,.97),(title,.96)]):
             entries=daily._dailyEntriesAt(Frame())
         self.assertEqual([e.title for e in entries],['每日替换 搜集种火<枪·暗篇> 极级'])
 
@@ -47,7 +47,7 @@ class FullDailyTests(unittest.TestCase):
     def test_ap_row_recovers_only_a_twice_verified_actual_title(self):
         title='每日替换骑之修炼场超级'
         spans=[item('母日各换骑之修炼场 超级',31,135,280),item('AP40',33,205,65,28)]
-        with patch.object(daily.OCR.ZHS,'detect_and_ocr',return_value=spans),patch.object(daily.OCR.ZHS,'ocr_single_line',side_effect=[(title,.97),(title,.96)]):
+        with patch.object(daily.OCR.ZHS,'detect_and_ocr',return_value=spans),patch.object(daily.OCR.ZHS,'ocr_single_line',side_effect=[(title,.97),(title,.96),(title,.96)]):
             entries=daily._dailyEntriesAt(Frame())
         self.assertEqual([e.title for e in entries],['每日替换 骑之修炼场 超级'])
 
@@ -69,9 +69,9 @@ class FullDailyTests(unittest.TestCase):
             self.assertTrue(daily._scrollToTop()[1])
         self.assertEqual(swipe.call_count,2)
 
-    def test_malformed_and_partial_titles_are_not_added(self):
-        spans=[item('母日各换骑之修炼场 超级',780,170),item('之修炼场 超级',780,340),item('骑之修炼场 超级',780,500,220)]
-        entries=daily.parseDailyQuestEntries(spans,Frame().im)
+    def test_unverified_proposals_without_ap_are_not_actionable(self):
+        spans=[item('母日各换骑之修炼场 超级',780,170),item('之修炼场 超级',780,340),item('骑之修炼场 超级',780,500,220),item('AP40',780,570)]
+        entries=daily.parseDailyQuestEntries(spans,Frame().im,requireCardMetadata=True)
         self.assertEqual([e.title for e in entries],['骑之修炼场 超级'])
 
     def test_card_requires_its_own_ap_row(self):
@@ -96,7 +96,7 @@ class FullDailyTests(unittest.TestCase):
         def spans(x,title):return [item(title,781-x,469-105,295,20),item('AP40',784-x,539-105,63,28)]
         title='每日替换搜集种火<枪·暗篇>极级'
         with patch.object(daily.OCR.ZHS,'detect_and_ocr',side_effect=[spans(750,title),spans(740,title.replace('暗',''))]), \
-             patch.object(daily.OCR.ZHS,'ocr_single_line',side_effect=[(title,.96),(title,.98)]):
+             patch.object(daily.OCR.ZHS,'ocr_single_line',side_effect=[(title,.96),(title,.98),(title,.97)]):
             entries=daily._dailyEntriesAt(Frame())
         self.assertEqual([e.title for e in entries],['每日替换 搜集种火<枪·暗篇> 极级'])
 

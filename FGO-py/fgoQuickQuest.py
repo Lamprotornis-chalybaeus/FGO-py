@@ -7,6 +7,7 @@ from fgoSchedule import ScriptStop,schedule
 
 DAILY_CATEGORY='daily'
 DAILY_SCROLL_TIMEOUT=180
+DAILY_SCAN_TIMEOUT=600
 DAILY_NAV_SCROLL_LIMIT=10
 DAILY_NAVIGATION_LIMIT=20
 DAILY_NAV_CLOSE_LIMIT=3
@@ -29,13 +30,36 @@ class DailyQuestEntry:
 def _clean_text(text):
     return unicodedata.normalize('NFKC',str(text)).replace('\u3000',' ').strip()
 
-def _compact_title(text):return re.sub(r'\s+','',_clean_text(text))
+def _compact_title(text):
+    text=re.sub(r'\s+','',_clean_text(text))
+    # Normalize typography only; preserve class order and every title/difficulty.
+    return re.sub(r'([<〈《「【])([剑弓枪骑术杀狂暗])[·・‧]?([剑弓枪骑术杀狂暗])篇([>〉》」】])',
+                  lambda m:'<'+m[2]+'·'+m[3]+'篇>',text)
 
 def _title_key(text):return re.sub(r'^每日替换','',_compact_title(text)).casefold()
 
 def _valid_daily_title(text):
-    # Validate title grammar, never synthesize entries from a day/class schedule.
-    return bool(re.fullmatch(r'(?:每日替换)?(?:搜集种火(?:[<〈《「【].+?[>〉》」】])?|[剑弓枪骑术杀狂]之修炼场|打开宝物库之门)(?:极级|超级|上级|中级|初级)',_compact_title(text)))
+    # This is text hygiene, not a quest/class whitelist. Eligibility comes from
+    # the daily page, the title band, its AP row and independent crop agreement.
+    compact=re.sub(r'^每日替换','',_compact_title(text))
+    if not 3<=len(compact)<=64 or not re.search(r'[\u4e00-\u9fff]',compact):return False
+    if compact.startswith(('等级','推荐','职阶','AP','消耗','任务进度','任务进行度','关卡举办时间','每日任务','每日替换','之修炼场')):return False
+    return compact not in ('初级','中级','上级','超级','极级','关闭','菜单','完成','自由关卡')
+
+def _readDailyTitle(image,center):
+    # Upscaling the same crop is not independent: the recognizer resizes it
+    # back and can confidently repeat a wrong glyph (e.g. 术 -> 水/木).
+    # Use different vertical context and grayscale instead; never repair names
+    # from a class schedule or the requested target. Two of three must agree.
+    reads={}
+    for height,gray in ((20,False),(32,False),(28,True)):
+        y=int(round(center));line=image[y-height//2:y+height//2,775:1120]
+        if gray:line=cv2.cvtColor(cv2.cvtColor(line,cv2.COLOR_BGR2GRAY),cv2.COLOR_GRAY2BGR)
+        name,score=OCR.ZHS.ocr_single_line(line)
+        if score<.85 or not _valid_daily_title(name):continue
+        reads.setdefault(_title_key(name),[]).append(name)
+    winners=[names for names in reads.values() if len(names)>=2]
+    return _format_title(winners[0][0],_difficulty(winners[0][0])) if len(winners)==1 else None
 
 def _difficulty(text):
     compact=_compact_title(text)
@@ -86,7 +110,7 @@ def parseDailyQuestEntries(detections,screenshot,scrollIndex=0,offset=(0,0),minS
         parts=sorted(group['parts'],key=lambda row:row['rect'][0])
         raw=' '.join(part['text'] for part in parts)
         difficulty=_difficulty(raw)
-        if difficulty=='unknown' or not _valid_daily_title(raw):continue
+        if not _valid_daily_title(raw):continue
         if requireCardMetadata:
             # Only complete card titles with their AP row are actionable. Clipped
             # edge titles get another opportunity on the next overlapping page.
@@ -130,9 +154,7 @@ def _dailyEntriesAt(detect,scrollIndex=0,strict=True):
     x0,y0,x1,y1=DAILY_TITLE_REGION
     spans=OCR.ZHS.detect_and_ocr(detect.im[y0:y1,x0:x1],drop_score=.5)
     entries=parseDailyQuestEntries(spans,detect.im,scrollIndex,(x0,y0))
-    # A differently padded OCR crop must independently agree with the title.
-    spans2=OCR.ZHS.detect_and_ocr(detect.im[y0:y1,x0-10:x1+10],drop_score=.5)
-    verified={_title_key(e.title) for e in parseDailyQuestEntries(spans2,detect.im,scrollIndex,(x0-10,y0),requireCardMetadata=True)}
+    # Acceptance below still requires two local title reads plus the AP row.
     agreed=[]
     for entry in entries:
         y=entry.discovered_position[2]
@@ -143,17 +165,8 @@ def _dailyEntriesAt(detect,scrollIndex=0,strict=True):
             # verify the same visible card's AP label with the Latin model.
             apText,apScore=OCR.EN.ocr_single_line(detect.im[y+50:y+93,775:900])
             if apScore<.8 or not re.fullmatch(r'AP\d+',_compact_title(apText),re.I):continue
-        # Small glyphs can be lost in a multi-line OCR crop. Two tightly cropped
-        # single-line reads (native and 2x) must agree before correcting its title.
-        rects=[_span_rect(s,(x0,y0)) for s in spans if abs((_span_rect(s,(x0,y0))[1]+_span_rect(s,(x0,y0))[3])/2-entry.discovered_position[2])<=12]
-        if not rects:continue
-        left=min(r[0] for r in rects)-2;top=min(r[1] for r in rects)-2
-        right=max(r[2] for r in rects)+2;bottom=max(r[3] for r in rects)+2
-        line=detect.im[top:bottom,left:right]
-        text1,score1=OCR.ZHS.ocr_single_line(line)
-        text2,score2=OCR.ZHS.ocr_single_line(cv2.resize(line,None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC))
-        if min(score1,score2)>=.85 and _title_key(text1)==_title_key(text2) and _valid_daily_title(text1):
-            title=_format_title(text1,_difficulty(text1))
+        title=_readDailyTitle(detect.im,y)
+        if title:
             agreed.append(DailyQuestEntry(title,_quest_type(title),_difficulty(title),entry.screenshot_signature,entry.discovered_position))
     # An AP row well inside the viewport represents a complete card. Fail the
     # whole scan if its title is missing or disagrees; do not advertise a partial
@@ -164,12 +177,8 @@ def _dailyEntriesAt(detect,scrollIndex=0,strict=True):
         # Recover a title rejected/missed by multi-line OCR using the AP row on
         # that actual card. Read the fixed title band twice; never fill from a
         # schedule or from the requested quest name.
-        top=int(y)-90;bottom=int(y)-60
-        line=detect.im[top:bottom,775:1120]
-        text1,score1=OCR.ZHS.ocr_single_line(line)
-        text2,score2=OCR.ZHS.ocr_single_line(cv2.resize(line,None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC))
-        if min(score1,score2)>=.85 and _title_key(text1)==_title_key(text2) and _valid_daily_title(text1):
-            title=_format_title(text1,_difficulty(text1))
+        title=_readDailyTitle(detect.im,y-75)
+        if title:
             agreed.append(DailyQuestEntry(title,_quest_type(title),_difficulty(title),'',(int(scrollIndex),947,int(y)-75)))
     if strict and any(200<=y<=580 and not any(40<=y-e.discovered_position[2]<=105 for e in agreed) for y in apRows):raise ScriptStop('完整每日任务卡片的标题未通过双重校验；未发布扫描列表，请刷新重试')
     return agreed
@@ -192,9 +201,11 @@ def _menuSwipe(begin,end):
         with android.mutex:android.adb.shell('input touchscreen swipe '+' '.join(map(str,points))+' 350')
     else:fgoDevice.device.swipe(begin,end)
 
-def _swipe(detect,toTop):
+def _swipe(detect,toTop,distance=180):
     before=detect.im
-    _menuSwipe((950,240),(950,420)) if toTop else _menuSwipe((950,420),(950,240))
+    # Scan stride 280 retains overlap within the 390px title verification band.
+    start=240 if distance==180 else 210
+    _menuSwipe((950,start),(950,start+distance)) if toTop else _menuSwipe((950,start+distance),(950,start))
     schedule.sleep(.7)
     after=Detect(.2)
     return after,_viewportMoved(before,after.im)
@@ -302,6 +313,17 @@ def _open_chapter(chapter):
         fgoDevice.device.swipe((1000,600),(1000,200))
     raise ScriptStop(f'章节模板 {chapter} 搜索超限，已停止每日任务导航')
 
+def _settledDailyEntriesAt(detect,scrollIndex=0):
+    # Retry an OCR disagreement in place; never publish the partial frame.
+    from fgoLogging import getLogger
+    for attempt in range(3):
+        try:return _dailyEntriesAt(detect,scrollIndex)
+        except ScriptStop as error:
+            if '标题未通过双重校验' not in str(error) or attempt==2:raise
+            getLogger('QuickQuest').warning(f'Daily title disagreement at page {scrollIndex}; observation retry {attempt+1}/2')
+            schedule.sleep(.4);detect=Detect(.2)
+            if not _isDailyPage(detect):raise ScriptStop('每日任务标题重读时页面已变化，未发布列表')
+
 def scanDailyQuestsCN():
     """Scan overlapping, settled pages until the scrollbar confirms the bottom."""
     if XDetect.region!='CN':raise ScriptStop('每日任务 OCR 仅适配简体中文服务器')
@@ -312,13 +334,14 @@ def scanDailyQuestsCN():
     from fgoNavigation import publish
     publish('正在扫描每日任务…')
     detect,_=_scrollToTop();entries=[];screens=0;stalled=0
-    deadline=time.monotonic()+DAILY_SCROLL_TIMEOUT
+    deadline=time.monotonic()+DAILY_SCAN_TIMEOUT
     while time.monotonic()<deadline:
         thumb=_scrollbar(detect.im)
-        entries.extend(_dailyEntriesAt(detect,screens));screens+=1
-        after,_=_swipe(detect,False);newThumb=_scrollbar(after.im)
+        entries.extend(_settledDailyEntriesAt(detect,screens));screens+=1
+        publish(f'正在扫描每日任务：第 {screens} 屏，已核验 {len(deduplicateDailyEntries(entries))} 项…')
+        after,_=_swipe(detect,False,280);newThumb=_scrollbar(after.im)
         if thumb[1]>=574 and abs(newThumb[0]-thumb[0])<=1:
-            entries.extend(_dailyEntriesAt(after,screens));screens+=1
+            entries.extend(_settledDailyEntriesAt(after,screens));screens+=1
             detect=after;break
         stalled=stalled+1 if newThumb[0]<=thumb[0]+1 else 0
         if stalled>=3:raise ScriptStop('每日任务滚动条连续未向末端移动，未发布不完整列表')
@@ -328,12 +351,13 @@ def scanDailyQuestsCN():
     # Independently verify the list on the return trip. A single pass can miss
     # a cropped edge title or an AP label during animation; never label that
     # partial OCR collection as complete.
-    reverse=[];stalled=0;deadline=time.monotonic()+DAILY_SCROLL_TIMEOUT
+    reverse=[];stalled=0;deadline=time.monotonic()+DAILY_SCAN_TIMEOUT
     while time.monotonic()<deadline:
-        reverse.extend(_dailyEntriesAt(detect,screens));screens+=1
-        thumb=_scrollbar(detect.im);after,_=_swipe(detect,True);newThumb=_scrollbar(after.im)
+        reverse.extend(_settledDailyEntriesAt(detect,screens));screens+=1
+        publish(f'正在返回校验每日任务：第 {screens} 屏…')
+        thumb=_scrollbar(detect.im);after,_=_swipe(detect,True,280);newThumb=_scrollbar(after.im)
         if thumb[0]<=105 and abs(newThumb[0]-thumb[0])<=1:
-            reverse.extend(_dailyEntriesAt(after,screens));screens+=1
+            reverse.extend(_settledDailyEntriesAt(after,screens));screens+=1
             break
         stalled=stalled+1 if newThumb[0]>=thumb[0]-1 else 0
         if stalled>=3:raise ScriptStop('每日任务返回校验滚动没有进展，未发布列表')
@@ -371,7 +395,7 @@ def gotoDailyEntry(entry):
     if not _isDailyPage(detect):
         openDailyPageCN()
     detect,_=_scrollToTop()
-    deadline=time.monotonic()+DAILY_SCROLL_TIMEOUT;stalled=0
+    deadline=time.monotonic()+DAILY_SCAN_TIMEOUT;stalled=0
     while time.monotonic()<deadline:
         entries=_dailyEntriesAt(detect,strict=False)
         matches=[item for item in entries if _title_key(item.title)==_title_key(entry.title)]

@@ -218,7 +218,11 @@ class XDetectCN(XDetectBase):
         values=[tuple(map(int,match.groups())) for match in parsed]
         if values[0]!=values[1] or values[0][1]<=0:raise ScriptStop('CN AP识别失败：两次读数不一致或上限无效，已停止')
         return values[0][0]
-    def isBattleContinue(self):return self._compare(self.tmpl.BATTLECONTINUE,(455,85,835,144))
+    def isBattleContinue(self):
+        # White title glyphs alone also match the bright daily-list background.
+        # Require the same fixed dialog crop including its dark panel pixels.
+        rect=(455,85,835,144);template=self.tmpl.BATTLECONTINUE
+        return self._compare(template,rect) and self._compare((template[0],None),rect)
     @classmethod
     def saveWeeklyMissionDetailed(cls):
         lines=cls.ocr.ocrArea(cls._weeklyMission)
