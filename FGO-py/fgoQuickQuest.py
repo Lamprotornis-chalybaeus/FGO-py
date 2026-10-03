@@ -371,13 +371,15 @@ def scanDailyQuestsCN():
     missing={_title_key(e.title) for e in entries}^{_title_key(e.title) for e in reverse}
     if missing:
         from fgoLogging import getLogger
-        getLogger('QuickQuest').warning(f'Daily forward titles: {[e.title for e in entries]}; reverse titles: {[e.title for e in deduplicateDailyEntries(reverse)]}')
+        getLogger('QuickQuest').debug(f'Daily forward titles: {[e.title for e in entries]}; reverse titles: {[e.title for e in deduplicateDailyEntries(reverse)]}')
         # A return swipe can put a card at a clipped edge in every sampled frame.
         # Re-locate each discrepant title independently before accepting it. This
         # verifies actual presence and performs no quest/AP/battle click.
         combined=deduplicateDailyEntries(entries+reverse)
-        for entry in combined:
-            if _title_key(entry.title) in missing:gotoDailyEntry(entry)
+        discrepant=[entry for entry in combined if _title_key(entry.title) in missing]
+        for index,entry in enumerate(discrepant,1):
+            publish(f'正在重新核对遗漏项 {index}/{len(discrepant)}：{entry.title}…')
+            gotoDailyEntry(entry)
         _scrollToTop()
         entries=combined
     if not entries:raise ScriptStop('未校验到完整每日任务卡片，请检查识别日志')
