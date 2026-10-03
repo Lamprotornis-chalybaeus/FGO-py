@@ -101,6 +101,14 @@ class CycleTests(unittest.TestCase):
         with patch.object(kernel,'schedule',clock),patch.object(kernel.XDetect,'region','CN'),patch.object(kernel.friendImg,'flush',return_value=False),patch.object(kernel.fgoDevice.device,'touch',side_effect=touch),patch.object(kernel.fgoDevice.device,'press') as press:
             result=kernel.Main(friendPolicy='first').chooseFriend(flow)
         self.assertTrue(result.selected);self.assertEqual(inputs,[(650,300)]);press.assert_not_called()
+    def test_delayed_turn_after_timeout_requires_new_positive_observation(self):
+        s=Scenario(loading=91);run,flow,error=self.runScenario(s)
+        self.assertIsInstance(error,FlowTimeout);self.assertCounters(run,0,0,0,0)
+        s.now+=2;s.read();self.assertEqual(s.state,'TURN_BEGIN')
+        before=len(s.actions)
+        resumed,resumeFlow,error=self.runScenario(s)
+        self.assertIsNone(error);self.assertCounters(resumed,1,1,1,0)
+        self.assertFalse(any(state in ('QUEST_READY','FRIEND','FORMATION') for state,key in s.actions[before:]))
     def test_first_full_cycle(self):
         s=Scenario();run,flow,error=self.runScenario(s)
         self.assertIsNone(error);self.assertCounters(run,1,1,1,0)
