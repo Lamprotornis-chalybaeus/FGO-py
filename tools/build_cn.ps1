@@ -11,7 +11,7 @@ $PortableRoot=Join-Path $DistRoot 'FGO-py-CN'
 # an Explorer/current-directory handle cannot remove the installed candidate.
 $StagingRoot=Join-Path $ProjectRoot ('build\portable-staging-'+[guid]::NewGuid().ToString('N'))
 $BackupRoot=Join-Path $ProjectRoot ('build\user-data-'+[guid]::NewGuid().ToString('N'))
-$WritablePaths=@('config','logs','fgoLog','fgoTemp','fgoImage\friend\local','fgoImage\drop\local','fgoImage\friend\templates.json')
+$WritablePaths=@('config','logs','fgoLog','fgoTemp','fgoImage\friend\local','fgoImage\friend\templates.json')
 foreach ($RelativePath in $WritablePaths) {
     $ExistingPath=Join-Path $PortableRoot $RelativePath
     if (Test-Path -LiteralPath $ExistingPath) {
@@ -25,7 +25,7 @@ if ($LASTEXITCODE -ne 0) {throw 'PyInstaller build failed'}
 $StagedPortableRoot=Join-Path $StagingRoot 'FGO-py-CN'
 New-Item -ItemType Directory -Path $PortableRoot -Force | Out-Null
 Copy-Item -Path (Join-Path $StagedPortableRoot '*') -Destination $PortableRoot -Recurse -Force
-foreach ($Folder in @('logs','config','fgoLog','fgoTemp','fgoImage\friend\local','fgoImage\drop\local')) {New-Item -ItemType Directory -Path (Join-Path $PortableRoot $Folder) -Force | Out-Null}
+foreach ($Folder in @('logs','config','fgoLog','fgoTemp','fgoImage\friend\local')) {New-Item -ItemType Directory -Path (Join-Path $PortableRoot $Folder) -Force | Out-Null}
 foreach ($RelativePath in $WritablePaths) {
     $SavedPath=Join-Path $BackupRoot $RelativePath
     $TargetPath=Join-Path $PortableRoot $RelativePath
@@ -34,11 +34,11 @@ foreach ($RelativePath in $WritablePaths) {
 }
 $ConfigPath=Join-Path $PortableRoot 'config\fgoConfig.json'
 if (!(Test-Path -LiteralPath $ConfigPath)) {
-    $SafeDefaults=@{device='/bs5_Rvc64';farming=$false;closeToTray=$false;dropDebug=$false}
+    $SafeDefaults=@{device='/bs5_Rvc64';farming=$false;closeToTray=$false}
     [IO.File]::WriteAllText($ConfigPath,($SafeDefaults|ConvertTo-Json),[Text.UTF8Encoding]::new($false))
 }
 if ($CopyLocalTemplates) {
-    foreach ($RelativePath in @('fgoImage\friend\local','fgoImage\drop\local','fgoImage\friend\templates.json')) {
+    foreach ($RelativePath in @('fgoImage\friend\local','fgoImage\friend\templates.json')) {
         $SourcePath=Join-Path $ProjectRoot ('FGO-py\'+$RelativePath)
         $TargetPath=Join-Path $PortableRoot $RelativePath
         if (Test-Path -LiteralPath $SourcePath -PathType Container) {Copy-Item -Path (Join-Path $SourcePath '*') -Destination $TargetPath -Recurse -Force}

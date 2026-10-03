@@ -3,7 +3,7 @@ import unittest,runpy,tempfile,json,os,sys
 from pathlib import Path
 from unittest.mock import patch,Mock
 env=runpy.run_path(str(Path(__file__).with_name('test_ux_polish.py')))
-kernel=env['kernel'];APP=env['APP'];drop=env['drop'];np=env['np']
+kernel=env['kernel'];APP=env['APP'];np=env['np']
 import fgoNavigation as nav,fgoQuickQuest as daily
 from fgoPaths import resolvePaths
 
@@ -51,24 +51,6 @@ class TerminalTests(unittest.TestCase):
         for items in [[],[nav.Label('关闭',(75,23,143,62),.99),nav.Label('每日任务',(1000,1,1250,80),.99)],[nav.Label('关闭',(75,23,143,62),.99),nav.Label('关卡举办时间',(900,200,1200,230),.99)]]:
             with patch.object(nav.XDetect,'region','CN'):self.assertFalse(nav.cnFreeQuestReturn(frame,items))
 
-class VerificationTests(unittest.TestCase):
-    def manifest(self):return dict(name='剑之辉石',verified=True,verification='external',evidence=dict(visual=dict(passed=True,reference_url='https://media.fgo.wiki/icon'),semantic=dict(passed=True,source_url='https://api.atlasacademy.io/nice/CN/item/6001')))
-    def test_both_public_evidence_required(self):self.assertTrue(drop.verifiedManifest(self.manifest()))
-    def test_unverified_candidate_rejected(self):
-        value=self.manifest();value['evidence']['visual']['passed']=False;self.assertFalse(drop.verifiedManifest(value))
-        value=self.manifest();value['evidence'].pop('semantic');self.assertFalse(drop.verifiedManifest(value))
-    def test_base_and_dropped_qp_separate_with_ocr_totals(self):
-        im=env['DropTests']().image([0,1]);x,y,r,b=drop.slotRect(0,True);template=im[y:b,x:r].copy()
-        with patch.object(nav.OCR.EN,'ocr_single_line',side_effect=[('+780',.99),('+10,000',.99)]):result=drop.detect(im,[('QP',template,'currency',{'dropped_qp':True})],False)
-        self.assertEqual(result.currency,dict(baseQP=780,droppedQP=10000,QP=10780));self.assertEqual(result.recognized_slots,2)
-    def test_dropped_qp_bad_amount_not_in_sum(self):
-        im=env['DropTests']().image([1]);x,y,r,b=drop.slotRect(1,True)
-        with patch.object(nav.OCR.EN,'ocr_single_line',return_value=('?',.4)):result=drop.detect(im,[('QP',im[y:b,x:r].copy(),'currency',{'dropped_qp':True})],False)
-        self.assertEqual(result.currency,{});self.assertEqual(result.currency_amount_unknown,1);self.assertEqual(result.unknown_slots,0)
-    def test_two_star_card_retains_unknown_class(self):
-        im=env['DropTests']().image([1]);x,y,r,b=drop.slotRect(1)
-        result=drop.detect(im,[('睿智的灯火（职阶未知）',im[y:y+118,x:x+118].copy(),'ember',{'match_region':'card'})],False)
-        self.assertEqual(result.recognized,{'睿智的灯火（职阶未知）':1})
 
 class PortableTests(unittest.TestCase):
     def test_frozen_writable_roots_do_not_use_bundle(self):
@@ -78,7 +60,7 @@ class PortableTests(unittest.TestCase):
         p=resolvePaths(False,moduleFile=r'C:\FGO-Automation\FGO-py\FGO-py\fgoPaths.py');self.assertEqual(p.logRoot,Path(r'C:\FGO-Automation\logs'))
     def test_spec_collects_modules_and_uses_onedir(self):
         text=(APP/'fgoBuildCN.spec').read_text(encoding='utf-8');self.assertIn('COLLECT(',text);self.assertIn('console=False',text)
-        for name in ('fgoDrop','fgoProgress','fgoFriendTemplates','fgoGuiResult','fgoNavigation','fgoEventProgress'):self.assertIn(name,text)
+        for name in ('fgoProgress','fgoFriendTemplates','fgoGuiResult','fgoNavigation','fgoEventProgress'):self.assertIn(name,text)
         self.assertNotIn('fgoConfig.json',text)
     def test_pythonw_launcher_does_not_run_cmd(self):
         text=(APP.parents[1]/'start-fgo-py-gui.vbs').read_text(encoding='utf-8');self.assertIn('pythonw.exe',text);self.assertNotIn('cmd.exe',text);self.assertIn('1, False',text)

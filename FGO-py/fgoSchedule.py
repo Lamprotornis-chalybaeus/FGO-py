@@ -6,7 +6,6 @@ class Schedule:
         self.reset()
         self.__stopOnDefeatedFlag=False
         self.__stopOnKizunaReisouFlag=False
-        self.__stopOnSpecialDropCount=0
     def reset(self):
         self.__stopMsg=''
         self.__pauseFlag=False
@@ -36,8 +35,4 @@ class Schedule:
     def stopOnKizunaReisou(self,x):self.__stopOnKizunaReisouFlag=x
     def checkKizunaReisou(self):
         if self.__stopOnKizunaReisouFlag:raise ScriptStop('Kizuna Reisou')
-    def stopOnSpecialDrop(self,x=0):self.__stopOnSpecialDropCount=x
-    def checkSpecialDrop(self):
-        self.__stopOnSpecialDropCount-=1
-        if not self.__stopOnSpecialDropCount:raise ScriptStop('Special Drop')
 schedule=Schedule()

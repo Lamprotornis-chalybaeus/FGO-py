@@ -3,7 +3,7 @@ from functools import reduce,wraps
 from fgoConst import PACKAGE_TO_REGION
 from fgoFuse import fuse
 from fgoLogging import getLogger,logMeta
-from fgoMetadata import servantData,servantImg,classImg,materialImg,chapterImg,mapImg,questImg
+from fgoMetadata import servantData,servantImg,classImg,chapterImg,mapImg,questImg
 from fgoOcr import Ocr
 from fgoSchedule import ScriptStop,schedule
 logger=getLogger('Detect')
@@ -121,7 +121,6 @@ class XDetectBase(metaclass=logMeta(logger)):
     def isSkillCastFailed(self):return self._compare(self.tmpl.SKILLERROR,(504,528,776,597))
     def isSkillNone(self):return self._compare(self.tmpl.CROSS,(1070,45,1105,79))or self._compare(self.tmpl.CROSS,(1093,164,1126,196))
     def isSkillReady(self,i,j):return not self._compare(self.tmpl.STILL,(35+318*i+88*j,598,55+318*i+88*j,618),.2)
-    def isSpecialDropRainbowBox(self):return self._compare(self.tmpl.RAINBOW,(957,2,990,40),.1)
     def isSpecialDropSuspended(self):return self._compare(self.tmpl.CLOSE,(6,14,28,68))
     def isSummonContinue(self):return self._compare(self.tmpl.SUMMONCONTINUE,(642,639,883,707))
     def isSummonFinish(self):return self._compare(self.tmpl.SUMMONFINISH,(642,639,883,707))
@@ -160,10 +159,6 @@ class XDetectBase(metaclass=logMeta(logger)):
     def getFieldServantClassRank(self,pos):return(lambda x:x if x is None else classImg[0][x])(self._select(CLASS[125],(13+318*pos,618,117+318*pos,702)))
     def getFieldServantHp(self,pos):return self._ocrInt((200+317*pos,620,293+317*pos,644))
     def getFieldServantNp(self,pos):return self._ocrInt((220+317*pos,655,271+317*pos,680))
-    def getDropResult(self):
-        from fgoDrop import detect
-        return detect(self.im)
-    def getMaterial(self):return self.getDropResult().recognized
     def getSkillTargetCount(self):return(lambda x:numpy.bincount(numpy.diff(x))[1]+x[0])(cv2.dilate(numpy.max(cv2.threshold(numpy.max(self._crop((306,320,973,547)),axis=2),67,1,cv2.THRESH_BINARY)[1],axis=0).reshape(1,-1),numpy.ones((1,66),numpy.uint8)).ravel())if self._compare(self.tmpl.CROSS,(980,0,1280,300))else 0
     @retryOnError()
     @validate()

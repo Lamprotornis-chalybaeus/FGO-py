@@ -7,7 +7,7 @@ import cv2,numpy as np
 APP=Path(__file__).resolve().parents[1]/'FGO-py';sys.path.insert(0,str(APP));os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
 old=os.getcwd();os.chdir(APP)
 try:
-    import fgoKernel as kernel,fgoGuiOperation as queueModule,fgoDrop as drop
+    import fgoKernel as kernel,fgoGuiOperation as queueModule
     from fgoProgress import BattleCompleted,formatProgress
     from fgoFriendTemplates import FriendTemplateStore,chooseOnScreen
 finally:os.chdir(old)
@@ -44,7 +44,7 @@ class ProgressTests(unittest.TestCase):
     def test_limit_zero_displays_unlimited(self):
         _,events,_=self.runQueue([1],0);self.assertIsNone(events[-1].run_remaining);self.assertIn('/不限',formatProgress(events[-1]))
     def test_multiple_tasks_keep_run_count(self):
-        _,events,run=self.runQueue([2,3],10);p=events[-1];self.assertEqual((p.task_index,p.task_count,p.task_attempted,p.run_attempted,p.queue_remaining),(2,2,3,5,0));self.assertEqual(run.result['material']['EvilBone'],5)
+        _,events,run=self.runQueue([2,3],10);p=events[-1];self.assertEqual((p.task_index,p.task_count,p.task_attempted,p.run_attempted,p.queue_remaining),(2,2,3,5,0));self.assertNotIn('material',run.result)
     def test_defeat_is_attempt_and_separate_from_win(self):
         SimulatedRunner.outcomes=[True,False];_,events,_=self.runQueue([2]);self.assertEqual((events[-1].run_attempted,events[-1].wins,events[-1].defeats),(2,1,1))
     def test_restart_uses_remaining_plan(self):
@@ -60,8 +60,6 @@ class ProgressTests(unittest.TestCase):
         with patch.object(kernel,'Operation',Interrupted):
             with self.assertRaises(kernel.ScriptStop):queueModule.GuiQueueOperation(q,self.settings())()
         self.assertEqual(q[0].repetitions,20)
-    def test_drop_totals_not_double_counted(self):
-        _,_,run=self.runQueue([2,3]);self.assertEqual((run.result['dropStats']['occupied_slots'],run.result['dropStats']['unknown_slots']),(10,5));self.assertEqual(len(run.result['unknownDrops']),5)
     def test_worker_owns_queue_mutation(self):
         ids=[];q=[queueModule.QuestTask.metadata((1,0,2,0),2)];run=queueModule.GuiQueueOperation(q,self.settings(),onProgress=lambda p:ids.append(threading.get_ident()))
         with patch.object(kernel,'Operation',SimulatedRunner):
@@ -85,30 +83,6 @@ class ProgressTests(unittest.TestCase):
             with self.assertRaises(kernel.ScriptStop):run()
         self.assertEqual(order,['battle','result inputs','progress']);self.assertEqual(run.completedAttempts,1)
 
-class DropTests(unittest.TestCase):
-    def image(self,slots):
-        im=np.full((720,1280,3),5,np.uint8)
-        for i in slots:
-            x,y,r,b=drop.slotRect(i);im[y:b,x:r]=130
-        return im
-    def test_unrecognized_occupied_slots_remain_unknown(self):
-        r=drop.detect(self.image([0,1,2]),[],False);self.assertEqual((r.occupied_slots,r.recognized_slots,r.unknown_slots),(3,0,3));self.assertEqual(len(r.unknown_crops),3)
-    def test_empty_slots_are_not_invented(self):self.assertEqual(drop.detect(self.image([]),[],False).occupied_slots,0)
-    def test_first_slot_is_observed_as_currency_separately(self):
-        from fgoDetect import OCR
-        im=self.image([0]);x,y,r,b=drop.slotRect(0,True)
-        with patch.object(OCR.EN,'ocr_single_line',return_value=('+7,400',.95)):result=drop.detect(im,[('QP',im[y:b,x:r].copy(),'currency')],False)
-        self.assertEqual(result.recognized,{});self.assertEqual(result.currency,{'QP':7400,'baseQP':7400});self.assertEqual(result.recognized_slots,1)
-    def test_ambiguous_match_stays_unknown(self):
-        im=self.image([1]);x,y,r,b=drop.slotRect(1,True);icon=im[y:b,x:r].copy();result=drop.detect(im,[('A',icon,'material'),('B',icon,'material')],False);self.assertEqual(result.unknown_slots,1)
-    def test_recognized_and_unknown_sum_to_occupied(self):
-        im=self.image([1,2]);x,y,r,b=drop.slotRect(1,True);result=drop.detect(im,[('A',im[y:b,x:r].copy(),'material')],False);self.assertEqual(result.occupied_slots,result.recognized_slots+result.unknown_slots)
-    def test_debug_off_creates_no_files(self):
-        with tempfile.TemporaryDirectory() as directory,patch.object(drop,'debugRoot',Path(directory)):drop.detect(self.image([1]),[],False);self.assertEqual(list(Path(directory).iterdir()),[])
-    def test_debug_saves_all_slots_and_detection(self):
-        with tempfile.TemporaryDirectory() as directory,patch.object(drop,'debugRoot',Path(directory)):
-            r=drop.detect(self.image([1]),[],True);folder=Path(r.debug_dir);self.assertTrue((folder/'result.png').exists());self.assertEqual(len(list(folder.glob('slot-*.png'))),21);self.assertEqual(json.loads((folder/'detection.json').read_text())['unknown_slots'],1)
-    def test_incomplete_analysis_remains_visible(self):self.assertTrue(drop.mergeStats({},dict(incomplete=True,errors=['failed']))['incomplete'])
 
 class FriendTests(unittest.TestCase):
     def setUp(self):self.temp=tempfile.TemporaryDirectory();self.store=FriendTemplateStore(self.temp.name);self.a=self.store.add(np.full((20,20,3),100,np.uint8),'A');self.b=self.store.add(np.full((20,20,3),150,np.uint8),'B')
@@ -193,10 +167,6 @@ class AdditionalTests(unittest.TestCase):
                 self.assertFalse(w.timer.isActive())
             w.close()
         finally:os.chdir(old)
-    def test_drop_debug_write_failure_does_not_erase_unknown(self):
-        with tempfile.TemporaryDirectory() as directory,patch.object(drop,'debugRoot',Path(directory)),patch.object(drop.cv2,'imwrite',return_value=False):
-            result=drop.detect(DropTests().image([1]),[],True)
-        self.assertEqual(result.unknown_slots,1);self.assertTrue(result.errors)
     def test_immediate_defeat_stop_records_outcome_without_revive(self):
         events=[]
         class Frame:
@@ -218,21 +188,10 @@ class AdditionalTests(unittest.TestCase):
         self.assertEqual((run.battleCount,run.defeated),(1,0)) # Original engine counters stay intact.
         self.assertEqual((events[0].completed,events[0].defeats,events[0].won),(1,1,False))
         self.assertEqual((run.result['progressWins'],run.result['progressDefeats']),(0,1))
-    def test_retained_kernel_event_is_not_changed_by_later_stats(self):
-        events=[];run=kernel.Main(onProgress=events.append);run.prepare();run.completedAttempts=1;run.battleCount=1
-        run.dropStats={'unknown_slots':1,'debug_dirs':['first']}
-        result=dict(turn=3,time=12,material={},dropStats={'unknown_slots':1})
-        run.emitCompleted(True,result);run.dropStats['debug_dirs'].append('second');result['dropStats']['unknown_slots']=5
-        self.assertEqual(events[0].result['dropStats']['debug_dirs'],['first']);self.assertEqual(events[0].battle_result['dropStats']['unknown_slots'],1)
     def test_current_progress_distinguishes_run_limit(self):
         from fgoProgress import currentProgress
         p=currentProgress(BattleCompleted(7,7,1,3,12,True,{}),10)
         self.assertEqual((p.run_remaining,p.wins,p.defeats),(3,6,1));self.assertIsNone(p.task_remaining)
-    def test_currency_uncertain_amount_is_disclosed(self):
-        from fgoDetect import OCR
-        im=DropTests().image([0]);x,y,r,b=drop.slotRect(0,True)
-        with patch.object(OCR.EN,'ocr_single_line',return_value=('?',.4)):result=drop.detect(im,[('QP',im[y:b,x:r].copy(),'currency')],False)
-        self.assertEqual(result.currency,{});self.assertEqual(result.stats['currency_amount_unknown'],1)
     def test_navigation_does_not_restore_initial_remaining(self):
         from PySide6.QtWidgets import QApplication
         from fgoGui import MainWindow
@@ -248,7 +207,7 @@ class AdditionalTests(unittest.TestCase):
         finally:os.chdir(old)
 
 class LayoutTests(unittest.TestCase):
-    def test_progress_log_includes_currency_and_unknown_not_empty_material(self):
+    def test_progress_log_keeps_battle_summary_without_drop_recognition(self):
         from PySide6.QtWidgets import QApplication,QSystemTrayIcon
         from fgoGui import MainWindow
         from fgoConfig import Config
@@ -260,7 +219,7 @@ class LayoutTests(unittest.TestCase):
             b=BattleCompleted(1,1,0,3,12,True,result,result)
             p=BattleProgress(1,1,'冬木 → X-C',3,1,2,1,3,2,2,1,0,battle=b,result=result)
             w.showProgress(p);log=w.TXT_LOG.toPlainText()
-            self.assertIn('本场：QP×780，未知格×2',log);self.assertIn('货币数量未确认×1',log)
+            self.assertIn('[战斗] 第1场完成',log);self.assertNotIn('[掉落]',log)
             w.funcBegin();self.assertFalse(w.CBB_APPLE.isEnabled());self.assertFalse(w.CBB_QUICKMODE.isEnabled())
             from PySide6.QtWidgets import QSystemTrayIcon
             w.result=None
@@ -287,9 +246,5 @@ class LayoutTests(unittest.TestCase):
         logHeight=ui.TXT_LOG.height();w.resize(900,800);app.processEvents();self.assertGreaterEqual(ui.TXT_LOG.height()-logHeight,110)
         w.resize(900,680);app.processEvents()
         self.assertLessEqual(w.height(),680);w.close()
-    def test_result_is_scrollable_and_discloses_unknown(self):
-        from PySide6.QtWidgets import QApplication
-        from fgoGuiResult import RunResultDialog
-        app=QApplication.instance() or QApplication([]);dialog=RunResultDialog(dict(type='Main',battle=3,material={f'item{i}':i for i in range(50)},dropStats={'unknown_slots':3}));dialog.show();app.processEvents();self.assertEqual(dialog.table.rowCount(),50);self.assertIn('未识别项未计入',dialog.unknownLabel.text());self.assertFalse(dialog.debugButton.isVisible());self.assertGreater(dialog.table.verticalScrollBar().maximum(),0);dialog.close()
 
 if __name__=='__main__':unittest.main()

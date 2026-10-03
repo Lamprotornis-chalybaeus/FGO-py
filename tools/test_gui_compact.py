@@ -73,12 +73,7 @@ class CompactWindowTests(unittest.TestCase):
         dialog=RunResultDialog(dict(battle=0,time=18,material={},dropStats={}),
             'Script Stopped: Navigation failed [RETURN ROOT] 冬木 → 未确认坐标X-A: cannot safely return from UNKNOWN; no blind clicks')
         self.windows.append(dialog);dialog.show();self.app.processEvents()
-        self.assertFalse(dialog.table.isVisible());self.assertLessEqual(dialog.width(),520);self.assertLessEqual(dialog.height(),300)
+        self.assertFalse(hasattr(dialog,'table'));self.assertLessEqual(dialog.width(),520);self.assertLessEqual(dialog.height(),300)
         self.assertIn('已进行 0 场',dialog.summaryLabel.text());self.assertTrue(dialog.summaryLabel.wordWrap())
-    def test_many_drop_rows_remain_scrollable(self):
-        dialog=RunResultDialog(dict(battle=3,material={f'item{i}':i for i in range(50)},dropStats={}))
-        self.windows.append(dialog);dialog.show();self.app.processEvents()
-        self.assertTrue(dialog.table.isVisible());self.assertGreater(dialog.table.verticalScrollBar().maximum(),0)
-        self.assertLessEqual(dialog.height(),460)
 
 if __name__=='__main__':unittest.main()

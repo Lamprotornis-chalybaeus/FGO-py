@@ -87,7 +87,7 @@ Some commands support <command> [<subcommand> ...] {{-h, --help}} for further in
         if key in self.config:self.config[key]=value
     def complete_config(self,text,line,begidx,endidx):
         return self.completecommands({
-            '':['notifyEnable','stopLater','stopOnDefeated','stopOnKizunaReisou','stopOnSpecialDrop'],
+            '':['notifyEnable','stopLater','stopOnDefeated','stopOnKizunaReisou'],
         },text,line,begidx,endidx)
     def do_connect(self,line):
         'Connect to a device'
@@ -126,11 +126,9 @@ Some commands support <command> [<subcommand> ...] {{-h, --help}} for further in
         match result:
             case{'type':'Battle'}:
                 logger.warning(f'Battle finished in {color(0xC5E0B4)}{result["time"]//3600:.0f}:{result["time"]//60%60:02.0f}:{result["time"]%60:02.0f}{color()}')
-                if result["material"]:logger.warning(f'{", ".join(f"{i}{color(0xFFD966)}x{j}{color()}"for i,j in result["material"].items())} earned')
             case{'type':'Main'}:
                 logger.warning(f'{color(0xFFD966)}{result["battle"]}{color()} battle(s) finished in {color(0xC5E0B4)}{result["time"]//3600:.0f}:{result["time"]//60%60:02.0f}:{result["time"]%60:02.0f}{color()}')
                 logger.warning(f'{color(0xC5E0B4)}{result["turnPerBattle"]:.1f}{color()} turns, {color(0xC5E0B4)}{result["timePerBattle"]//60:.0f}:{result["timePerBattle"]%60:02.1f}{color()} per battle in average')
-                if result["material"]:logger.warning(f'{", ".join(f"{color(0x69BCEA)}{i}{color(0xFFD966)}x{j}{color()}"for i,j in result["material"].items())} earned')
             case{'type':'SummonHistory'}:logger.warning(f'Got {color(0xFFD966)}{result["value"]}{color()} record(s), image save to {color(0x69BCEA)}{result["file"]}{color()}')
         # todo: notify
         # if self.config.notifyEnable:

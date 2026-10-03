@@ -5,12 +5,12 @@ from PyInstaller.utils.hooks import collect_data_files
 
 app=Path(SPECPATH).resolve();repo=app.parent
 tracked=subprocess.check_output(['git','-c',f'safe.directory={repo.as_posix()}','ls-files','FGO-py/fgoImage'],cwd=repo,text=True).splitlines()
-datas=[(str(repo/file),str(Path(file).parent.relative_to('FGO-py'))) for file in tracked]
+datas=[(str(repo/file),str(Path(file).parent.relative_to('FGO-py'))) for file in tracked if (repo/file).is_file() and not file.startswith(('FGO-py/fgoImage/drop/','FGO-py/fgoImage/material/'))]
 datas.extend((str(file),'.') for file in app.glob('*.qm'))
 datas.extend((str(file),'.') for file in app.glob('*.ts'))
 datas.extend([(str(app/'fgoIcon.ico'),'.'),(str(app/'fgoTeamup.ini'),'.'),(str(repo/'LICENSE'),'.')])
 for package in ('airtest','pponnxcr','pulp'):datas.extend(collect_data_files(package))
-modules=['fgoDrop','fgoProgress','fgoFriendTemplates','fgoGuiFriendTemplates','fgoGuiResult','fgoNavigation','fgoQuickQuest','fgoEventProgress','fgoPaths']
+modules=['fgoProgress','fgoFriendTemplates','fgoGuiFriendTemplates','fgoGuiResult','fgoNavigation','fgoQuickQuest','fgoEventProgress','fgoPaths']
 originalPath=os.environ.get('PATH','')
 # DLL discovery must not inherit Codex's unrelated Poppler/ICU toolchain.
 # Qt uses Windows' native unversioned ICU API, not Poppler's versioned ICU.

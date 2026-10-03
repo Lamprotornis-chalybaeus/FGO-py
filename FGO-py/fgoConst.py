@@ -14,7 +14,6 @@ CONFIG={
 'quickFarmBattleLimit':1,
 'friendPolicy':'first',
 'friendMaxRefresh':2,
-'dropDebug':False,
 'windowGeometry':'',
 'splitterState':'',
 'guiLayoutVersion':0,

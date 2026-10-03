@@ -225,6 +225,19 @@ def expandedMenuCN(detect,items):
     crop=detect._crop(terminal.box);a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC))
     return terminal if min(sa,sb)>=.85 and compact(a)==compact(b)=='终端' else None
 
+# Observed CN menu page identities, including the shop's real title.
+MENU_PAGE_HEADERS_CN=('编队','编制','强化','召唤','商店','达芬奇工房','好友','个人空间')
+
+def confirmedMenuPageCN(detect,items):
+    if not detect.isMainInterface():return False
+    headers=[i for i in items if i.score>=.8 and i.center[0]>=850 and i.center[1]<95 and compact(i.text) in MENU_PAGE_HEADERS_CN]
+    if len(headers)!=1:return False
+    header=headers[0]
+    crop=detect._crop(header.box)
+    a,sa=OCR.ZHS.ocr_single_line(crop)
+    b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC))
+    return min(sa,sb)>=.85 and compact(a)==compact(b)==compact(header.text)
+
 def safeMenuPageCN(detect,items):
     if any(getattr(detect,m,lambda:False)() for m in ('isTurnBegin','isBattleFinished','isBattleDefeated','isApEmpty')):return 'UNSAFE_BATTLE_OR_AP'
     if any(getattr(detect,m,lambda:False)() for m in ('isBattleContinue','isSkillCastFailed','isAddFriend','isSummonContinue')):return 'UNSAFE_MODAL'
@@ -238,7 +251,7 @@ def safeMenuPageCN(detect,items):
     if getattr(detect,'isChooseFriend',lambda:False)():return 'FRIEND'
     from fgoEventProgress import _eventMap,_eventAnchor
     if detect.isMainInterface() and (_eventMap(items) or _eventAnchor(items)):return 'EVENT'
-    if detect.isMainInterface() and any(i.score>=.85 and i.center[1]<95 and compact(i.text) in ('编队','强化','召唤','商店','好友','个人空间') for i in items):return 'MENU_PAGE'
+    if confirmedMenuPageCN(detect,items):return 'MENU_PAGE'
     return 'UNKNOWN'
 
 def _terminalLoadingFrameCN(detect):

@@ -32,7 +32,7 @@ def licenseFile(frozen=None):
 def initialize():
     # This local onedir uses contents_directory='.'; legacy relative read-only
     # assets therefore resolve through appRoot regardless of the launch cwd.
-    for directory in (paths.configRoot,paths.logRoot,paths.dataRoot/'fgoLog',paths.dataRoot/'fgoTemp',paths.dataRoot/'fgoImage'/'friend'/'local',paths.dataRoot/'fgoImage'/'drop'/'local'):
+    for directory in (paths.configRoot,paths.logRoot,paths.dataRoot/'fgoLog',paths.dataRoot/'fgoTemp',paths.dataRoot/'fgoImage'/'friend'/'local'):
         directory.mkdir(parents=True,exist_ok=True)
     os.chdir(paths.appRoot)
     for name in ('stdout','stderr'):

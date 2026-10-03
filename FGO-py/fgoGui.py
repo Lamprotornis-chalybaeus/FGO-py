@@ -4,7 +4,6 @@ from PySide6.QtCore import Qt,QLocale,QTranslator,QTimer,Signal,QSignalBlocker,Q
 from PySide6.QtGui import QAction,QIcon
 from PySide6.QtWidgets import QApplication,QInputDialog,QMainWindow,QMenu,QMessageBox,QSystemTrayIcon,QSpinBox,QComboBox,QCheckBox
 from matplotlib import pyplot
-import fgoDrop
 from fgoProgress import formatProgress,currentProgress
 from fgoGuiResult import RunResultDialog
 from fgoPaths import licenseFile
@@ -90,9 +89,6 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.compactWindowAction.setStatusTip('恢复紧凑窗口和日志分隔条；字体及系统显示缩放保持不变。')
         self.MENU_CONTROL.addAction(self.compactWindowAction)
         self.compactWindowAction.triggered.connect(self.compactWindow)
-        fgoDrop.debug=bool(config.get('dropDebug',False))
-        self.dropDebugAction=QAction('保存掉落诊断（本机）',self);self.dropDebugAction.setCheckable(True);self.dropDebugAction.setChecked(fgoDrop.debug);self.MENU_SETTINGS.addAction(self.dropDebugAction)
-        self.dropDebugAction.toggled.connect(lambda value:(setattr(fgoDrop,'debug',value),self.config.__setitem__('dropDebug',value)))
         self.CBB_EVENT_STORYMODE.setItemData(0,fgoEventProgress.EVENT_STORY_PAUSE)
         self.CBB_EVENT_STORYMODE.setItemData(1,fgoEventProgress.EVENT_STORY_SKIP)
         self.CBB_EVENT_STORYMODE.setCurrentIndex(1 if self.config.get('eventStoryMode','pause')=='skip' else 0)
@@ -224,15 +220,6 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         if p.battle:
             b=p.battle
             self.TXT_LOG.appendPlainText(f'[战斗] 第{p.run_attempted}场完成：{b.turns}回合，{int(b.seconds)//60}:{int(b.seconds)%60:02}；累计胜{p.wins} 负{p.defeats}')
-            def show(result):
-                stats=result.get('dropStats',{})
-                items=[f'{QApplication.translate("material",n)}×{c}' for n,c in result.get('material',{}).items()]
-                items.extend(f'{fgoDrop.currencyLabel(n)}×{c}' for n,c in stats.get('currency',{}).items())
-                items.append(f'未知格×{stats.get("unknown_slots",0)}')
-                if stats.get('currency_amount_unknown'):items.append(f'货币数量未确认×{stats["currency_amount_unknown"]}')
-                if stats.get('incomplete'):items.append('检测不完整')
-                return '，'.join(items)
-            self.TXT_LOG.appendPlainText(f'[掉落] 本场：{show(b.battle_result)}；累计：{show(p.result)}')
     def showNavigation(self,message):
         self.LBL_WEEKLY_STATUS.setText(formatProgress(self._lastProgress) if self._lastProgress else message)
         line='[导航] '+message.split('\n')[-1]
@@ -247,7 +234,6 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self._lastProgress=None;self._lastNavigation=None
         for control in (self.CBB_QUICKMODE,self.TXT_TEAM,self.CKB_TEAM,self.CBB_APPLE,self.TXT_APPLE,self.CBB_FRIENDPOLICY,self.TXT_FRIENDREFRESH,self.BTN_CONNECT):control.setEnabled(False)
         for control in (self.BTN_QUESTADD,self.BTN_QUESTREMOVE,self.BTN_QUESTUP,self.BTN_QUESTDOWN,self.BTN_QUESTCLEAR,self.BTN_FRIENDTEMPLATES,self.TXT_TIMES,self.TXT_BATTLELIMIT):control.setEnabled(False)
-        self.dropDebugAction.setEnabled(False)
         self.BTN_MAIN.setEnabled(False)
         self.BTN_BATTLE.setEnabled(False)
         self.BTN_CLASSIC.setEnabled(False)
@@ -264,7 +250,6 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
     def funcEnd(self,msg):
         for control in (self.CBB_QUICKMODE,self.TXT_TEAM,self.CKB_TEAM,self.CBB_APPLE,self.TXT_APPLE,self.CBB_FRIENDPOLICY,self.TXT_FRIENDREFRESH,self.BTN_CONNECT):control.setEnabled(True)
         for control in (self.BTN_QUESTADD,self.BTN_QUESTREMOVE,self.BTN_QUESTUP,self.BTN_QUESTDOWN,self.BTN_QUESTCLEAR,self.BTN_FRIENDTEMPLATES,self.TXT_TIMES,self.TXT_BATTLELIMIT):control.setEnabled(True)
-        self.dropDebugAction.setEnabled(True)
         if msg[0]!='Done' and ('Navigation failed' in msg[0] or '导航' in msg[0] or '前置检查' in msg[0]):self.LBL_WEEKLY_STATUS.setText(msg[0])
         self.BTN_MAIN.setEnabled(True)
         self.BTN_BATTLE.setEnabled(True)
@@ -313,7 +298,6 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
 {', '.join(f'{self.tr(i)} {self.result[j]:.2f}ms'for i,j in(('点击','touch'),('截图','screenshot')))}
 ''')
         self.flush()
-        self.MENU_SETTINGS_SPECIALDROP.setChecked(fgoKernel.schedule._Schedule__stopOnSpecialDropCount>0)
     def _connectDevice(self,text):
         previous=fgoDevice.device
         try:
@@ -482,11 +466,6 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
 <a href="https://github.com/hgjazhgj/FGO-ExpBall">FGO-ExpBall</a><br/>
 {self.tr('你看见了这个弹窗,说明你已经能够运行FGO-py了')}<br/>
 {self.tr('那么,无需任何其他配置,你可以直接运行FGO-ExpBall')}''')
-    def stopOnSpecialDrop(self):
-        num,ok=QInputDialog.getInt(self,'FGO-py',self.tr('剩余的特殊掉落数量'),1,0,1919810,1)
-        if ok:
-            self.MENU_SETTINGS_SPECIALDROP.setChecked(num)
-            fgoKernel.schedule.stopOnSpecialDrop(num)
     def mapKey(self,x):self.MENU_CONTROL_MAPKEY.setChecked(x and self.isDeviceAvailable())
     def invoke169(self):
         if not self.isDeviceAvailable():return

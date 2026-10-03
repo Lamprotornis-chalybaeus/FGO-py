@@ -23,7 +23,6 @@ __author__='hgjazhgj'
 import logging,numpy,pulp,random,re,time,threading
 from copy import deepcopy
 import fgoDevice
-import fgoDrop
 import fgoFriendPolicy
 import fgoNavigation
 from itertools import permutations
@@ -523,12 +522,8 @@ class Battle:
     def __init__(self,turnClass=Turn):
         self.turn=0
         self.turnProc=turnClass()
-        self.rainbowBox=False
     def __call__(self):
         self.start=time.time()
-        self.material={}
-        self.dropStats={}
-        self.unknownDrops=[]
         self.defeated=False
         while True:
             if Detect(0,.3).isTurnBegin():
@@ -539,21 +534,8 @@ class Battle:
                 logger.warning('Kizuna Reisou')
                 Detect.cache.save('fgoLog/SpecialDrop')
                 fgoDevice.device.press('\x1B')
-            elif not self.rainbowBox and Detect.cache.isSpecialDropRainbowBox():self.rainbowBox=True
             elif Detect.cache.isBattleFinished():
                 logger.info('Battle Finished')
-                frame=Detect(.4)
-                try:
-                    drops=frame.getDropResult()
-                    self.material=drops.recognized;self.dropStats=drops.stats;self.unknownDrops=drops.unknown_crops
-                except Exception as e:
-                    logger.exception('Drop detection failed; continuing result processing')
-                    self.dropStats={'errors':[str(e)],'unknown_slots':0,'occupied_slots':0,'recognized_slots':0,'incomplete':True}
-                    self.unknownDrops=[{'reason':'entire result could not be analyzed'}]
-                if self.rainbowBox:
-                    logger.warning('Special Drop')
-                    schedule.checkSpecialDrop()
-                    Detect.cache.save('fgoLog/SpecialDrop')
                 return True
             elif Detect.cache.isBattleDefeated():
                 self.defeated=True
@@ -567,9 +549,6 @@ class Battle:
             'type':'Battle',
             'turn':self.turn,
             'time':time.time()-self.start,
-            'material':self.material,
-            'dropStats':getattr(self,'dropStats',{}),
-            'unknownDrops':getattr(self,'unknownDrops',[]),
             'observedDefeated':getattr(self,'defeated',False),
         }
 class Main:
@@ -636,9 +615,6 @@ class Main:
                 battleResult=self.battleProc.result
                 self.battleTurn+=battleResult['turn']
                 self.battleTime+=battleResult['time']
-                self.material={i:self.material.get(i,0)+battleResult['material'].get(i,0)for i in self.material|battleResult['material']}
-                fgoDrop.mergeStats(self.dropStats,battleResult.get('dropStats',{}))
-                self.unknownDrops.extend(battleResult.get('unknownDrops',[]))
                 fgoDevice.device.perform(' '*10,(400,)*10)
             else:
                 battleResult=self.battleProc.result
@@ -652,9 +628,6 @@ class Main:
         if self.onProgress:self.onProgress(event)
     def prepare(self):
         self.start=time.time()
-        self.material={}
-        self.dropStats={}
-        self.unknownDrops=[]
         self.battleCount=0
         self.completedAttempts=0
         self.stoppedDefeats=0
@@ -672,9 +645,6 @@ class Main:
             'defeated':self.defeated,
             'turnPerBattle':self.battleTurn/(self.battleCount-self.defeated)if self.battleCount-self.defeated else 0,
             'timePerBattle':self.battleTime/(self.battleCount-self.defeated)if self.battleCount-self.defeated else 0,
-            'material':self.material,
-            'dropStats':getattr(self,'dropStats',{}),
-            'unknownDrops':getattr(self,'unknownDrops',[]),
         }
     @logit(logger,logging.INFO)
     def eatApple(self):
@@ -693,12 +663,21 @@ class Main:
             raise ScriptStop('助战严格模式已启用，但助战模板目录中没有 PNG 模板')
         refreshes=0
         nextRefreshAt=0
+        continueWait=None
         deadline=time.time()+180
         navGuard=fgoNavigation.NavigationGuard('friend selection',180,300)
         for _ in navGuard.steps():
             for _ in navGuard.steps():
                 if time.time()>deadline:raise ScriptStop('等待助战列表超时，请检查游戏界面')
                 detect=Detect(0,.3)
+                if XDetect.region=='CN' and detect.isBattleContinue():
+                    if continueWait is None:
+                        continueWait=time.monotonic()
+                        fgoNavigation.publish('等待连续出击确认结束；尚未选择助战…')
+                    if time.monotonic()-continueWait>=15:
+                        raise ScriptStop('连续出击确认未消失；未选择助战，未进入下一场')
+                    continue
+                continueWait=None
                 if detect.isChooseFriend():break
                 if detect.isBattleFormation():return
                 if detect.isNoFriend():
@@ -707,6 +686,8 @@ class Main:
                     fgoDevice.device.perform('\xBAK',(500,1000))
                     refreshes+=1
                     nextRefreshAt=time.time()+10
+            else:
+                raise ScriptStop('等待助战列表未达到预期状态；未选择助战，未进入下一场')
             # The refresh budget limits refreshes, not the initial list scan.
             if policy=='first' or not hasTemplates:return fgoDevice.device.press('8')
             matched=False

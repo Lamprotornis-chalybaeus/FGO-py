@@ -1,8 +1,6 @@
 from dataclasses import dataclass
-from copy import deepcopy
 import time
 import fgoKernel
-import fgoDrop
 import fgoQuickQuest
 import fgoNavigation
 from fgoSchedule import schedule
@@ -33,26 +31,20 @@ class GuiQueueOperation:
         self._defeated=0
         self._turns=0
         self._battleTime=0.0
-        self._material={}
-        self._dropStats={}
-        self._unknownDrops=[]
     @property
     def result(self):
         successes=max(0,self._battle-self._defeated)
-        return {'type':'Main','time':time.time()-self._start if self._start else 0,'battle':self._battle,'defeated':self._defeated,'turnPerBattle':self._turns/successes if successes else 0,'timePerBattle':self._battleTime/successes if successes else 0,'material':dict(self._material),'dropStats':deepcopy(self._dropStats),'unknownDrops':list(self._unknownDrops)}
+        return {'type':'Main','time':time.time()-self._start if self._start else 0,'battle':self._battle,'defeated':self._defeated,'turnPerBattle':self._turns/successes if successes else 0,'timePerBattle':self._battleTime/successes if successes else 0}
     def _record(self,runner):
         result=runner.result
         self._battle+=result.get('completedAttempts',result['battle']);self._defeated+=result.get('progressDefeats',result['defeated'])
         successes=max(0,result['battle']-result['defeated'])
         self._turns+=result['turnPerBattle']*successes
         self._battleTime+=result['timePerBattle']*successes
-        for name,count in result['material'].items():self._material[name]=self._material.get(name,0)+count
-        fgoDrop.mergeStats(self._dropStats,result.get('dropStats',{}));self._unknownDrops.extend(result.get('unknownDrops',[]))
         self.settings.appleTotal=runner.appleTotal
     def __call__(self):
         self._start=time.time()
-        self._battle=self._defeated=self._turns=0;self._battleTime=0;self._material={}
-        self._dropStats={};self._unknownDrops=[]
+        self._battle=self._defeated=self._turns=0;self._battleTime=0
         total=len(self.queue);index=0
         while self.queue:
             index+=1
@@ -65,8 +57,7 @@ class GuiQueueOperation:
             context=f'当前任务：{index}/{total} {title}；剩余计划：{times}场'
             def notify(message):
                 if self.onNavigation:self.onNavigation(f'{context}\n{message}')
-            base=(self._battle,self._defeated,self._turns,self._battleTime,dict(self._material))
-            dropBase=deepcopy(self._dropStats);unknownBase=list(self._unknownDrops)
+            base=(self._battle,self._defeated,self._turns,self._battleTime)
             reported=0
             def progress(event):
                 nonlocal reported
@@ -79,10 +70,6 @@ class GuiQueueOperation:
                 successes=max(0,event.result['battle']-event.result.get('defeated',event.defeats))
                 self._turns=base[2]+event.result['turnPerBattle']*successes
                 self._battleTime=base[3]+event.result['timePerBattle']*successes
-                self._dropStats={};fgoDrop.mergeStats(self._dropStats,dropBase);fgoDrop.mergeStats(self._dropStats,event.result.get('dropStats',{}))
-                self._unknownDrops=unknownBase+list(event.result.get('unknownDrops',[]))
-                self._material=dict(base[4])
-                for name,count in event.result['material'].items():self._material[name]=self._material.get(name,0)+count
                 remaining=max(0,times-reported) if times else None
                 if isinstance(task,QuestTask):self.queue[0]=QuestTask(task.type,task.target,remaining or 0)
                 else:self.queue[0]=(task[0],remaining or 0)

@@ -848,7 +848,6 @@
     </property>
     <addaction name="MENU_SETTINGS_DEFEATED" />
     <addaction name="MENU_SETTINGS_KIZUNAREISOU" />
-    <addaction name="MENU_SETTINGS_SPECIALDROP" />
    </widget>
    <addaction name="MENU_FILE" />
    <addaction name="MENU_SCRIPT" />
@@ -949,14 +948,6 @@
    </property>
    <property name="text">
     <string>获得羁绊礼装时终止战斗</string>
-   </property>
-  </action>
-  <action name="MENU_SETTINGS_SPECIALDROP">
-   <property name="checkable">
-    <bool>true</bool>
-   </property>
-   <property name="text">
-    <string>若干特殊掉落后终止战斗</string>
    </property>
   </action>
   <action name="MENU_ABOUT_LICENSE">
@@ -1153,12 +1144,6 @@
    <slot>exec()</slot>
   </connection>
   <connection>
-   <sender>MENU_SETTINGS_SPECIALDROP</sender>
-   <signal>triggered()</signal>
-   <receiver>fgoMainWindow</receiver>
-   <slot>stopOnSpecialDrop()</slot>
-  </connection>
-  <connection>
    <sender>MENU_ABOUT_LICENSE</sender>
    <signal>triggered()</signal>
    <receiver>fgoMainWindow</receiver>
@@ -1250,7 +1235,6 @@
   <slot>screenshot()</slot>
   <slot>stop()</slot>
   <slot>stopLater(bool)</slot>
-  <slot>stopOnSpecialDrop(bool)</slot>
   <slot>questQuery(int)</slot>
   <slot>questAdd()</slot>
   <slot>questRemove()</slot>
