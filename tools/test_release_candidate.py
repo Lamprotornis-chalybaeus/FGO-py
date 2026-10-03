@@ -18,7 +18,7 @@ class TerminalTests(unittest.TestCase):
     def test_normalizes_event_page(self):self.route('EVENT')
     def test_daily_refresh_runs_normalize_open_scan(self):
         order=[]
-        with patch.object(daily.XDetect,'region','CN'),patch.object(nav,'normalizeToTerminalCN',side_effect=lambda:order.append('terminal')),patch.object(daily,'openDailyPageCN',side_effect=lambda:order.append('daily')),patch.object(daily,'scanDailyQuestsCN',side_effect=lambda:order.append('scan') or {'entries':[]}):daily.refreshDailyQuestsCN()
+        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=object()),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value='GATE'),patch.object(nav,'normalizeToTerminalCN',side_effect=lambda:order.append('terminal')),patch.object(daily,'openDailyPageCN',side_effect=lambda:order.append('daily')),patch.object(daily,'scanDailyQuestsCN',side_effect=lambda:order.append('scan') or {'entries':[]}):daily.refreshDailyQuestsCN()
         self.assertEqual(order,['terminal','daily','scan'])
     def reject(self,state):
         with patch.object(nav,'Detect',return_value=Mock()),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value=state),patch.object(nav.fgoDevice.device,'touch') as touch:

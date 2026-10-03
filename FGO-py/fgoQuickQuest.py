@@ -385,8 +385,14 @@ def scanDailyQuestsCN():
     return {'type':'DailyQuestScan','entries':entries,'screens':screens,'complete':True,'reachedEnd':True,'restoredTop':True,'reverified':len(missing)}
 
 def refreshDailyQuestsCN():
-    from fgoNavigation import normalizeToTerminalCN,publish
+    from fgoNavigation import normalizeToTerminalCN,publish,safeMenuPageCN,labels
     if XDetect.region!='CN':raise ScriptStop('每日任务刷新仅支持国服中文界面')
+    detect=Detect(.2)
+    # Already at the confirmed target: reset the list itself, avoiding an
+    # unnecessary terminal/loading round trip. Modal guards still take priority.
+    if safeMenuPageCN(detect,labels(detect))=='DAILY' and _isDailyPage(detect):
+        publish('已确认每日任务页，直接重新扫描…')
+        return scanDailyQuestsCN()
     normalizeToTerminalCN()
     publish('正在进入迦勒底之门…')
     openDailyPageCN()

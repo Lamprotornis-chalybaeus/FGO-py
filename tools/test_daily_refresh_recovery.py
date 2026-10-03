@@ -30,6 +30,24 @@ class ContinueFeatureTests(unittest.TestCase):
         with patch.object(nav,'classify') as classify:
             self.assertEqual(nav.safeMenuPageCN(SimpleNamespace(isBattleContinue=lambda:True),[]),'UNSAFE_MODAL');classify.assert_not_called()
 
+class RefreshEntryTests(unittest.TestCase):
+    def test_confirmed_daily_refresh_reuses_page_without_terminal_input(self):
+        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=Frame()),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value='DAILY'),patch.object(daily,'_isDailyPage',return_value=True),patch.object(daily,'scanDailyQuestsCN',return_value={'complete':True}) as scan,patch.object(nav,'normalizeToTerminalCN') as normalize,patch.object(daily,'openDailyPageCN') as openPage:
+            self.assertEqual(daily.refreshDailyQuestsCN(),{'complete':True})
+        scan.assert_called_once();normalize.assert_not_called();openPage.assert_not_called()
+    def test_modal_over_daily_background_cannot_use_direct_scan(self):
+        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=Frame()),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value='UNSAFE_MODAL'),patch.object(nav,'normalizeToTerminalCN',side_effect=daily.ScriptStop('unsafe modal')),patch.object(daily,'scanDailyQuestsCN') as scan:
+            with self.assertRaisesRegex(daily.ScriptStop,'unsafe modal'):daily.refreshDailyQuestsCN()
+        scan.assert_not_called()
+    def test_other_page_uses_shared_normalization(self):
+        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=Frame()),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value='GATE'),patch.object(nav,'normalizeToTerminalCN') as normalize,patch.object(daily,'openDailyPageCN') as openPage,patch.object(daily,'scanDailyQuestsCN',return_value={'complete':True}):
+            daily.refreshDailyQuestsCN()
+        normalize.assert_called_once();openPage.assert_called_once()
+    def test_daily_classification_alone_does_not_bypass_header_proof(self):
+        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=Frame()),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value='DAILY'),patch.object(daily,'_isDailyPage',return_value=False),patch.object(nav,'normalizeToTerminalCN') as normalize,patch.object(daily,'openDailyPageCN'),patch.object(daily,'scanDailyQuestsCN'):
+            daily.refreshDailyQuestsCN()
+        normalize.assert_called_once()
+
 class ScanRecoveryTests(unittest.TestCase):
     def test_actual_cn_assassin_training_title_is_accepted_after_two_reads(self):
         title='每日替换暗之修炼场初级'
