@@ -32,6 +32,7 @@ class Scenario(Clock):
         elif state=='FRIEND' and key=='8':
             self.to('UNKNOWN' if self.fail=='friend' else 'FORMATION',self.formation_delay)
         elif state=='FORMATION' and key==' ':
+            if self.fail=='formation_stuck':return
             self.to('UNKNOWN' if self.fail=='formation' else 'TURN_BEGIN',self.loading)
             if self.fail=='loading':self.pending=None
             if self.network:self.network=False;self.network_return=self.pending;self.state='NETWORK_ERROR'
@@ -79,6 +80,15 @@ class CycleTests(unittest.TestCase):
         self.assertEqual((r['startedBattles'],r['completedAttempts'],r['wins'],r['defeats']),(started,completed,wins,defeats))
         self.assertEqual(r['battle'],completed);self.assertEqual(r['defeated'],defeats)
         self.assertEqual(wins+defeats,completed);self.assertGreaterEqual(started,completed)
+    def test_legacy_fused_chain_formation_persists_never_starts_battle(self):
+        # Reproduce the old repeat path's assumption: chooseFriend reaches
+        # FORMATION, but start input has not actually left that page. Six
+        # seconds elapsing never authorizes Battle or increments its number.
+        s=Scenario(fail='formation_stuck');run,flow,error=self.runScenario(s)
+        self.assertIsInstance(error,FlowTimeout);self.assertCounters(run,0,0,0,0)
+        self.assertEqual(s.battles,0);self.assertGreaterEqual(s.now,90)
+        self.assertIn('from=FORMATION',str(error))
+        self.assertEqual(s.actions.count(('FORMATION',' ')),1)
     def test_first_full_cycle(self):
         s=Scenario();run,flow,error=self.runScenario(s)
         self.assertIsNone(error);self.assertCounters(run,1,1,1,0)
