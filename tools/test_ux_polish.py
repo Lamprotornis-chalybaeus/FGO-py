@@ -54,11 +54,14 @@ class ProgressTests(unittest.TestCase):
     def test_started_but_not_completed_keeps_plan(self):
         class Interrupted(SimulatedRunner):
             @property
-            def result(self):return super().result|dict(battle=1,completedAttempts=0)
+            def result(self):return super().result|dict(battle=0,startedBattles=1,completedAttempts=0,wins=0,defeats=0)
             def __call__(self):raise kernel.ScriptStop('interrupted before result')
         q=[queueModule.QuestTask.metadata((1,0,2,0),20)]
         with patch.object(kernel,'Operation',Interrupted):
-            with self.assertRaises(kernel.ScriptStop):queueModule.GuiQueueOperation(q,self.settings())()
+            run=queueModule.GuiQueueOperation(q,self.settings())
+            with self.assertRaises(kernel.ScriptStop):run()
+        self.assertEqual(run.result['startedBattles'],1)
+        self.assertEqual(run.result['completedAttempts'],0)
         self.assertEqual(q[0].repetitions,20)
     def test_worker_owns_queue_mutation(self):
         ids=[];q=[queueModule.QuestTask.metadata((1,0,2,0),2)];run=queueModule.GuiQueueOperation(q,self.settings(),onProgress=lambda p:ids.append(threading.get_ident()))
@@ -68,18 +71,20 @@ class ProgressTests(unittest.TestCase):
     def test_kernel_event_precedes_stop_later_and_follows_result_input(self):
         order=[]
         class Frame:
+            state='TURN_BEGIN'
             def isMainInterface(self):return False
-            def isBattleContinue(self):return False
+            def isBattleContinue(self):return self.state=='CONTINUE'
+            def isBattleFinished(self):return self.state=='RESULT'
             def isSkillCastFailed(self):return False
-            def isTurnBegin(self):return True
+            def isTurnBegin(self):return self.state=='TURN_BEGIN'
         class FakeBattle:
             turn=3
-            def __call__(self):order.append('battle');return True
+            def __call__(self):order.append('battle');frame.state='RESULT';return True
             @property
             def result(self):return dict(turn=3,time=12,material={})
         def detect(*args):kernel.Detect.cache=frame;return frame
         frame=Frame();run=kernel.Main(battleClass=FakeBattle,onProgress=lambda e:order.append('progress'))
-        with patch.object(kernel,'Detect',side_effect=detect),patch.object(kernel.fgoDevice.device,'perform',side_effect=lambda *a:order.append('result inputs')),patch.object(kernel.schedule,'checkStopLater',side_effect=kernel.ScriptStop('limit')):
+        with patch.object(kernel,'Detect',side_effect=detect),patch.object(kernel.fgoDevice.device,'press',side_effect=lambda *a:(order.append('result inputs'),setattr(frame,'state','CONTINUE'))),patch.object(kernel.schedule,'checkStopLater',side_effect=kernel.ScriptStop('limit')):
             with self.assertRaises(kernel.ScriptStop):run()
         self.assertEqual(order,['battle','result inputs','progress']);self.assertEqual(run.completedAttempts,1)
 
@@ -109,18 +114,19 @@ class FriendTests(unittest.TestCase):
 class FriendFlowTests(unittest.TestCase):
     def invoke(self,policy,limit,matched=False):
         from unittest.mock import Mock
-        frame=SimpleNamespace(isChooseFriend=lambda:True,isBattleFormation=lambda:False,isNoFriend=lambda:False,
+        selected={'done':False}
+        frame=SimpleNamespace(isChooseFriend=lambda:not selected['done'],isBattleFormation=lambda:selected['done'],isNoFriend=lambda:False,
             isFriendListEnd=lambda:True,findFriend=lambda image:(500,220) if matched else None)
         store=Mock();store.flush.return_value=True;store.orderedItems.return_value=[('confirmed',object())]
         def detect(*args):kernel.Detect.cache=frame;return frame
         run=kernel.Main(friendPolicy=policy,friendMaxRefresh=limit)
-        with patch.object(kernel,'friendImg',store),patch.object(kernel,'Detect',side_effect=detect),patch.object(kernel.fgoDevice.device,'press') as press,patch.object(kernel.fgoDevice.device,'perform') as perform,patch.object(kernel.fgoDevice.device,'touch') as touch,patch.object(kernel.schedule,'sleep'):
+        with patch.object(kernel,'friendImg',store),patch.object(kernel,'Detect',side_effect=detect),patch.object(kernel.fgoDevice.device,'press',side_effect=lambda key:selected.update(done=key=='8')) as press,patch.object(kernel.fgoDevice.device,'perform') as perform,patch.object(kernel.fgoDevice.device,'touch',side_effect=lambda pos:selected.update(done=True)) as touch,patch.object(kernel.schedule,'sleep'):
             try:result=run.chooseFriend();error=None
             except kernel.ScriptStop as e:result=None;error=str(e)
         return result,error,press,perform,touch,store
     def test_refresh_zero_still_checks_matching_template(self):
         result,error,press,refresh,touch,store=self.invoke('prefer',0,True)
-        self.assertEqual(result,'confirmed');self.assertIsNone(error);refresh.assert_not_called();press.assert_not_called();touch.assert_called_once_with((500,220));store.orderedItems.assert_called()
+        self.assertEqual(result.template,'confirmed');self.assertTrue(result.selected);self.assertIsNone(error);refresh.assert_not_called();press.assert_not_called();touch.assert_called_once_with((500,220));store.orderedItems.assert_called()
     def test_prefer_fallback_only_after_current_list_scan(self):
         _,error,press,refresh,_,store=self.invoke('prefer',0)
         self.assertIsNone(error);store.orderedItems.assert_called();press.assert_called_once_with('8');refresh.assert_not_called()
@@ -185,7 +191,7 @@ class AdditionalTests(unittest.TestCase):
         with patch.object(kernel,'Detect',side_effect=detect),patch.object(kernel.fgoDevice.device,'perform') as inputs:
             with self.assertRaisesRegex(kernel.ScriptStop,'Battle Defeated'):run()
             inputs.assert_not_called()
-        self.assertEqual((run.battleCount,run.defeated),(1,0)) # Original engine counters stay intact.
+        self.assertEqual((run.startedBattles,run.completedAttempts,run.defeats),(1,1,1)) # Confirmed terminal defeat counts once.
         self.assertEqual((events[0].completed,events[0].defeats,events[0].won),(1,1,False))
         self.assertEqual((run.result['progressWins'],run.result['progressDefeats']),(0,1))
     def test_current_progress_distinguishes_run_limit(self):

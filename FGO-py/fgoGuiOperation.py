@@ -29,17 +29,18 @@ class GuiQueueOperation:
         self.runLimit=max(0,int(runLimit))
         self._start=0
         self._battle=0
+        self._started=0
         self._defeated=0
         self._turns=0
         self._battleTime=0.0
     @property
     def result(self):
         successes=max(0,self._battle-self._defeated)
-        return {'type':'Main','time':time.time()-self._start if self._start else 0,'battle':self._battle,'defeated':self._defeated,'turnPerBattle':self._turns/successes if successes else 0,'timePerBattle':self._battleTime/successes if successes else 0}
+        return {'type':'Main','time':time.time()-self._start if self._start else 0,'battle':self._battle,'startedBattles':self._started,'completedAttempts':self._battle,'wins':successes,'defeats':self._defeated,'defeated':self._defeated,'turnPerBattle':self._turns/successes if successes else 0,'timePerBattle':self._battleTime/successes if successes else 0}
     def _record(self,runner):
         result=runner.result
         self._battle+=result.get('completedAttempts',result['battle']);self._defeated+=result.get('progressDefeats',result['defeated'])
-        successes=max(0,result['battle']-result['defeated'])
+        successes=result.get('wins',max(0,result['battle']-result['defeated']))
         self._turns+=result['turnPerBattle']*successes
         self._battleTime+=result['timePerBattle']*successes
         self.settings.appleTotal=runner.appleTotal
@@ -47,9 +48,11 @@ class GuiQueueOperation:
         with automationOwner.claim():return self._run()
     def _run(self):
         self._start=time.time()
-        self._battle=self._defeated=self._turns=0;self._battleTime=0
+        self._battle=self._started=self._defeated=self._turns=0;self._battleTime=0
         total=len(self.queue);index=0
         while self.queue:
+            schedule.checkStop()
+            if self.runLimit and self._battle>=self.runLimit:return self.result
             index+=1
             task=self.queue[0]
             if isinstance(task,QuestTask):kind,target,times=task.type,task.target,task.repetitions
@@ -61,16 +64,17 @@ class GuiQueueOperation:
             def notify(message):
                 if self.onNavigation:self.onNavigation(f'{context}\n{message}')
             base=(self._battle,self._defeated,self._turns,self._battleTime)
+            startedBase=self._started
             reported=0
             def progress(event):
                 nonlocal reported
                 reported=event.completed
                 self._battle=base[0]+event.completed
+                self._started=startedBase+event.attempted
                 self._defeated=base[1]+event.defeats
-                # Upstream averages use its original defeated counter. A
-                # separately observed immediate-stop defeat must not change
-                # the denominator used to reconstruct those totals.
-                successes=max(0,event.result['battle']-event.result.get('defeated',event.defeats))
+                # New runners expose explicit wins; custom/legacy runners use
+                # the old completed-minus-defeated average denominator.
+                successes=event.result.get('wins',max(0,event.result['battle']-event.result.get('defeated',event.defeats)))
                 self._turns=base[2]+event.result['turnPerBattle']*successes
                 self._battleTime=base[3]+event.result['timePerBattle']*successes
                 remaining=max(0,times-reported) if times else None
@@ -84,6 +88,8 @@ class GuiQueueOperation:
             if self.onProgress:
                 counts=[t.repetitions if isinstance(t,QuestTask) else t[1] for t in self.queue]
                 self.onProgress(BattleProgress(index,total,title,times,0,times or None,self._battle,self.runLimit,max(0,self.runLimit-self._battle) if self.runLimit else None,sum(counts) if all(counts) else None,self._battle-self._defeated,self._defeated,tuple(self.queue),None,dict(self.result)))
+            allowed=times or None
+            if self.runLimit:allowed=min(allowed or self.runLimit,self.runLimit-self._battle)
             notify('正在开始导航…')
             if self.navigationOnly:
                 with fgoNavigation.feedback(notify):
@@ -92,19 +98,20 @@ class GuiQueueOperation:
             if kind=='daily':
                 with fgoNavigation.feedback(notify):fgoQuickQuest.gotoDailyEntry(target)
                 runner=fgoKernel.Main(appleTotal=self.settings.appleTotal,appleKind=self.settings.appleKind,battleClass=self.battleClass,friendPolicy=self.settings.friendPolicy,friendMaxRefresh=self.settings.friendMaxRefresh,onProgress=progress)
-                try:runner(0,times or None)
-                finally:self._recordProgress(runner,task,times,reported)
+                try:runner(0,allowed)
+                finally:self._recordProgress(runner,task,times,reported,startedBase)
             elif kind=='metadata':
-                runner=fgoKernel.Operation([(tuple(target),times)],appleTotal=self.settings.appleTotal,appleKind=self.settings.appleKind,battleClass=self.battleClass,friendPolicy=self.settings.friendPolicy,friendMaxRefresh=self.settings.friendMaxRefresh,wait=False,onProgress=progress)
+                runner=fgoKernel.Operation([(tuple(target),allowed or 0)],appleTotal=self.settings.appleTotal,appleKind=self.settings.appleKind,battleClass=self.battleClass,friendPolicy=self.settings.friendPolicy,friendMaxRefresh=self.settings.friendMaxRefresh,wait=False,onProgress=progress)
                 try:
                     with fgoNavigation.feedback(notify):runner()
-                finally:self._recordProgress(runner,task,times,reported)
+                finally:self._recordProgress(runner,task,times,reported,startedBase)
             else:raise fgoKernel.ScriptStop(f'未知 GUI 队列任务类型：{kind}')
             # AP shortage or an early stop must not silently consume the rest of
             # this task or move on to another quest.
-            if not times or runner.result['battle']<times:return self.result
+            if not times or runner.result.get('completedAttempts',runner.result['battle'])<times:return self.result
         return self.result
-    def _recordProgress(self,runner,task,times,reported=0):
+    def _recordProgress(self,runner,task,times,reported=0,startedBase=0):
+        self._started=startedBase+runner.result.get('startedBattles',runner.result['battle'])
         # Old mock/custom runners without events retain their legacy result path.
         count=runner.result.get('completedAttempts',runner.result['battle'])
         if not reported:self._record(runner)
