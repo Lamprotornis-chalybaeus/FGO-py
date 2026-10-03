@@ -24,6 +24,7 @@ import logging,numpy,pulp,random,re,time,threading
 from copy import deepcopy
 from contextvars import ContextVar
 import fgoDevice
+from fgoAutomation import automationOwner,NETWORK_ERROR_EVENT,GUARDIAN_STOP
 import fgoFriendPolicy
 import fgoNavigation
 from itertools import permutations
@@ -49,22 +50,26 @@ def serialize(lock):
     def decorator(func):
         @wraps(func)
         def wrapper(*args,**kwargs):
-            with lock:return func(*args,**kwargs)
+            with lock,automationOwner.claim():return func(*args,**kwargs)
         return wrapper
     return decorator
-def guardian():
+def guardian(stopEvent=GUARDIAN_STOP):
     logger=logging.getLogger('Guardian')
     prev=None
-    while True:
-        while XDetect.cache is prev:time.sleep(3)
-        if XDetect.cache.isNetworkError():
-            logger.warning('Reconnecting')
-            fgoDevice.device.press('K')
-        prev=XDetect.cache
+    # Daemon lifecycle is explicitly interruptible; no device inputs here.
+    while not stopEvent.wait(.5):
+        current=XDetect.cache
+        if current is None or current is prev:continue
+        predicate=getattr(current,'isNetworkError',None)
+        if callable(predicate) and predicate():
+            NETWORK_ERROR_EVENT.set()
+            logger.warning('Network error reported to automation owner')
+        prev=current
 threading.Thread(target=guardian,daemon=True,name='Guardian').start()
 def handleNetworkError(detect):
     if not detect.isNetworkError():return False
     fgoDevice.device.press('K')
+    NETWORK_ERROR_EVENT.clear()
     return True
 class Farming:
     def __init__(self):

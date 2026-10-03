@@ -83,6 +83,7 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.CBB_CHAPTER.currentIndexChanged.connect(self.chapterChanged)
         self.BTN_DAILY_REFRESH.clicked.connect(self.refreshDailyQuests)
         self.worker=Thread()
+        self._runActive=False
         self.config=config
         self.resize(*self.COMPACT_SIZE)
         self.compactWindowAction=QAction('紧凑窗口',self)
@@ -143,6 +144,7 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.resize(max(self.COMPACT_SIZE[0],safe.width()),max(self.COMPACT_SIZE[1],safe.height()))
         self.SPLIT_RUN.setSizes([350,170])
     def keyPressEvent(self,key):
+        if getattr(self,'_runActive',False):return
         if self.MENU_CONTROL_MAPKEY.isChecked()and not key.modifiers()&~Qt.KeyboardModifier.KeypadModifier:
             try:fgoDevice.device.press(chr(key.nativeVirtualKey()))
             except KeyError:pass
@@ -156,9 +158,12 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
     def askQuit(self):
         if self.worker.is_alive():
             if QMessageBox.warning(self,'FGO-py',self.tr('战斗正在进行,确认关闭?'),QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.No)!=QMessageBox.StandardButton.Yes:return False
-            self.signalFuncEnd.disconnect(None)
             fgoKernel.schedule.stop('Quit')
-            self.worker.join()
+            self.worker.join(timeout=5)
+            if self.worker.is_alive():
+                QMessageBox.information(self,'FGO-py',self.tr('自动化线程仍等待设备 I/O；请稍后重试关闭。'))
+                return False
+            self.signalFuncEnd.disconnect(None)
             self.funcEnd(('Quit',QSystemTrayIcon.MessageIcon.Information))
         self.TRAY.hide()
         self.config['windowGeometry']=bytes(self.saveGeometry()).hex()
@@ -172,27 +177,39 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
             return False
         return True
     def runFunc(self,func):
+        if getattr(self,'_runActive',False) or self.worker.is_alive():
+            logger.warning('Ignored duplicate automation start')
+            return
         if not self.isDeviceAvailable():return
+        self._runActive=True
         def f():
             try:
                 self.result=None
                 self.signalFuncBegin.emit()
-                self.result=func()
+                with fgoKernel.automationOwner.claim():self.result=func()
             except fgoKernel.ScriptStop as e:
-                logger.critical(e)
-                msg=(str(e),QSystemTrayIcon.MessageIcon.Warning)
+                if 'Stop Appointment Effected' in str(e):
+                    logger.info('Reached appointed battle limit')
+                    msg=('Done',QSystemTrayIcon.MessageIcon.Information)
+                else:
+                    logger.critical(e)
+                    msg=(str(e),QSystemTrayIcon.MessageIcon.Warning)
             except BaseException as e:
                 logger.exception(e)
                 msg=(repr(e),QSystemTrayIcon.MessageIcon.Critical)
             else:msg=('Done',QSystemTrayIcon.MessageIcon.Information)
             finally:
                 self.result=getattr(func,'result',self.result)
-                self.signalFuncEnd.emit(msg)
                 fgoKernel.fuse.reset()
                 fgoKernel.schedule.reset()
                 if self.config.notifyEnable and not all(success:=[i(msg[0])for i in self.notifier]):logger.critical(f'Notify post failed {success.count(False)} of {len(success)}')
-        self.worker=Thread(target=f,name=f'{getattr(func,"__qualname__",repr(func).replace(" ",""))}')
-        self.worker.start()
+                self.signalFuncEnd.emit(msg)
+        try:
+            self.worker=Thread(target=f,name=f'{getattr(func,"__qualname__",repr(func).replace(" ",""))}')
+            self.worker.start()
+        except BaseException:
+            self._runActive=False
+            logger.exception('Could not start automation worker')
     def flush(self):
         self.TXT_APPLE.setValue(self.operation.appleTotal)
         cur=self.LST_QUEST.currentRow()
@@ -248,6 +265,7 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.MENU_SCRIPT.setEnabled(False)
         self.timer.start(500)
     def funcEnd(self,msg):
+        self._runActive=False
         for control in (self.CBB_QUICKMODE,self.TXT_TEAM,self.CKB_TEAM,self.CBB_APPLE,self.TXT_APPLE,self.CBB_FRIENDPOLICY,self.TXT_FRIENDREFRESH,self.BTN_CONNECT):control.setEnabled(True)
         for control in (self.BTN_QUESTADD,self.BTN_QUESTREMOVE,self.BTN_QUESTUP,self.BTN_QUESTDOWN,self.BTN_QUESTCLEAR,self.BTN_FRIENDTEMPLATES,self.TXT_TIMES,self.TXT_BATTLELIMIT):control.setEnabled(True)
         if msg[0]!='Done' and ('Navigation failed' in msg[0] or '导航' in msg[0] or '前置检查' in msg[0]):self.LBL_WEEKLY_STATUS.setText(msg[0])

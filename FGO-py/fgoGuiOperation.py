@@ -5,6 +5,7 @@ import fgoQuickQuest
 import fgoNavigation
 from fgoSchedule import schedule
 from fgoProgress import BattleProgress
+from fgoAutomation import automationOwner
 
 @dataclass(frozen=True)
 class QuestTask:
@@ -43,6 +44,8 @@ class GuiQueueOperation:
         self._battleTime+=result['timePerBattle']*successes
         self.settings.appleTotal=runner.appleTotal
     def __call__(self):
+        with automationOwner.claim():return self._run()
+    def _run(self):
         self._start=time.time()
         self._battle=self._defeated=self._turns=0;self._battleTime=0
         total=len(self.queue);index=0

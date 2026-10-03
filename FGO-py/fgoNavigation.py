@@ -11,6 +11,7 @@ from fgoDetect import Detect,OCR,XDetect
 from fgoMetadata import chapterImg,mapImg
 from fgoLogging import getLogger
 from fgoSchedule import ScriptStop,schedule
+from fgoAutomation import automationOwner,NETWORK_ERROR_EVENT
 
 logger=getLogger('Navigation')
 _feedback=ContextVar('navigation_feedback',default=None)
@@ -64,6 +65,16 @@ class NavigationGuard:
         self._previous=None
     def check(self):
         schedule.checkStop()
+        if NETWORK_ERROR_EVENT.is_set() and automationOwner.isOwner():
+            from fgoKernel import handleNetworkError
+            from fgoBattleFlow import BattleFlow,BattleFlowState as S
+            detect=Detect(0,0)
+            if detect.isNetworkError():
+                handleNetworkError(detect)
+                flow=BattleFlow(lambda:Detect(0,0),schedule)
+                flow.waitForFlowState(set(S)-{S.NETWORK_ERROR,S.AMBIGUOUS},timeout=20,
+                    transition_name='navigation network recovery',allowed_intermediate={S.NETWORK_ERROR})
+            NETWORK_ERROR_EVENT.clear()
         deadline=min(self.deadline,_deadline.get() or self.deadline)
         if time.monotonic()>=deadline:self.fail('timeout')
     def fail(self,reason):
