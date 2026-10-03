@@ -48,6 +48,27 @@ class RefreshEntryTests(unittest.TestCase):
             daily.refreshDailyQuestsCN()
         normalize.assert_called_once()
 
+class PresenceVerificationTests(unittest.TestCase):
+    def entry(self,title='新的修炼场 上级',y=360):return daily.DailyQuestEntry(title,'training','上级','',(0,940,y))
+    def test_presence_does_not_require_first_card_or_touch(self):
+        entry=self.entry()
+        with patch.object(daily,'_scrollToTop',return_value=(Frame(),True)) as top,patch.object(daily,'_isDailyPage',return_value=True),patch.object(daily,'_dailyEntriesAt',return_value=[entry]),patch.object(daily,'gotoDailyEntry') as locator,patch.object(daily.fgoDevice.device,'touch') as touch:
+            daily._reverifyDailyTitlesCN([entry],{daily._title_key(entry.title)})
+        self.assertEqual(top.call_count,2);locator.assert_not_called();touch.assert_not_called()
+    def test_reverification_changes_stride_and_requires_real_title(self):
+        entry=self.entry();frame=Frame()
+        with patch.object(daily,'_scrollToTop',return_value=(frame,True)),patch.object(daily,'_isDailyPage',return_value=True),patch.object(daily,'_dailyEntriesAt',side_effect=[[],[entry]]),patch.object(daily,'_scrollbar',side_effect=[(100,150),(110,160)]),patch.object(daily,'_swipe',return_value=(frame,True)) as swipe:
+            daily._reverifyDailyTitlesCN([entry],{daily._title_key(entry.title)})
+        swipe.assert_called_once_with(frame,False,220)
+    def test_nonexistent_discrepancy_is_not_added(self):
+        entry=self.entry()
+        with patch.object(daily,'_scrollToTop',return_value=(Frame(),True)),patch.object(daily,'_isDailyPage',return_value=True),patch.object(daily,'_dailyEntriesAt',return_value=[]),patch.object(daily,'_scrollbar',return_value=(520,575)):
+            with self.assertRaisesRegex(daily.ScriptStop,'未获独立确认'):daily._reverifyDailyTitlesCN([entry],{daily._title_key(entry.title)})
+    def test_changed_page_cannot_scroll(self):
+        with patch.object(daily,'_scrollToTop',return_value=(Frame(),True)),patch.object(daily,'_isDailyPage',return_value=False),patch.object(daily,'_swipe') as swipe:
+            with self.assertRaisesRegex(daily.ScriptStop,'页面已变化'):daily._reverifyDailyTitlesCN([],{'missing'})
+        swipe.assert_not_called()
+
 class ScanRecoveryTests(unittest.TestCase):
     def test_actual_cn_assassin_training_title_is_accepted_after_two_reads(self):
         title='每日替换暗之修炼场初级'

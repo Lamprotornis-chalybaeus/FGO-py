@@ -329,6 +329,28 @@ def _settledDailyEntriesAt(detect,scrollIndex=0):
             schedule.sleep(.4);detect=Detect(.2)
             if not _isDailyPage(detect):raise ScriptStop('每日任务标题重读时页面已变化，未发布列表')
 
+def _reverifyDailyTitlesCN(entries,missing):
+    # Presence verification has no first-card/launch-coordinate requirement.
+    # A changed stride samples different crop alignments from both earlier passes.
+    from fgoNavigation import publish
+    pending=set(missing);detect,_=_scrollToTop();deadline=time.monotonic()+DAILY_SCAN_TIMEOUT
+    stalled=0;page=0
+    while time.monotonic()<deadline:
+        if not _isDailyPage(detect):raise ScriptStop('每日任务复核时页面已变化，未发布列表')
+        observed=_dailyEntriesAt(detect,page,strict=False)
+        pending.difference_update(_title_key(e.title) for e in observed)
+        if not pending:
+            _scrollToTop();return
+        publish(f'正在重新核对遗漏项：剩余 {len(pending)} 项，第 {page+1} 屏…')
+        thumb=_scrollbar(detect.im)
+        if thumb[1]>=574:break
+        after,_=_swipe(detect,False,220);newThumb=_scrollbar(after.im)
+        stalled=stalled+1 if newThumb[0]<=thumb[0]+1 else 0
+        if stalled>=3:raise ScriptStop('每日任务遗漏项复核滚动没有进展，未发布列表')
+        detect=after;page+=1
+    titles=[e.title for e in entries if _title_key(e.title) in pending]
+    raise ScriptStop(f'每日任务遗漏项未获独立确认，未发布列表：{titles}')
+
 def scanDailyQuestsCN():
     """Scan overlapping, settled pages until the scrollbar confirms the bottom."""
     if XDetect.region!='CN':raise ScriptStop('每日任务 OCR 仅适配简体中文服务器')
@@ -372,15 +394,10 @@ def scanDailyQuestsCN():
     if missing:
         from fgoLogging import getLogger
         getLogger('QuickQuest').debug(f'Daily forward titles: {[e.title for e in entries]}; reverse titles: {[e.title for e in deduplicateDailyEntries(reverse)]}')
-        # A return swipe can put a card at a clipped edge in every sampled frame.
-        # Re-locate each discrepant title independently before accepting it. This
-        # verifies actual presence and performs no quest/AP/battle click.
+        # Edge clipping can omit a title in one direction. Confirm its actual
+        # presence on a new alignment; never call the battle-position locator.
         combined=deduplicateDailyEntries(entries+reverse)
-        discrepant=[entry for entry in combined if _title_key(entry.title) in missing]
-        for index,entry in enumerate(discrepant,1):
-            publish(f'正在重新核对遗漏项 {index}/{len(discrepant)}：{entry.title}…')
-            gotoDailyEntry(entry)
-        _scrollToTop()
+        _reverifyDailyTitlesCN(combined,missing)
         entries=combined
     if not entries:raise ScriptStop('未校验到完整每日任务卡片，请检查识别日志')
     publish(f'已确认 {len(entries)} 项任务')

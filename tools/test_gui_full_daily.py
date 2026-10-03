@@ -53,14 +53,14 @@ class FullDailyTests(unittest.TestCase):
 
     def test_forward_reverse_disagreement_does_not_publish_complete_list(self):
         frame=Frame();entry=daily.DailyQuestEntry('搜集种火 极级','ember','极级','sig',(0,900,150))
-        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=frame),patch.object(daily,'_isDailyPage',return_value=True),patch.object(daily,'_scrollToTop',return_value=(frame,True)),patch.object(daily,'_swipe',return_value=(frame,True)),patch.object(daily,'_scrollbar',side_effect=[(462,575),(462,575),(462,575),(99,213),(99,213),(99,213)]),patch.object(daily,'_dailyEntriesAt',side_effect=[[entry],[entry],[],[],[]]),patch.object(daily,'gotoDailyEntry',side_effect=daily.ScriptStop('missing actual quest')):
+        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=frame),patch.object(daily,'_isDailyPage',return_value=True),patch.object(daily,'_scrollToTop',return_value=(frame,True)),patch.object(daily,'_swipe',return_value=(frame,True)),patch.object(daily,'_scrollbar',side_effect=[(462,575),(462,575),(462,575),(99,213),(99,213),(99,213)]),patch.object(daily,'_dailyEntriesAt',side_effect=[[entry],[entry],[],[],[]]),patch.object(daily,'_reverifyDailyTitlesCN',side_effect=daily.ScriptStop('missing actual quest')):
             with self.assertRaisesRegex(daily.ScriptStop,'missing actual quest'):daily.scanDailyQuestsCN()
 
     def test_return_omission_must_be_independently_located_before_publication(self):
         frame=Frame();entry=daily.DailyQuestEntry('搜集种火 极级','ember','极级','sig',(0,900,150))
-        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=frame),patch.object(daily,'_isDailyPage',return_value=True),patch.object(daily,'_scrollToTop',return_value=(frame,True)) as top,patch.object(daily,'_swipe',return_value=(frame,True)),patch.object(daily,'_scrollbar',side_effect=[(462,575),(462,575),(462,575),(99,213),(99,213),(99,213)]),patch.object(daily,'_dailyEntriesAt',side_effect=[[entry],[entry],[],[],[]]),patch.object(daily,'gotoDailyEntry') as locate:
+        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=frame),patch.object(daily,'_isDailyPage',return_value=True),patch.object(daily,'_scrollToTop',return_value=(frame,True)) as top,patch.object(daily,'_swipe',return_value=(frame,True)),patch.object(daily,'_scrollbar',side_effect=[(462,575),(462,575),(462,575),(99,213),(99,213),(99,213)]),patch.object(daily,'_dailyEntriesAt',side_effect=[[entry],[entry],[],[],[]]),patch.object(daily,'_reverifyDailyTitlesCN') as locate:
             result=daily.scanDailyQuestsCN()
-        locate.assert_called_once_with(entry);self.assertEqual(top.call_count,2)
+        locate.assert_called_once_with([entry],{daily._title_key(entry.title)});self.assertEqual(top.call_count,1)
         self.assertEqual(result['entries'],[entry]);self.assertEqual(result['reverified'],1)
 
     def test_near_top_thumb_is_not_accepted_until_it_stops_moving(self):
