@@ -16,6 +16,12 @@ Status: **Development / Experimental**. Development branch: `cn-dev` on the fork
 
 The feature baseline passed 319 offline regressions. The repository CI separates portable tests from explicitly enabled local integration tests; see [TESTING.md](TESTING.md). Passing mocked/offline tests does not certify live repeated farming.
 
+## Battle-cycle refactor candidate
+
+Dedicated branch: `fix/battle-cycle-state-machine`; baseline `add17a8a58f0315e91b695b25693c42431a61424`. It is not merged into the deployment branch. Added a read-only evidence classifier, common initial/repeat preparation, monotonic phase/whole-battle deadlines, transition/physical-input trace, explicit started/completed/win/defeat counters, notification-only guardian, automation ownership, immediate GUI startup guard and bounded close wait. Queue deduction uses only completed attempts. AI card ranking is protected against baseline AST digests.
+
+The candidate currently passes 382 offline tests (379 executed; three existing local-integration skips), compared with the 320-test repository baseline: 62 new tests. Compile/AST/import smoke also passes. Live single-stage validation stopped at formation-start acquisition and did not produce a completed battle. Five/ten stages remain unrun; P0 stays open. Source/portable compatibility is verified separately from live farming. See [BATTLE-CYCLE-AUDIT.md](BATTLE-CYCLE-AUDIT.md) and [BATTLE-CYCLE.md](BATTLE-CYCLE.md).
+
 ## Known issues
 
 ### P0 — Intermittent farming transition stop / Fused
