@@ -57,7 +57,7 @@ class DailyNavigationTests(unittest.TestCase):
              patch.object(daily.schedule,'sleep'), \
              patch.object(daily.fgoDevice.device,'touch') as touch, \
              patch.object(daily.fgoDevice.device,'swipe') as swipe:
-            self.assertEqual(daily.openDailyPageCN(),{'type':'DailyPage'})
+            self.assertEqual(daily._openDailyFromTerminalCN(),{'type':'DailyPage'})
         self.assertEqual(touch.call_args_list,[call((109,42)),call((873,394)),call((1004,238))])
         swipe.assert_not_called()
 
@@ -66,7 +66,7 @@ class DailyNavigationTests(unittest.TestCase):
              patch.object(daily,'Detect',return_value=Frame()), \
              self.runNavigation([DAILY]), \
              patch.object(daily.fgoDevice.device,'touch') as touch:
-            daily.openDailyPageCN()
+            daily._openDailyFromTerminalCN()
         touch.assert_not_called()
 
     def test_confirmation_over_daily_background_is_blocked(self):
@@ -76,7 +76,7 @@ class DailyNavigationTests(unittest.TestCase):
              patch.object(daily,'Detect',return_value=Frame()), \
              self.runNavigation([labels]), \
              patch.object(daily.fgoDevice.device,'touch') as touch:
-            with self.assertRaises(daily.ScriptStop):daily.openDailyPageCN()
+            with self.assertRaises(daily.ScriptStop):daily._openDailyFromTerminalCN()
         touch.assert_not_called()
 
     def test_unknown_page_and_battle_are_not_navigated(self):
@@ -85,7 +85,7 @@ class DailyNavigationTests(unittest.TestCase):
              patch.object(daily,'Detect',return_value=types.SimpleNamespace(im=Frame.im,isMainInterface=lambda:False)), \
              patch.object(daily,'_navigationLabels') as ocr, \
              patch.object(daily.fgoDevice.device,'touch') as touch:
-            with self.assertRaises(daily.ScriptStop):daily.openDailyPageCN()
+            with self.assertRaises(daily.ScriptStop):daily._openDailyFromTerminalCN()
         ocr.assert_not_called();touch.assert_not_called()
 
     def test_same_page_after_tap_is_not_clicked_repeatedly(self):
@@ -94,7 +94,7 @@ class DailyNavigationTests(unittest.TestCase):
              patch.object(daily,'_navigationLabels',return_value=HOME), \
              patch.object(daily.schedule,'sleep'), \
              patch.object(daily.fgoDevice.device,'touch') as touch:
-            with self.assertRaises(daily.ScriptStop):daily.openDailyPageCN()
+            with self.assertRaises(daily.ScriptStop):daily._openDailyFromTerminalCN()
         touch.assert_called_once_with((873,394))
 
     def test_transition_after_verified_close_waits_without_touching_unknown_frame(self):
@@ -104,7 +104,7 @@ class DailyNavigationTests(unittest.TestCase):
              self.runNavigation([EVENT,[],HOME,GATE,DAILY]), \
              patch.object(daily.schedule,'sleep'), \
              patch.object(daily.fgoDevice.device,'touch') as touch:
-            daily.openDailyPageCN()
+            daily._openDailyFromTerminalCN()
         self.assertEqual(touch.call_args_list,[call((109,42)),call((873,394)),call((1004,238))])
 
     def test_unknown_transition_has_a_three_retry_bound(self):
@@ -113,7 +113,7 @@ class DailyNavigationTests(unittest.TestCase):
              self.runNavigation([EVENT,[],[],[],[]]) as labels, \
              patch.object(daily.schedule,'sleep'), \
              patch.object(daily.fgoDevice.device,'touch') as touch:
-            with self.assertRaises(daily.ScriptStop):daily.openDailyPageCN()
+            with self.assertRaises(daily.ScriptStop):daily._openDailyFromTerminalCN()
         self.assertEqual(labels.call_count,5)
         touch.assert_called_once_with((109,42))
 
@@ -123,7 +123,7 @@ class DailyNavigationTests(unittest.TestCase):
              patch.object(daily,'_navigationLabels',return_value=EVENT), \
              patch.object(daily.schedule,'sleep'), \
              patch.object(daily.fgoDevice.device,'touch') as touch:
-            with self.assertRaises(daily.ScriptStop):daily.openDailyPageCN()
+            with self.assertRaises(daily.ScriptStop):daily._openDailyFromTerminalCN()
         self.assertEqual(touch.call_count,3)
 
     def test_offscreen_gate_scroll_is_bounded_and_never_taps(self):
@@ -132,7 +132,7 @@ class DailyNavigationTests(unittest.TestCase):
              patch.object(daily,'_navigationLabels',return_value=[NOTIFY]), \
              patch.object(daily,'_swipe',return_value=(Frame(),True)) as swipe, \
              patch.object(daily.fgoDevice.device,'touch') as touch:
-            with self.assertRaises(daily.ScriptStop):daily.openDailyPageCN()
+            with self.assertRaises(daily.ScriptStop):daily._openDailyFromTerminalCN()
         self.assertEqual(swipe.call_count,daily.DAILY_NAV_SCROLL_LIMIT)
         touch.assert_not_called()
 
@@ -143,7 +143,7 @@ class DailyNavigationTests(unittest.TestCase):
              patch.object(daily,'_navigationLabels',return_value=labels), \
              patch.object(daily,'_swipe',return_value=(Frame(),False)), \
              patch.object(daily.fgoDevice.device,'touch') as touch:
-            with self.assertRaises(daily.ScriptStop):daily.openDailyPageCN()
+            with self.assertRaises(daily.ScriptStop):daily._openDailyFromTerminalCN()
         touch.assert_not_called()
 
 

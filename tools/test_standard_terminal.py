@@ -15,6 +15,24 @@ try:import fgoNavigation as nav
 finally:os.chdir(old)
 
 class StandardTerminalTests(unittest.TestCase):
+    def test_weak_global_return_requires_agreeing_local_return(self):
+        frame=Mock();frame.im=np.zeros((720,1280,3),np.uint8);frame._crop.side_effect=lambda r:frame.im[r[1]:r[3],r[0]:r[2]]
+        weak=types.SimpleNamespace(text='返回',score=.799,box=[[76,24],[140,24],[140,59],[76,59]])
+        with patch.object(nav.OCR.ZHS,'detect_and_ocr',return_value=[weak]),patch.object(nav.OCR.ZHS,'ocr_single_line',return_value=('返回',.99)):
+            found=nav.unique(nav.labels(frame),'返回',(0,0,200,95))
+        self.assertEqual(found.box,(70,25,150,60))
+
+    def test_disagreeing_return_is_not_promoted(self):
+        frame=Mock();frame.im=np.zeros((720,1280,3),np.uint8);frame._crop.side_effect=lambda r:frame.im[r[1]:r[3],r[0]:r[2]]
+        weak=types.SimpleNamespace(text='返回',score=.799,box=[[76,24],[140,24],[140,59],[76,59]])
+        with patch.object(nav.OCR.ZHS,'detect_and_ocr',return_value=[weak]),patch.object(nav.OCR.ZHS,'ocr_single_line',side_effect=[('返回',.99),('关闭',.99)]*3):
+            self.assertIsNone(nav.unique(nav.labels(frame),'返回',(0,0,200,95)))
+
+    def test_low_local_return_is_not_promoted(self):
+        frame=Mock();frame.im=np.zeros((720,1280,3),np.uint8);frame._crop.side_effect=lambda r:frame.im[r[1]:r[3],r[0]:r[2]]
+        weak=types.SimpleNamespace(text='返回',score=.799,box=[[76,24],[140,24],[140,59],[76,59]])
+        with patch.object(nav.OCR.ZHS,'detect_and_ocr',return_value=[weak]),patch.object(nav.OCR.ZHS,'ocr_single_line',return_value=('返回',.84)):
+            self.assertIsNone(nav.unique(nav.labels(frame),'返回',(0,0,200,95)))
     def test_all_return_root_callers_share_terminal_normalization(self):
         guard=nav.NavigationGuard('冬木');frame=object()
         with patch.object(nav,'normalizeToTerminalCN',return_value=frame) as normalize:

@@ -192,8 +192,46 @@ def _dailyEntriesAt(detect,scrollIndex=0,strict=True):
         title=_readDailyTitle(detect.im,y-75)
         if title:
             agreed.append(DailyQuestEntry(title,_quest_type(title),_difficulty(title),'',(int(scrollIndex),947,int(y)-75)))
+    agreed.extend(_recoverDailyNeighborsCN(detect,agreed,apRows,scrollIndex))
     if strict and any(200<=y<=580 and not any(40<=y-e.discovered_position[2]<=105 for e in agreed) for y in apRows):raise ScriptStop('完整每日任务卡片的标题未通过双重校验；未发布扫描列表，请刷新重试')
     return agreed
+
+def _recoverDailyNeighborsCN(detect,observed,apRows,scrollIndex=0):
+    """Neighbour positions propose crops; only real title/AP pixels add a card."""
+    centers=sorted(set(e.discovered_position[2] for e in observed))
+    apRows=sorted(set(apRows));proposals=[]
+    # Measure this screenshot's card spacing, never infer a missing quest name
+    # or difficulty from a class schedule, cached task, or ordinal sequence.
+    spacings=[b-a for rows in (centers,apRows) for a,b in zip(rows,rows[1:]) if 145<=b-a<=230]
+    pitch=float(numpy.median(spacings)) if spacings else None
+    unresolved=[y for y in apRows if 200<=y<=580 and not any(40<=y-c<=105 for c in centers)]
+    if pitch is not None:
+        for ap in unresolved:
+            for anchor in centers:
+                for direction in (-1,1):
+                    center=anchor+direction*pitch
+                    if 40<=ap-center<=105:proposals.append(center)
+    # If A3 and A5 are both visible, interpolate the missing title band. A gap
+    # must admit exactly one plausible number of equal CN card intervals.
+    for a,b in zip(centers,centers[1:]):
+        divisions=[n for n in range(2,4) if 145<=(b-a)/n<=230]
+        if len(divisions)==1:
+            n=divisions[0];proposals.extend(a+(b-a)*i/n for i in range(1,n))
+    recovered=[];tested=[];known={_title_key(e.title) for e in observed}
+    for value in proposals:
+        center=int(round(value))
+        if not 130<=center<=520 or any(abs(center-y)<12 for y in centers+tested):continue
+        tested.append(center);schedule.checkStop()
+        hasAp=any(40<=y-center<=105 for y in apRows)
+        if not hasAp:
+            ap,score=OCR.EN.ocr_single_line(detect.im[center+50:center+93,775:900])
+            if score<.8 or not re.fullmatch(r'AP\d+',_compact_title(ap),re.I):continue
+        title=_readDailyTitle(detect.im,center)
+        if not title or _title_key(title) in known:continue
+        known.add(_title_key(title));recovered.append(DailyQuestEntry(title,_quest_type(title),_difficulty(title),'',(int(scrollIndex),947,center)))
+        from fgoLogging import getLogger
+        getLogger('QuickQuest').info(f'Daily neighbour crop verified: title={title!r}, y={center}, anchors={centers}, measured_pitch={pitch}')
+    return recovered
 
 def _scrollbar(image):
     if image.shape[:2]!=(720,1280):raise ScriptStop('每日任务滚动条识别要求 1280x720')
@@ -292,7 +330,7 @@ def dailyNavigationAction(labels):
         return ('gate',position) if position else ('scroll',None)
     return ('blocked',None)
 
-def openDailyPageCN():
+def _openDailyFromTerminalCN():
     """Open the CN daily-quest list without selecting or starting a battle."""
     if XDetect.region!='CN':raise ScriptStop('每日任务快捷入口仅适配简体中文服务器')
     closes=scrolls=unchanged=transitionWaits=0;lastTap=None
@@ -333,6 +371,16 @@ def openDailyPageCN():
             lastTap=(action,position)
             schedule.sleep(.6)
     raise ScriptStop('每日任务导航超过有限步骤上限；未选择任何关卡')
+
+def openDailyPageCN():
+    """Every daily entry point uses the shared, guarded terminal normalization."""
+    from fgoNavigation import normalizeToTerminalCN,publish,safeMenuPageCN,labels
+    if XDetect.region!='CN':raise ScriptStop('每日任务快捷入口仅适配简体中文服务器')
+    detect=Detect(.2)
+    if safeMenuPageCN(detect,labels(detect))=='DAILY' and _isDailyPage(detect):return {'type':'DailyPage'}
+    normalizeToTerminalCN()
+    publish('正在进入迦勒底之门…')
+    return _openDailyFromTerminalCN()
 
 def _open_chapter(chapter):
     for _ in range(30):
@@ -453,8 +501,6 @@ def refreshDailyQuestsCN():
     if safeMenuPageCN(detect,labels(detect))=='DAILY' and _isDailyPage(detect):
         publish('已确认每日任务页，直接重新扫描…')
         return scanDailyQuestsCN()
-    normalizeToTerminalCN()
-    publish('正在进入迦勒底之门…')
     openDailyPageCN()
     return scanDailyQuestsCN()
 
@@ -462,29 +508,73 @@ def gotoDailyEntry(entry):
     """Return to top, then scroll the matched dynamic title into the first visible quest-card row."""
     if not isinstance(entry,DailyQuestEntry):raise ScriptStop('每日任务队列项格式无效')
     if XDetect.region!='CN':raise ScriptStop('每日任务定位仅适配简体中文服务器')
-    detect=Detect(.2)
-    if not _isDailyPage(detect):
-        openDailyPageCN()
+    openDailyPageCN()
     detect,_=_scrollToTop()
-    deadline=time.monotonic()+DAILY_SCAN_TIMEOUT;stalled=0
+    from fgoNavigation import publish
+    from fgoLogging import getLogger
+    deadline=time.monotonic()+DAILY_SCAN_TIMEOUT;stalled=0;page=0;alignments=0;aligning=False
     while time.monotonic()<deadline:
-        entries=_dailyEntriesAt(detect,strict=False)
+        if aligning:
+            detect,entries=_reacquireDailyTargetCN(detect,entry,deadline)
+        else:
+            _dailyLocatorFrameCN(detect);previous=detect
+            detect,entries=_observeDailyScanPage(detect,page)
+            if detect is not previous:_dailyLocatorFrameCN(detect)
+        schedule.checkStop()
+        if time.monotonic()>=deadline:break
         matches=[item for item in entries if _title_key(item.title)==_title_key(entry.title)]
+        getLogger('QuickQuest').debug(f'Daily locate target={entry.title!r}, phase={"align" if aligning else "search"}, page={page}, thumb={_scrollbar(detect.im)}, observed={[(e.title,e.discovered_position[2]) for e in entries]}')
+        if len(matches)>1:raise ScriptStop(f'每日任务目标出现重复标题，未唯一确认：{entry.title}')
         if matches:
-            target=min(matches,key=lambda item:item.discovered_position[2])
+            target=matches[0]
             y=target.discovered_position[2]
             # Kernel.Main presses (845,203) for its first quest. Verify that
             # coordinate lies inside this exact card, rather than merely choosing
             # the first OCR title (a preceding card may be clipped at the top).
-            if 125<=y<=220:return {'type':'DailyQuestReady','entry':entry,'position':target.discovered_position[1:]}
-            distance=int(y-150)
-            start=420;end=max(130,min(590,start-distance))
+            if 125<=y<=220:
+                publish(f'已确认出击位置：{entry.title}，标题 y={y}，未启动战斗')
+                return {'type':'DailyQuestReady','entry':entry,'position':target.discovered_position[1:]}
+            if alignments>=6:raise ScriptStop(f'目标卡片对齐超过有限次数，未启动战斗：{entry.title}')
+            # Aim well inside the OCR/Kernel overlap. The old y=150 aim was
+            # close to the crop boundary and treated a lost title as "not found".
+            distance=max(-180,min(180,int(y-185)))
+            start=420;end=start-distance
+            publish(f'已找到 {entry.title}，正在对齐出击位置：y={y}，第 {alignments+1}/6 次…')
             _menuSwipe((950,start),(950,end));schedule.sleep(.8);after=Detect(.2)
+            aligning=True;alignments+=1
             stalled=stalled+1 if abs(_scrollbar(after.im)[0]-_scrollbar(detect.im)[0])<=1 else 0
         else:
-            if _scrollbar(detect.im)[1]>=574:raise ScriptStop(f'完整列表找不到“{entry.title}”，未启动战斗')
-            thumb=_scrollbar(detect.im);after,_=_swipe(detect,False)
+            if _scrollbar(detect.im)[1]>=574:raise ScriptStop(f'已到每日任务列表末端，但未确认“{entry.title}”，未启动战斗')
+            publish(f'正在定位每日任务：{entry.title}，第 {page+1} 屏…')
+            thumb=_scrollbar(detect.im);after,_=_swipe(detect,False,280);page+=1
             stalled=stalled+1 if _scrollbar(after.im)[0]<=thumb[0]+1 else 0
         if stalled>=3:raise ScriptStop('每日任务定位滚动没有进展，未启动战斗')
         detect=after
     raise ScriptStop(f'每日任务定位超时，未启动战斗：{entry.title}')
+
+def _dailyLocatorFrameCN(detect):
+    from fgoNavigation import safeMenuPageCN,labels
+    schedule.checkStop()
+    if detect.im.shape[:2]!=(720,1280):raise ScriptStop('每日任务定位截图尺寸异常，未点击')
+    if not _isDailyPage(detect) or safeMenuPageCN(detect,labels(detect))!='DAILY':raise ScriptStop('每日任务定位页面已变化或存在危险状态，未点击')
+    if detect.isNetworkError():raise ScriptStop('每日任务定位出现网络错误，未确认或重试')
+
+def _reacquireDailyTargetCN(detect,entry,deadline):
+    """After a verified alignment, never resume a blind search past the target."""
+    from fgoNavigation import publish
+    for attempt in range(5):
+        schedule.checkStop()
+        if time.monotonic()>=deadline:raise ScriptStop('每日任务目标对齐复核超时，未启动战斗')
+        _dailyLocatorFrameCN(detect)
+        entries=_dailyEntriesAt(detect,strict=False)
+        if any(_title_key(e.title)==_title_key(entry.title) for e in entries):return detect,entries
+        if attempt==4:break
+        if attempt<2:
+            publish(f'正在原地重读已找到的目标：{entry.title}，第 {attempt+1}/2 次…')
+            schedule.sleep(.3);detect=Detect(.2)
+        else:
+            # Every alignment scroll moves upward from a visible title y>220.
+            # A small downward restoration returns to the known overlap.
+            publish(f'正在回移复核已找到的目标：{entry.title}，第 {attempt-1}/2 次…')
+            _scrollbar(detect.im);detect,_=_swipe(detect,True,60)
+    raise ScriptStop(f'已找到“{entry.title}”，但对齐后失去唯一识别；已停止，未继续滚向末端或启动战斗')

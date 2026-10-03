@@ -120,7 +120,7 @@ class FullDailyTests(unittest.TestCase):
     def test_selected_quest_must_cover_kernel_first_quest_coordinate(self):
         entry=daily.DailyQuestEntry('剑之修炼场 极级','training','极级','sig',(0,880,160))
         with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=Frame()), \
-             patch.object(daily,'_isDailyPage',return_value=True),patch.object(daily,'_scrollToTop',return_value=(Frame(),True)), \
+             patch.object(daily,'openDailyPageCN'),patch.object(daily,'_dailyLocatorFrameCN'),patch.object(daily,'_scrollbar',return_value=(100,149)),patch.object(daily,'_scrollToTop',return_value=(Frame(),True)), \
              patch.object(daily,'_dailyEntriesAt',return_value=[entry]),patch.object(daily.fgoDevice.device,'touch') as touch:
             self.assertEqual(daily.gotoDailyEntry(entry)['position'],(880,160))
         touch.assert_not_called()
@@ -128,7 +128,7 @@ class FullDailyTests(unittest.TestCase):
     def test_bottom_card_can_cover_click_position_without_being_at_exact_top(self):
         entry=daily.DailyQuestEntry('打开宝物库之门 极级','treasure','极级','sig',(0,880,215))
         with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=Frame()), \
-             patch.object(daily,'_isDailyPage',return_value=True),patch.object(daily,'_scrollToTop',return_value=(Frame(),True)), \
+             patch.object(daily,'openDailyPageCN'),patch.object(daily,'_dailyLocatorFrameCN'),patch.object(daily,'_scrollbar',return_value=(100,149)),patch.object(daily,'_scrollToTop',return_value=(Frame(),True)), \
              patch.object(daily,'_dailyEntriesAt',return_value=[entry]),patch.object(daily.fgoDevice.device,'swipe') as swipe:
             self.assertEqual(daily.gotoDailyEntry(entry)['position'],(880,215))
         swipe.assert_not_called()

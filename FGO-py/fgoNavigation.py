@@ -129,7 +129,7 @@ def labels(detect):
         line=detect._crop(rect)
         text,score=OCR.ZHS.ocr_single_line(line)
         text2,score2=OCR.ZHS.ocr_single_line(cv2.resize(line,None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC))
-        if min(score,score2)>=.85 and compact(text)==compact(text2) and compact(text) in ('通知','管理室','关闭'):
+        if min(score,score2)>=.85 and compact(text)==compact(text2) and compact(text) in ('通知','管理室','关闭','返回'):
             result=[i for i in result if not(i.center[0]<200 and i.center[1]<95 and compact(i.text)==compact(text))]
             result.append(Label(text,rect,float(min(score,score2))))
             break
