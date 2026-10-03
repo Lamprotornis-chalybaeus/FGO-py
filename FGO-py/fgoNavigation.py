@@ -241,6 +241,39 @@ def safeMenuPageCN(detect,items):
     if detect.isMainInterface() and any(i.score>=.85 and i.center[1]<95 and compact(i.text) in ('编队','强化','召唤','商店','好友','个人空间') for i in items):return 'MENU_PAGE'
     return 'UNKNOWN'
 
+def _terminalLoadingFrameCN(detect):
+    # Only used after one positively verified terminal/menu navigation tap.
+    # A dark transition is evidence to wait, never permission to click.
+    gray=cv2.cvtColor(detect.im,cv2.COLOR_BGR2GRAY)
+    return float(gray.mean())<8 and float(numpy.percentile(gray,98))<16
+
+def waitTerminalHomeCN(guard,timeout=90):
+    """Observe a verified terminal transition, bounded by the parent's budget."""
+    began=time.monotonic();deadline=min(guard.deadline,began+timeout)
+    if parent:=_deadline.get():deadline=min(deadline,parent)
+    lastProgress=began-5;loadingFrames=0;lastState='UNKNOWN'
+    while time.monotonic()<deadline:
+        guard.check();frame=Detect(.3)
+        if frame.im.shape[:2]!=(720,1280):guard.fail('返回终端截图尺寸不是1280x720，未点击')
+        guard.check()
+        if time.monotonic()>=deadline:break
+        if _terminalLoadingFrameCN(frame):
+            loadingFrames+=1;lastState='LOADING'
+        else:
+            items=labels(frame);lastState=safeMenuPageCN(frame,items)
+            if lastState.startswith('UNSAFE'):guard.fail(f'{lastState}：返回终端时遇到危险状态，未点击')
+            if getattr(frame,'isNetworkError',lambda:False)():guard.fail('返回终端时出现网络错误，未确认或重试')
+            if terminalHomeCN(frame,items):
+                guard.check()
+                if time.monotonic()<deadline:return frame
+                break
+        now=time.monotonic()
+        if now-lastProgress>=5:
+            publish(f'正在等待终端加载：已等待 {int(now-began)} 秒…')
+            lastProgress=now
+    guard.check()
+    guard.fail(f'strict terminal home: transition timeout; last state={lastState}, loading frames={loadingFrames}; 未重复点击')
+
 @boundedNavigation(120)
 def normalizeToTerminalCN(guard=None):
     guard=guard or NavigationGuard('返回终端',120,80)
@@ -254,7 +287,7 @@ def normalizeToTerminalCN(guard=None):
             # positively confirmed menu, then require the full home proof.
             target=unique(items,'关闭',(1080,420,1280,520)) if unique(items,'通知',(0,0,200,95)) else terminal
             fgoDevice.device.touch(target.center)
-            result=guard.wait(lambda frame:terminalHomeCN(frame,labels(frame)),'strict terminal home',25)
+            result=waitTerminalHomeCN(guard)
             publish('已回到终端');return result
         if terminalHomeCN(d,items):publish('已回到终端');return d
         if state=='UNKNOWN':

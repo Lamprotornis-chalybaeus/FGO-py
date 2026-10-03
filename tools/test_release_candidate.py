@@ -10,7 +10,7 @@ from fgoPaths import resolvePaths
 class TerminalTests(unittest.TestCase):
     def route(self,state):
         frames=[Mock(),Mock()];menu=nav.Label('菜单',(1148,630,1225,674),.99);terminal=nav.Label('终端',(99,620,175,664),.99)
-        with patch.object(nav,'Detect',side_effect=frames),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value=state),patch.object(nav,'expandedMenuCN',side_effect=[None,terminal]),patch.object(nav,'terminalHomeCN',return_value=False),patch.object(nav,'unique',side_effect=lambda rows,text,rect:menu if text=='菜单' else None),patch.object(nav.NavigationGuard,'wait',return_value=frames[1]),patch.object(nav.fgoDevice.device,'touch') as touch:
+        with patch.object(nav,'Detect',side_effect=frames),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value=state),patch.object(nav,'expandedMenuCN',side_effect=[None,terminal]),patch.object(nav,'terminalHomeCN',return_value=False),patch.object(nav,'unique',side_effect=lambda rows,text,rect:menu if text=='菜单' else None),patch.object(nav.NavigationGuard,'wait',return_value=frames[1]),patch.object(nav,'waitTerminalHomeCN',return_value=frames[1]),patch.object(nav.fgoDevice.device,'touch') as touch:
             nav.normalizeToTerminalCN()
         self.assertEqual([c.args[0] for c in touch.call_args_list],[menu.center,terminal.center])
     def test_normalizes_free_quest(self):self.route('FREE_QUEST')
