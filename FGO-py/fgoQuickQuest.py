@@ -52,13 +52,18 @@ def _readDailyTitle(image,center):
     # Use different vertical context and grayscale instead; never repair names
     # from a class schedule or the requested target. Two of three must agree.
     reads={}
-    for height,gray in ((20,False),(32,False),(28,True)):
+    def read(height,gray):
         y=int(round(center));line=image[y-height//2:y+height//2,775:1120]
         if gray:line=cv2.cvtColor(cv2.cvtColor(line,cv2.COLOR_BGR2GRAY),cv2.COLOR_GRAY2BGR)
         name,score=OCR.ZHS.ocr_single_line(line)
-        if score<.85 or not _valid_daily_title(name):continue
-        reads.setdefault(_title_key(name),[]).append(name)
+        if score>=.85 and _valid_daily_title(name):reads.setdefault(_title_key(name),[]).append(name)
+    for height,gray in ((20,False),(32,False),(28,True)):read(height,gray)
     winners=[names for names in reads.values() if len(names)>=2]
+    if not winners:
+        # A broad line can drop a narrow glyph (弓). Re-read the same pixels
+        # with two additional contexts; ambiguity still rejects the entire card.
+        for height,gray in ((24,False),(20,True)):read(height,gray)
+        winners=[names for names in reads.values() if len(names)>=2]
     return _format_title(winners[0][0],_difficulty(winners[0][0])) if len(winners)==1 else None
 
 def _difficulty(text):
@@ -175,7 +180,7 @@ def _dailyEntriesAt(detect,scrollIndex=0,strict=True):
     for y in apRows:
         if not 200<=y<=580 or any(40<=y-e.discovered_position[2]<=105 for e in agreed):continue
         # Recover a title rejected/missed by multi-line OCR using the AP row on
-        # that actual card. Read the fixed title band twice; never fill from a
+        # that actual card. Verify the fixed title band by crop consensus; never fill from a
         # schedule or from the requested quest name.
         title=_readDailyTitle(detect.im,y-75)
         if title:

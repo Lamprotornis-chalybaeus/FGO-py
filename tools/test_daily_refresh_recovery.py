@@ -57,7 +57,7 @@ class ScanRecoveryTests(unittest.TestCase):
             self.assertEqual(daily._dailyEntriesAt(Frame()),[])
         read.assert_not_called()
     def test_ambiguous_names_are_never_repaired_from_whitelist(self):
-        with patch.object(daily.OCR.ZHS,'ocr_single_line',side_effect=[('术之修炼场上级',.98),('水之修炼场上级',.98),('木之修炼场上级',.98)]):
+        with patch.object(daily.OCR.ZHS,'ocr_single_line',side_effect=[('术之修炼场上级',.98),('水之修炼场上级',.98),('木之修炼场上级',.98),('土之修炼场上级',.98),('月之修炼场上级',.98)]):
             self.assertIsNone(daily._readDailyTitle(Frame().im,250))
     def test_crop_majority_preserves_arbitrary_new_name(self):
         with patch.object(daily.OCR.ZHS,'ocr_single_line',side_effect=[('月之修炼场上级',.98),('且之修炼场上级',.98),('月之修炼场上级',.98)]):
@@ -66,6 +66,14 @@ class ScanRecoveryTests(unittest.TestCase):
         with patch.object(daily.OCR.ZHS,'ocr_single_line',return_value=('月之修炼场上级',.98)) as read:
             daily._readDailyTitle(Frame().im,250)
         self.assertEqual([c.args[0].shape[:2] for c in read.call_args_list],[(20,345),(32,345),(28,345)])
+    def test_missing_glyph_recovery_still_requires_a_second_complete_read(self):
+        reads=[('弓之修炼场上级',.95),('之修炼场上级',.98),('之修炼场上级',.97),('弓之修炼场上级',.9),('引之修炼场上级',.9)]
+        with patch.object(daily.OCR.ZHS,'ocr_single_line',side_effect=reads):
+            self.assertEqual(daily._readDailyTitle(Frame().im,250),'弓之修炼场 上级')
+    def test_two_conflicting_pairs_never_publish_a_title(self):
+        reads=[('月之修炼场上级',.95),('土之修炼场上级',.98),('星之修炼场上级',.97),('月之修炼场上级',.9),('土之修炼场上级',.9)]
+        with patch.object(daily.OCR.ZHS,'ocr_single_line',side_effect=reads):
+            self.assertIsNone(daily._readDailyTitle(Frame().im,250))
     def test_status_labels_cannot_become_quests(self):
         for title in ('推荐等级极级','关卡举办时间剩余1日','AP40','每日任务','初级','之修炼场超级'):
             with self.subTest(title=title):self.assertFalse(daily._valid_daily_title(title))
