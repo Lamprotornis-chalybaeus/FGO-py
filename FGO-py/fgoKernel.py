@@ -640,6 +640,7 @@ class Main:
         cycle=BattleCycle(self,self.flow)
         # Every iteration has bounded preparation, battle and settlement phases.
         while battleTotal is None or self.completedAttempts<battleTotal:
+            self.flow.trace.battle_sequence=self.startedBattles+1
             if not cycle.prepare(questIndex):return
             questIndex=0
             self.startedBattles+=1;self.battleCount=self.startedBattles
@@ -740,7 +741,7 @@ class Main:
                 raise ScriptStop('等待助战列表未达到预期状态；未选择助战，未进入下一场')
             # The refresh budget limits refreshes, not the initial list scan.
             if policy=='first' or not hasTemplates:
-                flow.action('select_first_support',lambda:self.press('8'))
+                flow.action('select_first_support',self.selectFirstSupport)
                 return self.finishFriendSelection(flow,None,refreshes)
             matched=False
             scrollGuard=fgoNavigation.NavigationGuard('friend list scan',60,100)
@@ -760,13 +761,19 @@ class Main:
                 Detect(.4)
             action=fgoFriendPolicy.decision(policy,matched,hasTemplates,refreshes,maxRefresh)
             if action=='first':
-                flow.action('select_first_support',lambda:self.press('8'))
+                flow.action('select_first_support',self.selectFirstSupport)
                 return self.finishFriendSelection(flow,None,refreshes)
             if action=='stop':raise ScriptStop(f'未找到符合模板的助战（已刷新 {refreshes} 次）')
             schedule.sleep(max(0,nextRefreshAt-time.monotonic()))
             fgoDevice.device.perform('\xBAK',(500,1000))
             refreshes+=1
             nextRefreshAt=time.monotonic()+10
+    def selectFirstSupport(self):
+        # CN's first-row header at key 8 (845,203) can ignore selection.
+        # Verified 1280x720 card body avoids the portrait/details controls.
+        # The caller has confirmed FRIEND, and still waits for FORMATION.
+        if XDetect.region=='CN':return fgoDevice.device.touch((650,300))
+        return self.press('8')
     def finishFriendSelection(self,flow,template,refreshes):
         flow.waitForFlowState({BattleFlowState.FORMATION},timeout=30,
             transition_name='friend selection exit',allowed_intermediate={BattleFlowState.FRIEND})

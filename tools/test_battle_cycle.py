@@ -89,6 +89,18 @@ class CycleTests(unittest.TestCase):
         self.assertEqual(s.battles,0);self.assertGreaterEqual(s.now,90)
         self.assertIn('from=FORMATION',str(error))
         self.assertEqual(s.actions.count(('FORMATION',' ')),1)
+    def test_live_cn_first_support_header_is_not_actionable_body_is(self):
+        # Observed CN first-row header ignores key 8 at (845,203). The blue
+        # servant/NP body is selectable, and the independent FORMATION marker
+        # must prove departure before chooseFriend returns.
+        clock=Clock();states=['FRIEND'];inputs=[]
+        flow=BattleFlow(lambda:frame(states[0]),clock,clock=clock,trace=FlowTrace(clock=clock))
+        def touch(pos):
+            inputs.append(pos)
+            if pos==(650,300):states[0]='FORMATION'
+        with patch.object(kernel,'schedule',clock),patch.object(kernel.XDetect,'region','CN'),patch.object(kernel.friendImg,'flush',return_value=False),patch.object(kernel.fgoDevice.device,'touch',side_effect=touch),patch.object(kernel.fgoDevice.device,'press') as press:
+            result=kernel.Main(friendPolicy='first').chooseFriend(flow)
+        self.assertTrue(result.selected);self.assertEqual(inputs,[(650,300)]);press.assert_not_called()
     def test_first_full_cycle(self):
         s=Scenario();run,flow,error=self.runScenario(s)
         self.assertIsNone(error);self.assertCounters(run,1,1,1,0)
