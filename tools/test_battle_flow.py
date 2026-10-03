@@ -8,7 +8,7 @@ from fgoFlowTrace import FlowTrace
 
 def frame(*states):
     from fgoBattleFlow import DETECTORS
-    return SimpleNamespace(**{method:(lambda value=state in states:value) for method,state in DETECTORS})
+    return SimpleNamespace(isLoading=lambda:'LOADING' in states,**{method:(lambda value=state in states:value) for method,state in DETECTORS})
 
 class Clock:
     now=0

@@ -22,6 +22,7 @@ __version__=VERSION
 __author__='hgjazhgj'
 import logging,numpy,pulp,random,re,time,threading
 from copy import deepcopy
+from contextvars import ContextVar
 import fgoDevice
 import fgoFriendPolicy
 import fgoNavigation
@@ -293,6 +294,21 @@ def _weeklyMissionDetailed():
 def weeklyMissionDetailed():return _weeklyMissionDetailed()
 
 def weeklyMission():return weeklyMissionDetailed()['quests']
+_activeBattleFlow=ContextVar('active_battle_flow',default=None)
+class BattlePhaseEnded(Exception):
+    def __init__(self,state):self.state=state
+def recoverSkillFailure():
+    flow=_activeBattleFlow.get()
+    if flow:return flow.action('skill_cast_failed_recover',lambda:fgoDevice.device.press('J'))
+    fgoDevice.device.press('J')
+def waitForTurnBegin(reason,timeout=45):
+    flow=_activeBattleFlow.get() or BattleFlow(lambda:Detect(0,0),schedule,
+        trace=FlowTrace(root=paths.logRoot/'flow'),network=handleNetworkError)
+    S=BattleFlowState
+    observation=flow.waitForFlowState({S.TURN_BEGIN,S.BATTLE_RESULT,S.DEFEATED},
+        timeout=timeout,transition_name=reason,on_skill_error=lambda:fgoDevice.device.press('J'))
+    if observation.state!=S.TURN_BEGIN:raise BattlePhaseEnded(observation.state)
+    return flow.detect
 class ClassicTurn:
     skillInfo=[[[0,0,0,7],[0,0,0,7],[0,0,0,7]],[[0,0,0,7],[0,0,0,7],[0,0,0,7]],[[0,0,0,7],[0,0,0,7],[0,0,0,7]],[[0,0,0,7],[0,0,0,7],[0,0,0,7]],[[0,0,0,7],[0,0,0,7],[0,0,0,7]],[[0,0,0,7],[0,0,0,7],[0,0,0,7]]]
     houguInfo=[[1,7],[1,7],[1,7],[1,7],[1,7],[1,7]]
@@ -326,7 +342,7 @@ class ClassicTurn:
             _,cast,arg=min(s,key=lambda x:x[0])
             [self.castServantSkill,self.castMasterSkill][cast](*arg)
             fgoDevice.device.perform('\x08',(700,))
-            while not Detect().isTurnBegin():pass
+            waitForTurnBegin('skill/master animation',timeout=45)
             Detect(.5)
     @logit(logger,logging.INFO)
     def selectCard(self):return''.join((lambda hougu,sealed,color,resist,critical:(fgoDevice.device.perform('\x67\x68\x69\x64\x65\x66'[numpy.argmax([Detect.cache.getEnemyHp(i)for i in range(6)])],(500,))if any(hougu)or self.stageTurn==1 else 0,['678'[i]for i in sorted((i for i in range(3)if hougu[i]),key=lambda x:self.getHouguInfo(x,1))]+['12345'[i]for i in sorted(range(5),key=(lambda x:-color[x]*resist[x]*(not sealed[x])*(1+critical[x])))]if any(hougu)else(lambda group:['12345'[i]for i in(lambda choice:choice+tuple({0,1,2,3,4}-set(choice)))(logger.debug('cardRank'+','.join(('  'if i%5 else'\n')+f'({j}, {k:5.2f})'for i,(j,k)in enumerate(sorted([(card,(lambda colorChain,firstCardBonus:sum((firstCardBonus+[1.,1.2,1.4][i]*color[j])*(1+critical[j])*resist[j]*(not sealed[j])for i,j in enumerate(card))+(not any(sealed[i]for i in card))*(4.8*colorChain+(firstCardBonus+1.)*(3 if colorChain else 1.8)*(len({group[i]for i in card})==1)*resist[card[0]]))(len({color[i]for i in card})==1,.3*(color[card[0]]==1.1)))for card in permutations(range(5),3)],key=lambda x:-x[1]))))or max(permutations(range(5),3),key=lambda card:(lambda colorChain,firstCardBonus:sum((firstCardBonus+[1.,1.2,1.4][i]*color[j])*(1+critical[j])*resist[j]*(not sealed[j])for i,j in enumerate(card))+(not any(sealed[i]for i in card))*(4.8*colorChain+(firstCardBonus+1.)*(3 if colorChain else 1.8)*(len({group[i]for i in card})==1)*resist[card[0]]))(len({color[i]for i in card})==1,.3*(color[card[0]]==1.1))))])(Detect.cache.getCardGroup()))[1])([self.servant[i]<6 and j and(t:=self.getHouguInfo(i,0))and self.stage>=min(t,self.stageTotal)for i,j in enumerate(Detect().isHouguReady())],Detect.cache.isCardSealed(),[[.8,1.,1.1][i]for i in Detect.cache.getCardColor()],[[1.,1.7,.6][i]for i in Detect.cache.getCardResist()],[i/10 for i in Detect.cache.getCardCriticalRate()]))
@@ -339,7 +355,7 @@ class ClassicTurn:
             self.countDown[0][pos][skill]=999
         elif Detect(.7).isSkillCastFailed():
             self.countDown[pos][skill]=1
-            fgoDevice.device.press('J')
+            recoverSkillFailure()
         elif t:=Detect.cache.getSkillTargetCount():fgoDevice.device.perform(['3333','2244','3234'][t-1][self.getSkillInfo(pos,skill,2)],(300,))
     def castMasterSkill(self,skill):
         self.countDown[1][skill]=15
@@ -351,7 +367,7 @@ class ClassicTurn:
                 fgoDevice.device.perform(('TYUIOP'[p],'TYUIOP'[self.masterSkill[2][3]-max(self.servant)+1],'Z'),(300,300,2600))
                 self.orderChange[self.masterSkill[2][2]-1],self.orderChange[self.masterSkill[2][3]-1]=self.orderChange[self.masterSkill[2][3]-1],self.orderChange[self.masterSkill[2][2]-1]
                 fgoDevice.device.perform('\x08',(2300,))
-                while not Detect().isTurnBegin():pass
+                waitForTurnBegin('skill/master animation',timeout=45)
                 self.friend=[Detect(.5).isServantFriend(0),Detect.cache.isServantFriend(1),Detect.cache.isServantFriend(2)]
                 Detect.cache.setupServantDead(self.friend)
             elif t:=Detect(.5).getSkillTargetCount():fgoDevice.device.perform(['3333','2244','3234'][t-1][self.masterSkill[skill][2]],(300,))
@@ -513,42 +529,58 @@ class Turn:
         elif Detect.cache.isSkillCastFailed():
             logger.warning(f'Skill {pos} {skill} Cast Failed')
             self.countDown[0][pos][skill]=1
-            fgoDevice.device.press('J')
+            recoverSkillFailure()
         elif t:=Detect.cache.getSkillTargetCount():fgoDevice.device.perform(['3333','2244','3234'][t-1][f-5 if(f:=self.servant[pos][6][skill][1])in{6,7,8}else target]+'\x08',(300,700))
         else:fgoDevice.device.perform('\x08',(700,))
-        while not Detect().isTurnBegin():pass
+        waitForTurnBegin('skill/master animation',timeout=45)
         Detect(.5)
     def castMasterSkill(self,skill,target):
         self.countDown[1][skill]=15
         fgoDevice.device.perform('Q'+'WER'[skill],(300,300))
         if t:=Detect(.4).getSkillTargetCount():fgoDevice.device.perform(['3333','2244','3234'][t-1][target],(300,))
-        while not Detect().isTurnBegin():pass
+        waitForTurnBegin('skill/master animation',timeout=45)
         Detect(.5)
 class Battle:
     def __init__(self,turnClass=Turn):
         self.turn=0
         self.turnProc=turnClass()
+    totalTimeout=30*60
+    unknownTimeout=60
     def __call__(self):
-        self.start=time.time()
-        self.defeated=False
-        while True:
-            if Detect(0,.3).isTurnBegin():
-                self.turn+=1
-                self.turnProc(self.turn)
-            elif Detect.cache.isSpecialDropSuspended():
-                schedule.checkKizunaReisou()
-                logger.warning('Kizuna Reisou')
-                Detect.cache.save('fgoLog/SpecialDrop')
-                fgoDevice.device.press('\x1B')
-            elif Detect.cache.isBattleFinished():
-                logger.info('Battle Finished')
-                return True
-            elif Detect.cache.isBattleDefeated():
-                self.defeated=True
-                logger.warning('Battle Defeated')
-                schedule.checkDefeated()
-                return False
-            fgoDevice.device.perform('\xBB\x08',(100,100))
+        self.start=time.time();self.defeated=False
+        self.flow=getattr(self,'flow',None) or BattleFlow(lambda:Detect(0,0),schedule,
+            trace=FlowTrace(root=paths.logRoot/'flow'),network=handleNetworkError)
+        flow=self.flow;S=BattleFlowState
+        deadline=flow.clock()+self.totalTimeout;progress=flow.clock();last=None
+        token=_activeBattleFlow.set(flow)
+        try:
+            while flow.clock()<deadline:
+                observation=flow.observe();state=observation.state
+                if state==S.TURN_BEGIN:
+                    self.turn+=1;progress=flow.clock()
+                    try:self.turnProc(self.turn)
+                    except BattlePhaseEnded as ended:state=ended.state
+                if state==S.BATTLE_RESULT:
+                    logger.info('Battle Finished');return True
+                if state==S.DEFEATED:
+                    self.defeated=True;logger.warning('Battle Defeated')
+                    schedule.checkDefeated();return False
+                if state==S.SPECIAL_MODAL:
+                    schedule.checkKizunaReisou()
+                    flow.action('close_special_battle_modal',lambda:fgoDevice.device.press('\x1B'))
+                    flow.waitForFlowState({S.TURN_BEGIN,S.BATTLE_RESULT,S.DEFEATED},timeout=30,transition_name='battle modal close',allowed_intermediate={S.SPECIAL_MODAL})
+                    progress=flow.clock()
+                elif state==S.NETWORK_ERROR:
+                    flow.waitForFlowState({S.TURN_BEGIN,S.BATTLE_RESULT,S.DEFEATED},timeout=45,transition_name='battle network recovery')
+                    progress=flow.clock()
+                elif state not in {S.TURN_BEGIN,S.UNKNOWN,S.LOADING,S.BATTLE_RESULT,S.DEFEATED}:
+                    flow.fail(FlowTimeout,'UNEXPECTED battle state',{S.TURN_BEGIN,S.BATTLE_RESULT,S.DEFEATED},flow.clock()-progress)
+                if flow.clock()-progress>=self.unknownTimeout:
+                    flow.fail(FlowTimeout,'TIMEOUT battle progress',{S.TURN_BEGIN,S.BATTLE_RESULT,S.DEFEATED},flow.clock()-progress)
+                last=state
+                schedule.sleep(.2)
+            flow.fail(FlowTimeout,'TIMEOUT battle total',{S.BATTLE_RESULT,S.DEFEATED},self.totalTimeout)
+        finally:_activeBattleFlow.reset(token)
     @property
     def result(self):
         return{
