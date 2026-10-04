@@ -80,4 +80,3 @@ class FriendWaitSafetyTests(unittest.TestCase):
         error,press,touch,_=self.invoke(f);self.assertIsNone(error);press.assert_not_called();touch.assert_called_once_with((650,300),duration=.08)
 
 if __name__=='__main__':unittest.main()
-
