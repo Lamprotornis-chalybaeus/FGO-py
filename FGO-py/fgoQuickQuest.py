@@ -65,20 +65,22 @@ def _readDailyTitle(image,center):
         y=int(round(center));line=image[y-height//2:y+height//2,775:1120]
         if gray:line=cv2.cvtColor(cv2.cvtColor(line,cv2.COLOR_BGR2GRAY),cv2.COLOR_GRAY2BGR)
         name,score=_dailyLine(OCR.ZHS,line)
-        if score>=.85 and _valid_daily_title(name):reads.setdefault(_title_key(name),[]).append(name)
+        if score>=.85 and _valid_daily_title(name):
+            key=_title_key(name);reads.setdefault(key,[]).append(name);return key
     for height,gray in ((20,False),(32,False)):read(height,gray)
+    gray_key=read(28,True)
     winners=[names for names in reads.values() if len(names)>=2]
-    # Two equal first reads have the same outcome as the old three-read vote:
-    # one additional vote cannot create a second winning pair.
-    if len(winners)==1:return _format_title(winners[0][0],_difficulty(winners[0][0]))
-    read(28,True)
-    winners=[names for names in reads.values() if len(names)>=2]
-    if not winners:
-        # A broad line can drop a narrow glyph (弓). Re-read the same pixels
-        # with two additional contexts; ambiguity still rejects the entire card.
-        for height,gray in ((24,False),(20,True)):read(height,gray)
-        winners=[names for names in reads.values() if len(names)>=2]
-    return _format_title(winners[0][0],_difficulty(winners[0][0])) if len(winners)==1 else None
+    # Two color crops can repeat the same wrong small glyph. Always consult
+    # the independent grayscale context. A valid conflicting gray reading
+    # triggers bounded additional contexts instead of accepting that pair.
+    if len(winners)==1 and (gray_key is None or _title_key(winners[0][0])==gray_key):
+        return _format_title(winners[0][0],_difficulty(winners[0][0]))
+    conflicting_pair=len(winners)==1 and gray_key is not None and _title_key(winners[0][0])!=gray_key
+    for height,gray in ((24,False),(32,True)):read(height,gray)
+    winners=sorted((names for names in reads.values() if len(names)>=2),key=len,reverse=True)
+    if len(winners)==1 and (not conflicting_pair or len(winners[0])>=3) or len(winners)>1 and len(winners[0])>=3 and len(winners[0])>len(winners[1]):
+        return _format_title(winners[0][0],_difficulty(winners[0][0]))
+    return None
 
 def _difficulty(text):
     compact=_compact_title(text)

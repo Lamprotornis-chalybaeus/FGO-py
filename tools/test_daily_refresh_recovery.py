@@ -104,7 +104,7 @@ class ScanRecoveryTests(unittest.TestCase):
     def test_title_reads_change_vertical_context_instead_of_only_upscaling(self):
         with patch.object(daily.OCR.ZHS,'ocr_single_line',return_value=('月之修炼场上级',.98)) as read:
             daily._readDailyTitle(Frame().im,250)
-        self.assertEqual([c.args[0].shape[:2] for c in read.call_args_list],[(20,345),(32,345)])
+        self.assertEqual([c.args[0].shape[:2] for c in read.call_args_list],[(20,345),(32,345),(28,345)])
     def test_missing_glyph_recovery_still_requires_a_second_complete_read(self):
         reads=[('弓之修炼场上级',.95),('之修炼场上级',.98),('之修炼场上级',.97),('弓之修炼场上级',.9),('引之修炼场上级',.9)]
         with patch.object(daily.OCR.ZHS,'ocr_single_line',side_effect=reads):

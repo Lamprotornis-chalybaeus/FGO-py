@@ -366,4 +366,24 @@ class ReturnJourneyEvidenceTests(unittest.TestCase):
         acc.observations_by_title[key]=acc.observations_by_title[key][:1]
         with self.assertRaisesRegex(DailyIndexError,'unverified'):acc.build()
 
+class IndependentGlyphContextTests(unittest.TestCase):
+    def read(self,values):
+        import numpy
+        with patch.object(q.OCR.ZHS,'ocr_single_line',side_effect=[(v,.98) for v in values]) as ocr:
+            result=q._readDailyTitle(numpy.zeros((720,1280,3),dtype=numpy.uint8),250)
+        return result,ocr.call_count
+    def test_two_color_errors_do_not_override_gray_and_extra_contexts(self):
+        wrong='每日替换搜集种火<弓·木篇>极级';actual='每日替换搜集种火<弓·术篇>极级'
+        result,calls=self.read([wrong,wrong,actual,actual,actual])
+        self.assertEqual(result,'每日替换 搜集种火<弓·术篇> 极级');self.assertEqual(calls,5)
+    def test_equal_competing_pairs_remain_ambiguous(self):
+        result,calls=self.read(['未来挑战甲特级','未来挑战甲特级','未来挑战乙特级','未来挑战乙特级','未来挑战丙特级'])
+        self.assertIsNone(result);self.assertEqual(calls,5)
+    def test_color_pair_with_unresolved_gray_conflict_never_wins_by_default(self):
+        result,calls=self.read(['未来挑战甲特级','未来挑战甲特级','未来挑战乙特级','未来挑战丙特级','未来挑战丁特级'])
+        self.assertIsNone(result);self.assertEqual(calls,5)
+    def test_unknown_name_uses_same_context_rule_without_whitelist(self):
+        result,calls=self.read(['未来新增每日试炼特级']*3)
+        self.assertEqual(result,'未来新增每日试炼特级');self.assertEqual(calls,3)
+
 if __name__=='__main__':unittest.main()
