@@ -722,8 +722,9 @@ class Main:
         logger.warning('Eat Apple')
         return self.appleTotal+1
     @logit(logger,logging.INFO)
-    def chooseFriend(self,flow=None):
+    def chooseFriend(self,flow=None,*,continued=False):
         flow=flow or self.makeFlow()
+        directBattle=continued and XDetect.region=='CN'
         policy=self.friendPolicy or 'prefer'  # CLI retains template-first behavior, now with a finite bound.
         maxRefresh=max(0,min(10,int(self.friendMaxRefresh)))
         hasTemplates=bool(friendImg.flush())
@@ -761,20 +762,20 @@ class Main:
             # The refresh budget limits refreshes, not the initial list scan.
             if policy=='first' or not hasTemplates:
                 self.waitFirstSupportReady(flow)
-                flow.action('select_first_support',self.selectFirstSupport)
-                return self.finishFriendSelection(flow,None,refreshes)
+                flow.action('continue_support_start' if directBattle else 'select_first_support',self.selectFirstSupport)
+                return self.finishFriendSelection(flow,None,refreshes,directBattle=directBattle)
             matched=False
             scrollGuard=fgoNavigation.NavigationGuard('friend list scan',60,100)
             for _ in scrollGuard.steps():
                 if time.monotonic()>deadline:raise ScriptStop('扫描助战列表超时')
                 for name,img in friendImg.orderedItems():
                     if pos:=Detect.cache.findFriend(img):
-                        flow.action('select_support_template',lambda:fgoDevice.device.touch(pos))
+                        flow.action('continue_support_start' if directBattle else 'select_support_template',lambda:fgoDevice.device.touch(pos))
                         ClassicTurn.friendInfo=(lambda r:(lambda p:[
                             [[-1 if p[i*4+j]=='X'else int(p[i*4+j],16)for j in range(4)]for i in range(3)],
                             [-1 if p[i+12]=='X'else int(p[i+12],16)for i in range(2)],
                         ])(r.group())if r else[[[-1,-1,-1,-1],[-1,-1,-1,-1],[-1,-1,-1,-1]],[-1,-1]])(re.match('([0-9X]{3}[0-9A-FX]){3}[0-9X][0-9A-FX]$',name.replace('-','')[-14:].upper()))
-                        return self.finishFriendSelection(flow,name,refreshes)
+                        return self.finishFriendSelection(flow,name,refreshes,directBattle=directBattle)
                 if Detect.cache.isFriendListEnd():break
                 scrollGuard.progress(fgoNavigation.stableCrop(Detect.cache,(13,166,1233,710)))
                 fgoDevice.device.swipe((400,600),(400,200))
@@ -782,8 +783,8 @@ class Main:
             action=fgoFriendPolicy.decision(policy,matched,hasTemplates,refreshes,maxRefresh)
             if action=='first':
                 self.waitFirstSupportReady(flow)
-                flow.action('select_first_support',self.selectFirstSupport)
-                return self.finishFriendSelection(flow,None,refreshes)
+                flow.action('continue_support_start' if directBattle else 'select_first_support',self.selectFirstSupport)
+                return self.finishFriendSelection(flow,None,refreshes,directBattle=directBattle)
             if action=='stop':raise ScriptStop(f'未找到符合模板的助战（已刷新 {refreshes} 次）')
             schedule.sleep(max(0,nextRefreshAt-time.monotonic()))
             fgoDevice.device.perform('\xBAK',(500,1000))
@@ -804,10 +805,14 @@ class Main:
         # The caller has confirmed FRIEND, and still waits for FORMATION.
         if XDetect.region=='CN':return fgoDevice.device.touch((650,300),duration=.08)
         return self.press('8')
-    def finishFriendSelection(self,flow,template,refreshes):
-        flow.waitForFlowState({BattleFlowState.FORMATION},timeout=30,
-            transition_name='friend selection exit',allowed_intermediate={BattleFlowState.FRIEND})
-        return FriendSelectionResult(True,template,refreshes)
+    def finishFriendSelection(self,flow,template,refreshes,*,directBattle=False):
+        # Verified CN CONTINUE may reuse the party and go straight to battle.
+        # Only that route admits TURN_BEGIN; never press start after it.
+        expected={BattleFlowState.FORMATION}|({BattleFlowState.TURN_BEGIN} if directBattle else set())
+        timing={'timeout':180,'stall_timeout':60,'progress_signature':lambda d:getattr(d,'getLoadingProgressSignature',lambda:None)()} if directBattle else {'timeout':30}
+        observation=flow.waitForFlowState(expected,**timing,
+            transition_name='continue support exit' if directBattle else 'friend selection exit',allowed_intermediate={BattleFlowState.FRIEND,BattleFlowState.LOADING})
+        return FriendSelectionResult(True,template,refreshes,observation.state)
 
 class Operation(list,Main):
     apLookup={i:j for i,j in zip(missionQuest,missionMat[0])}

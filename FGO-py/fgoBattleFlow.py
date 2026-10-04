@@ -140,7 +140,7 @@ class BattleCycle:
     """Both initial and repeat entries converge on FRIEND -> FORMATION -> TURN."""
     def __init__(self,main,flow):self.main,self.flow=main,flow
     def prepare(self,quest_index=0):
-        S=BattleFlowState;deadline=self.flow.clock()+180
+        S=BattleFlowState;deadline=self.flow.clock()+180;continued=False
         observation=self.flow.observe()
         while self.flow.clock()<deadline:
             state=observation.state
@@ -151,6 +151,7 @@ class BattleCycle:
                 quest_index=0
                 observation=self.flow.waitForFlowState({S.FRIEND,S.FRIEND_EMPTY,S.FORMATION,S.CONTINUE,S.AP_EMPTY,S.SKILL_CAST_FAILED},timeout=45,transition_name='quest entry',allowed_intermediate={S.QUEST_READY})
             elif state==S.CONTINUE:
+                continued=True
                 self.flow.action('continue',lambda:self.main.press('K'))
                 observation=self.flow.waitForFlowState({S.FRIEND,S.FRIEND_EMPTY,S.FORMATION,S.AP_EMPTY,S.SKILL_CAST_FAILED},timeout=45,transition_name='continue exit',allowed_intermediate={S.CONTINUE})
             elif state==S.AP_EMPTY:
@@ -158,7 +159,7 @@ class BattleCycle:
                 if not restored:self.main.completionReason='Ap Empty';return False
                 observation=self.flow.waitForFlowState({S.FRIEND,S.FRIEND_EMPTY,S.FORMATION},timeout=45,transition_name='AP policy',allowed_intermediate={S.AP_EMPTY})
             elif state in {S.FRIEND,S.FRIEND_EMPTY}:
-                self.main.chooseFriend(flow=self.flow)
+                self.main.chooseFriend(flow=self.flow,continued=continued)
                 observation=self.flow.observation
             elif state==S.FORMATION:
                 self.main.prepareFormation(self.flow)

@@ -122,6 +122,24 @@ class CycleTests(unittest.TestCase):
         s=Scenario();run,flow,error=self.runScenario(s)
         self.assertIsNone(error);self.assertCounters(run,1,1,1,0)
         self.assertEqual(s.actions,[('QUEST_READY','8'),('FRIEND','8'),('FORMATION',' '),('BATTLE_RESULT',' '),('ADD_FRIEND','X'),('CONTINUE','F')])
+    def test_real_cn_continue_support_enters_battle_without_formation(self):
+        # Real repeated-entry trace: CONTINUE -> FRIEND -> loading -> TURN.
+        # Reusing the existing party bypasses FORMATION; another start tap
+        # would be an input into battle. No private screenshot fixture.
+        class DirectScenario(Scenario):
+            continuing=False
+            def press(self,key,**kwargs):
+                if self.state=='CONTINUE' and key=='K':self.continuing=True
+                if self.state=='FRIEND' and key=='8' and self.continuing:
+                    self.actions.append(('FRIEND','8'));self.to('TURN_BEGIN',44);return
+                return super().press(key,**kwargs)
+        s=DirectScenario()
+        with patch.object(kernel.XDetect,'region','CN'),patch.object(kernel.fgoDevice.device,'touch',side_effect=lambda pos,**kwargs:s.press('8')):
+            run,flow,error=self.runScenario(s,5)
+        self.assertIsNone(error);self.assertCounters(run,5,5,5,0)
+        self.assertEqual(s.actions.count(('FORMATION',' ')),1)
+        self.assertEqual(s.actions.count(('FRIEND','8')),5)
+        self.assertEqual(sum(r.action=='continue_support_start' for r in flow.trace.records),4)
     def test_two_complete_cycles_share_formation_start(self):
         s=Scenario();run,flow,error=self.runScenario(s,2)
         self.assertIsNone(error);self.assertCounters(run,2,2,2,0)
