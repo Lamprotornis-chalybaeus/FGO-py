@@ -301,6 +301,22 @@ def _nextScanShift(entries,acc,stride):
         anchor=entries[-2]
     return max(180,min(stride,anchor.discovered_position[2]-170))
 
+def _readScanTop(d,n,deadline):
+    """Thumb quantization alone cannot prove the leading card is readable."""
+    import fgoQuickQuest as q
+    for attempt in range(3):
+        _checkDeadline(deadline);safe(d)
+        if q._scrollbar(d.im)[0]>101:raise ScriptStop('每日任务扫描顶部滚动条未确认，未发布列表')
+        d,entries=_readPage(d,n)
+        if entries and min(e.discovered_position[2] for e in entries)<=220:return d,entries
+        if attempt==2:break
+        # At thumb 100 the content may still be ~32 px below the true endpoint:
+        # the first title/AP lies outside the full-card read band. One bounded
+        # upward-list normalization input needs fresh DAILY and top proof.
+        # Never invent that missing leading card from the advisory index.
+        q._swipe_input_only(d,True,100);d=capture()
+    raise ScriptStop('每日任务顶部第一张完整卡片未确认，未发布不完整列表')
+
 def scan():
     import fgoQuickQuest as q
     from fgoNavigation import publish
@@ -311,9 +327,10 @@ def scan():
         d=capture()
         if not q._isDailyPage(d):q.openDailyPageCN();d=capture()
         safe(d);d=dragTo(99,deadline,d);stride=280;stable=0;stalled=0;n=0
+        firstPage=_readScanTop(d,n,deadline);d=firstPage[0]
         while True:
             _checkDeadline(deadline);planned=q._scrollbar(d.im)[0]
-            d,entries=_readPage(d,n);thumb=q._scrollbar(d.im)
+            d,entries=firstPage if n==0 else _readPage(d,n);thumb=q._scrollbar(d.im)
             if acc.frame_order and thumb[0]<acc.frame_order[-1][0]-2:
                 d=dragTo(planned,deadline,d);d,entries=_readPage(d,n);thumb=q._scrollbar(d.im)
             if not entries:raise ScriptStop('未校验到完整每日任务卡片，请检查识别日志')
@@ -376,7 +393,7 @@ def scan():
         # recheck. Do not make a separate early trip to this same boundary.
         d=dragTo(99,deadline,d);safe(d)
         if q._scrollbar(d.im)[0]>101:raise ScriptStop('每日任务完成后未确认顶部，未发布列表')
-        d,entries=_readPage(d,n);_add(acc,d,entries,metrics.screensCaptured)
+        d,entries=_readScanTop(d,n,deadline);_add(acc,d,entries,metrics.screensCaptured)
         first=min(acc.absolute,key=acc.absolute.get)
         if not _find(entries,first):raise ScriptStop('每日任务顶部边缘标题/AP未确认，未发布列表')
         if len(acc.observations_by_title[first])<2:

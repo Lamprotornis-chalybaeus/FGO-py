@@ -97,6 +97,30 @@ class ContextCacheTests(unittest.TestCase):
             q._swipe(p,True)
         swipe.assert_called_once();invalidate.assert_not_called()
 
+class ScanLeadingEdgeTests(unittest.TestCase):
+    def test_quantized_top_without_first_full_card_is_normalized_once(self):
+        with World(75).patched() as w:
+            w.top=100
+            d,entries=indexed._readScanTop(w.capture(),0,float('inf'))
+            self.assertEqual(entries[0].title,w.entry(0,140).title)
+            self.assertEqual(w.swipes,[True]);w.touch.assert_not_called()
+    def test_missing_leading_title_never_publishes_complete_second_card_as_first(self):
+        with World(75).patched() as w:
+            w.missing.add(0)
+            with self.assertRaisesRegex(q.ScriptStop,'第一张完整卡片'):
+                indexed._readScanTop(w.capture(),0,float('inf'))
+            self.assertEqual(w.swipes,[True,True]);self.assertIsNone(indexed.currentIndex())
+    def test_visible_first_card_needs_no_extra_top_input(self):
+        with World(75).patched() as w:
+            _,entries=indexed._readScanTop(w.capture(),0,float('inf'))
+            self.assertEqual(entries[0].title,w.entry(0,140).title);self.assertEqual(w.swipes,[])
+    def test_mid_list_is_not_allowed_to_use_top_edge_normalization(self):
+        with World(75).patched() as w:
+            w.top=200
+            with self.assertRaisesRegex(q.ScriptStop,'顶部滚动条'):
+                indexed._readScanTop(w.capture(),0,float('inf'))
+            self.assertEqual(w.swipes,[])
+
 class GenericMenuTests(unittest.TestCase):
     def test_top_bar_counters_do_not_compete_with_right_aligned_header(self):
         p=Page([label('未来普通功能页',950,8,310,50),label('0/75',959,7,66,33),label('3/10',965,49,59,30),MENU])
