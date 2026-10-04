@@ -22,11 +22,11 @@ The open/unverified statements below are retained historical development snapsho
 
 Post-battle transition → battle continue → friend selection → formation transition → next battle state acquisition.
 
-## Not proven
+## Historical uncertainty (superseded by the latest gate)
 
 Do not blame OCR, item recognition, network behavior or device input without evidence. Item recognition is removed from the current version. Existing evidence does not identify the exact failure point, and the issue remains open.
 
-## State-machine branch validation (2026-10-03)
+## Historical state-machine branch validation (2026-10-03; superseded)
 
 `fix/battle-cycle-state-machine` is based on `add17a8a58f0315e91b695b25693c42431a61424` and is not merged into `cn-dev`. The refactor addresses the confirmed initial/repeat asymmetry, count-before-start behavior, busy waits, guardian input and GUI lifecycle races. These structural repairs do not prove every historical Fused cause.
 
@@ -52,7 +52,7 @@ Priority: P1. Event-specific formation requirements and a general Mission solver
 # CN navigation normalization coverage
 
 Priority: P1. New page identities can appear. Extend coverage using verified page titles and return controls, while preserving refusal of battle, purchase, AP recovery, story and reward-choice modals. Complete daily scanning remains comparatively slow.
-# 2026-10-04 formation-start diagnostic follow-up
+# Historical 2026-10-04 formation-start diagnostic follow-up (superseded)
 
 P0 remains open. STARTING without a producer has been removed. Full-cycle physical input tracing and a narrowly scoped local formation-start capture diagnostic are implemented. Every remaining state has a tested producer; the .05 attack threshold is unchanged.
 
@@ -70,7 +70,7 @@ Recovery of the already entered second battle exposed another timing error: the 
 
 P0: **mitigated / awaiting longer-term observation**. Mitigated does not mean proven permanently fixed.
 
-The completed live gate at `b5bff1e493d841ceb325eca36d660996260268cb` passed clean1, continuous5 and continuous10 on the same runtime revision: wins=16, defeats=0, Fused=0, FlowTimeout=0, consistent started/completed counters and an empty queue at each final boundary. Three initial entries used FORMATION; thirteen CN repeats went directly from FRIEND through loading to TURN_BEGIN. All sixteen used the first-support policy, not templates. A repeated FORMATION route and template/direct combination have offline coverage, not a claim of live coverage.
+The earlier completed live gate at `b5bff1e493d841ceb325eca36d660996260268cb` passed clean1, continuous5 and continuous10 on the same runtime revision: wins=16, defeats=0, Fused=0, FlowTimeout=0, consistent started/completed counters and an empty queue at each final boundary. Three initial entries used FORMATION; thirteen CN repeats went directly from FRIEND through loading to TURN_BEGIN. All sixteen used the first-support policy, not templates. A repeated FORMATION route and template/direct combination have offline coverage, not a claim of live coverage.
 
 Earlier development failures remain historical evidence: support timeout; formation/start timeout; result-page timeout; continuous-route timeout; and bond-level-up timeout. The original start timeout lacks an interval screenshot and cannot be attributed conclusively. Recovery of an already entered battle/result is not a clean gate. No historical failure is erased by the successful run.
 
@@ -78,6 +78,6 @@ Final-review hardening adds two fresh outer UNKNOWN observations before turn rea
 
 Offline validation: 456 cases, 453 executed successfully and the original three integration skips; original 436 cases retained. Compileall, diff whitespace check and baseline AI strategy AST preservation pass. Raw frames, private templates, traces and local integration data are excluded from Git and CI artifacts.
 
-**Final merge acceptance still requires the latest candidate HEAD to repeat clean1 PASS, continuous5 PASS and continuous10 PASS after this hardening**, with wins=16, defeats=0, Fused=0, FlowTimeout=0, duplicate AI turn input=0, consistent statistics and queues empty. Earlier gate results are evidence, not a substitute for that fresh run. The operator's final review report records the exact HEAD and each stage; raw game artifacts remain local. Template smoke must reach FORMATION through a real existing private template, three fresh confirmations and one 80ms touch, without starting a quest or spending AP; an absent usable template must be explicitly recorded rather than fabricated.
+**Latest candidate code HEAD `f28705f9aefac3bf318f5525ef4c07e81b0f116b` completed and passed the fresh post-hardening gate: clean1 PASS, continuous5 PASS, continuous10 PASS.** Latest sixteen battles: wins=16, defeats=0, Fused=0, FlowTimeout=0, duplicate turn=0; started/completed statistics agree and each queue ends empty. Template zero-AP smoke PASS: a real existing private template was confirmed in three fresh frames, followed by one 80ms touch reaching FORMATION, then a safe return without starting a quest. AP change was zero. Three initial entries used FORMATION and thirteen CN repeats took the direct route. This latest gate supersedes the earlier pending acceptance requirement. Repeated bond-level-up instances and the template/direct-route combination remain offline-only coverage. The operator's local report retains the exact revision and per-battle transitions; private images, templates and raw traces are not published.
 
-This branch is not merged into cn-dev/master. Zero apples, quartz, AP recovery and revival are required. A failed stage stops later stages. Longer-term stability remains under observation.
+The approved candidate is awaiting the authorized fast-forward into cn-dev; master remains unchanged. Zero apples, quartz, AP recovery and revival are required. A failed stage stops later stages. Longer-term stability remains under observation.

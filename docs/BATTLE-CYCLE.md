@@ -1,6 +1,6 @@
 # Battle cycle state machine
 
-This document describes `fix/battle-cycle-state-machine`, based on `add17a8a58f0315e91b695b25693c42431a61424`. It has not been merged into `cn-dev`. Offline tests validate simulated transitions; live results are tracked separately. P0 remains open until the ten-battle stage passes.
+This document describes `fix/battle-cycle-state-machine`, based on `add17a8a58f0315e91b695b25693c42431a61424`. It has not been merged into `cn-dev`. P0: **mitigated / awaiting longer-term observation**, not proven permanently fixed. The latest approved code HEAD has passed the complete live gate recorded below; earlier open/timeout statements are historical and superseded.
 
 ## Entry and settlement
 
@@ -51,7 +51,7 @@ Foreground priority is explicit and included in evidence: NETWORK_ERROR, CONTINU
 
 The 2026-10-04 review adds three-frame confirmation for a matched CN support template at the same card position, then one 80ms touch. Non-CN template input and the matching algorithm remain unchanged. Initial support selection still requires FORMATION; only verified CN continuation may exit directly to TURN_BEGIN. Preparation shares one 180-second parent hard deadline across all child waits and restores any prior deadline on every exit.
 
-AI turns execute once per outer TURN_BEGIN episode. Only an outer UNKNOWN/LOADING observation after the full skill/card phase rearms the next episode. Nested skill-animation observations cannot increment the turn. The strategy AST remains unchanged.
+AI turns execute once per outer TURN_BEGIN episode. After the full skill/card phase, an outer LOADING observation rearms immediately; UNKNOWN requires two consecutive fresh outer observations. A single detector miss does not rearm. Nested skill-animation observations cannot increment the turn. The strategy AST remains unchanged.
 
 STARTING was removed on 2026-10-04: no real producer was established. Real formation-start captures showed a bright tips/loading page and battle introduction, without a start confirmation. The ATTACK .05 threshold remains unchanged. Formation start now has a 60-second stall budget and a 180-second hard deadline. Only a new positive intermediate state or a fixed-label-gated loading-indicator signature renews stall progress; arbitrary background animation and UNKNOWN flicker do not. The input observer spans preparation, battle and settlement, recording logical actions and physical inputs separately.
 
@@ -59,7 +59,7 @@ CN first-support selection requires three fresh observations of the fixed body l
 
 CN settlement distinguishes BOND, MASTER_EXP and REWARDS. Each positively identified page gets one advance input, followed by a wait for a different page or a later dialog. A persistent page times out without another input. This repairs the observed omission of the Bond result page, without restoring item recognition.
 
-A later five-stage trial exposed a bond-level-up overlay occluding the ordinary BOND label. BOND_LEVEL_UP requires the existing result title and footer plus two fixed overlay labels. It is a distinct result subtype; one dismissal reveals BOND, then the original three-page progression continues. A persistent overlay fails closed without reclick. Multiple consecutive indistinguishable overlays are not claimed verified. Public regressions contain only derived fixed-label OCR observations, never private pixels or servant identifiers.
+A later five-stage trial exposed a bond-level-up overlay occluding the ordinary BOND label. BOND_LEVEL_UP requires the existing result title and footer plus two fixed overlay labels. It is a distinct result subtype; one dismissal reveals BOND, then the original three-page progression continues. A persistent overlay fails closed without reclick. A distinct same-type instance requires three consecutive stable fresh captures before one further advance; indistinguishable instances still fail closed. Consecutive A/B instances have offline coverage but were not encountered in the latest live gate. Public regressions contain only derived fixed-label OCR observations, never private pixels or servant identifiers.
 
 Only verified FORMATION plus recorded start_quest opens the narrow TURN_BEGIN transition capture: first/middle/last UNKNOWN and one LOADING representative, local only. Other UNKNOWN screens remain excluded. Metadata includes acquisition monotonic times, signature, brightness, ATTACK score, state and exact/approximate frame equality. Completion or failure persists the diagnostic episode. Raw private captures are never test fixtures or CI artifacts.
 
@@ -113,11 +113,11 @@ The ordinary trace holds two recent screenshots in memory. The separately author
 
 Removed: repeat sleep(6), ten blind result spaces, four skill busy waits, unbounded Battle loop, guardian device input, delayed GUI double-start protection and unlimited join. Existing AI card selection and skill strategy are preserved; no new daily/event/formation/drop features are introduced. Optional farming/guardian daemons retain explicit stop flags and scheduled waits. User-configured unlimited Main/queue plans remain possible, with bounded phase waits.
 
-## Live validation status (2026-10-03)
+## Historical live validation status (2026-10-03; superseded)
 
 Single stage incomplete: normalization refusal and support-departure timeout were recorded; the support input was corrected with an evidence-based regression. The next entry timed out at FORMATION -> TURN_BEGIN after 90.20 seconds. Subsequent read-only sampling found the existing attack template valid, but it cannot prove what was displayed during the failed interval. No threshold/time-limit relaxation was made. An unfinished battle remains in the client; no AI turn or settlement was run by this branch. Five/ten stages have not started. P0 remains open. Private reports contain exact traces and local artifact paths; these are not uploaded.
 
-## Historical live validation follow-up (2026-10-04, before full gates)
+## Historical live validation follow-up (2026-10-04, before full gates; superseded)
 
 Fresh observation found the historical battle had already ended; no replacement entry was made. A diagnostic victory exposed a missing Bond result detector, then the result sequence was recovered. After repairs, a clean single passed preparation, three AI turns, all result pages and final QUEST_READY.
 
@@ -129,7 +129,7 @@ The subsequent review-gap revision passed a clean single and completed four vict
 
 P0: **mitigated / awaiting longer-term observation**. Mitigated does not mean proven permanently fixed.
 
-The completed live gate at `b5bff1e493d841ceb325eca36d660996260268cb` passed clean1, continuous5 and continuous10 on the same runtime revision: wins=16, defeats=0, Fused=0, FlowTimeout=0, consistent started/completed counters and an empty queue at each final boundary. Three initial entries used FORMATION; thirteen CN repeats went directly from FRIEND through loading to TURN_BEGIN. All sixteen used the first-support policy, not templates. A repeated FORMATION route and template/direct combination have offline coverage, not a claim of live coverage.
+The earlier completed live gate at `b5bff1e493d841ceb325eca36d660996260268cb` passed clean1, continuous5 and continuous10 on the same runtime revision: wins=16, defeats=0, Fused=0, FlowTimeout=0, consistent started/completed counters and an empty queue at each final boundary. Three initial entries used FORMATION; thirteen CN repeats went directly from FRIEND through loading to TURN_BEGIN. All sixteen used the first-support policy, not templates. A repeated FORMATION route and template/direct combination have offline coverage, not a claim of live coverage.
 
 Earlier development failures remain historical evidence: support timeout; formation/start timeout; result-page timeout; continuous-route timeout; and bond-level-up timeout. The original start timeout lacks an interval screenshot and cannot be attributed conclusively. Recovery of an already entered battle/result is not a clean gate. No historical failure is erased by the successful run.
 
@@ -137,6 +137,6 @@ Final-review hardening adds two fresh outer UNKNOWN observations before turn rea
 
 Offline validation: 456 cases, 453 executed successfully and the original three integration skips; original 436 cases retained. Compileall, diff whitespace check and baseline AI strategy AST preservation pass. Raw frames, private templates, traces and local integration data are excluded from Git and CI artifacts.
 
-**Final merge acceptance still requires the latest candidate HEAD to repeat clean1 PASS, continuous5 PASS and continuous10 PASS after this hardening**, with wins=16, defeats=0, Fused=0, FlowTimeout=0, duplicate AI turn input=0, consistent statistics and queues empty. Earlier gate results are evidence, not a substitute for that fresh run. The operator's final review report records the exact HEAD and each stage; raw game artifacts remain local. Template smoke must reach FORMATION through a real existing private template, three fresh confirmations and one 80ms touch, without starting a quest or spending AP; an absent usable template must be explicitly recorded rather than fabricated.
+**Latest candidate code HEAD `f28705f9aefac3bf318f5525ef4c07e81b0f116b` completed and passed the fresh post-hardening gate: clean1 PASS, continuous5 PASS, continuous10 PASS.** Latest sixteen battles: wins=16, defeats=0, Fused=0, FlowTimeout=0, duplicate turn=0; started/completed statistics agree and each queue ends empty. Template zero-AP smoke PASS: a real existing private template was confirmed in three fresh frames, followed by one 80ms touch reaching FORMATION, then a safe return without starting a quest. AP change was zero. Three initial entries used FORMATION and thirteen CN repeats took the direct route. This latest gate supersedes the earlier pending acceptance requirement. Repeated bond-level-up instances and the template/direct-route combination remain offline-only coverage. The operator's local report retains the exact revision and per-battle transitions; private images, templates and raw traces are not published.
 
-This branch is not merged into cn-dev/master. Zero apples, quartz, AP recovery and revival are required. A failed stage stops later stages. Longer-term stability remains under observation.
+The approved candidate is awaiting the authorized fast-forward into cn-dev; master remains unchanged. Zero apples, quartz, AP recovery and revival are required. A failed stage stops later stages. Longer-term stability remains under observation.
