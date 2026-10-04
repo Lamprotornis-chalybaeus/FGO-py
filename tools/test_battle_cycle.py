@@ -86,7 +86,7 @@ class CycleTests(unittest.TestCase):
         # seconds elapsing never authorizes Battle or increments its number.
         s=Scenario(fail='formation_stuck');run,flow,error=self.runScenario(s)
         self.assertIsInstance(error,FlowTimeout);self.assertCounters(run,0,0,0,0)
-        self.assertEqual(s.battles,0);self.assertGreaterEqual(s.now,90)
+        self.assertEqual(s.battles,0);self.assertGreaterEqual(s.now,60)
         self.assertIn('from=FORMATION',str(error))
         self.assertEqual(s.actions.count(('FORMATION',' ')),1)
     def test_live_cn_first_support_header_is_not_actionable_body_is(self):
@@ -113,7 +113,7 @@ class CycleTests(unittest.TestCase):
     def test_delayed_turn_after_timeout_requires_new_positive_observation(self):
         s=Scenario(loading=91);run,flow,error=self.runScenario(s)
         self.assertIsInstance(error,FlowTimeout);self.assertCounters(run,0,0,0,0)
-        s.now+=2;s.read();self.assertEqual(s.state,'TURN_BEGIN')
+        s.now=max(s.now+2,93);s.read();self.assertEqual(s.state,'TURN_BEGIN')
         before=len(s.actions)
         resumed,resumeFlow,error=self.runScenario(s)
         self.assertIsNone(error);self.assertCounters(resumed,1,1,1,0)

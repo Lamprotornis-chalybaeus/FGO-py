@@ -1,4 +1,4 @@
-import os,time,cv2,numpy,re,tqdm
+import os,time,cv2,numpy,re,tqdm,hashlib
 from functools import reduce,wraps
 from fgoConst import PACKAGE_TO_REGION
 from fgoFuse import fuse
@@ -215,10 +215,19 @@ class XDetectCN(XDetectBase):
         return values[0][0]
     def isLoading(self):
         # Real CN bright tips page: both fixed labels, never random animation.
+        if hasattr(self,'_cnLoading'):return self._cnLoading
         for rect,expected in (((520,160,760,225),'小贴士'),((900,665,1060,716),'加载中')):
             text,score=OCR.ZHS.ocr_single_line(self._crop(rect))
-            if not float(score)>=.85 or re.sub(r'\s+','',str(text))!=expected:return False
+            if not float(score)>=.85 or re.sub(r'\s+','',str(text))!=expected:
+                self._cnLoading=False;return False
+        self._cnLoading=True
         return True
+    def getLoadingProgressSignature(self):
+        # Only the observed loading indicator, gated by both fixed labels;
+        # changing scenery/background does not count as start progress.
+        if not self.isLoading():return None
+        marker=cv2.resize(self._crop((1120,585,1278,715)),(40,32),interpolation=cv2.INTER_AREA)
+        return hashlib.sha256((numpy.max(marker,axis=2)>180).tobytes()).hexdigest()[:16]
     def getBattleResultPage(self):
         if hasattr(self,'_cnResultPage'):return self._cnResultPage
         page=None
@@ -235,6 +244,7 @@ class XDetectCN(XDetectBase):
     def isBattleFinished(self):return self.getBattleResultPage() is not None
     def inject(self,img):
         self.__dict__.pop('_cnResultPage',None)
+        self.__dict__.pop('_cnLoading',None)
         return super().inject(img)
     def isBattleContinue(self):
         # White title glyphs alone also match the bright daily-list background.

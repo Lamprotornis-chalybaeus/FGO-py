@@ -646,7 +646,7 @@ class Main:
                 return flow.waitForFlowState({S.TURN_BEGIN},timeout=90,transition_name='auto formation start')
         flow.action('start_quest',self.startQuest)
         flow.trace.beginFormationStart()
-        observation=flow.waitForFlowState({S.TURN_BEGIN},timeout=90,transition_name='formation start',allowed_intermediate={S.FORMATION,S.LOADING})
+        observation=flow.waitForFlowState({S.TURN_BEGIN},timeout=180,stall_timeout=60,transition_name='formation start',allowed_intermediate={S.FORMATION,S.LOADING},progress_signature=lambda d:getattr(d,'getLoadingProgressSignature',lambda:None)())
         flow.trace.endFormationStart()
         return observation
     @serialize(mutex)

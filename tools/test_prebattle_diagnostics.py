@@ -56,4 +56,30 @@ class PrebattleDiagnosticsTests(unittest.TestCase):
         self.assertEqual([r.to_state for r in physical],['QUEST_READY','FRIEND','FORMATION','BATTLE_RESULT','ADD_FRIEND','CONTINUE'])
         self.assertIsNone(INPUT_OBSERVER.get())
 
+class EvidenceDeadlineTests(unittest.TestCase):
+    def make(self,changing=False,turn_at=None):
+        from fgoBattleFlow import BattleFlow
+        clock=Clock()
+        def read():
+            d=frame('TURN_BEGIN' if turn_at is not None and clock.now>=turn_at else 'LOADING')
+            d.getLoadingProgressSignature=lambda:str(int(clock.now)) if changing else 'unchanged'
+            return d
+        flow=BattleFlow(read,clock,clock=clock)
+        return flow,clock
+    def test_gated_indicator_progress_can_wait_past_ninety(self):
+        flow,clock=self.make(True,100)
+        self.assertEqual(flow.waitForFlowState({S.TURN_BEGIN},timeout=180,stall_timeout=60,transition_name='formation',allowed_intermediate={S.LOADING},progress_signature=lambda d:d.getLoadingProgressSignature()).state,S.TURN_BEGIN)
+    def test_static_loading_stops_at_stall_limit(self):
+        from fgoBattleFlow import FlowTimeout
+        flow,clock=self.make()
+        with self.assertRaisesRegex(FlowTimeout,'STALL'):
+            flow.waitForFlowState({S.TURN_BEGIN},timeout=180,stall_timeout=60,transition_name='formation',allowed_intermediate={S.LOADING},progress_signature=lambda d:d.getLoadingProgressSignature())
+        self.assertLess(clock.now,61)
+    def test_spinner_cannot_extend_hard_limit(self):
+        from fgoBattleFlow import FlowTimeout
+        flow,clock=self.make(True)
+        with self.assertRaisesRegex(FlowTimeout,'TIMEOUT'):
+            flow.waitForFlowState({S.TURN_BEGIN},timeout=180,stall_timeout=60,transition_name='formation',allowed_intermediate={S.LOADING},progress_signature=lambda d:d.getLoadingProgressSignature())
+        self.assertLess(clock.now,181)
+
 if __name__=='__main__':unittest.main()

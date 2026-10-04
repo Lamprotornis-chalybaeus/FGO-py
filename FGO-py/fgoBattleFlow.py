@@ -101,16 +101,27 @@ class BattleFlow:
         evidence=self.observation.evidence if self.observation else ()
         summary=self.trace.failure(kind,expected,elapsed,evidence,from_state or getattr(self,'waitFrom',None))
         raise exception(f'Flow {kind}: from={summary["from"]} expected={"|".join(summary["expected"])} elapsed={elapsed:.2f} last_input={summary["last_input"]} evidence={evidence}')
-    def waitForFlowState(self,expected,*,timeout,transition_name,allowed_intermediate=(),on_skill_error=None,accept=None):
+    def waitForFlowState(self,expected,*,timeout,transition_name,allowed_intermediate=(),on_skill_error=None,accept=None,stall_timeout=None,progress_signature=None):
         expected=set(expected);allowed=set(allowed_intermediate);start=self.clock()
         if self.deadline is not None:timeout=min(timeout,max(0,self.deadline-start))
         skillHandled=self.trace.last_input=='skill_cast_failed_recover'
         self.waitFrom=self.trace.state
+        lastProgress=start;seenStates=set();lastSignature=None
         while self.clock()-start<timeout:
             observation=self.observe();state=observation.state
+            if self.clock()-start>=timeout:self.fail(FlowTimeout,'TIMEOUT '+transition_name,expected,self.clock()-start)
             if state in expected:
                 if accept is None or accept(self.detect):self.waitFrom=None;return observation
                 self.schedule.sleep(self.poll);continue
+            if stall_timeout is not None:
+                # A positive intermediate state advances once; UNKNOWN flicker
+                # cannot repeatedly renew the stall budget. Only a positively
+                # gated loading indicator signature can keep renewing it.
+                if state in allowed and state not in seenStates:
+                    seenStates.add(state);lastProgress=self.clock()
+                signature=progress_signature(self.detect) if progress_signature and state==BattleFlowState.LOADING else None
+                if signature is not None and signature!=lastSignature:lastSignature=signature;lastProgress=self.clock()
+                if self.clock()-lastProgress>=stall_timeout:self.fail(FlowTimeout,'STALL '+transition_name,expected,self.clock()-lastProgress)
             if state==BattleFlowState.NETWORK_ERROR and self.network:
                 if not self.networkHandled:
                     self.action('network_error_confirm',lambda:self.network(self.detect));self.networkHandled=True

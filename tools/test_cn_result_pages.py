@@ -30,6 +30,14 @@ class CNResultPageTests(unittest.TestCase):
     def test_background_animation_without_both_loading_labels_is_not_loading(self):
         d=self.detect({(520,160,760,225):('小贴士',.99)})
         with patch.object(OCR.ZHS,'ocr_single_line',side_effect=self.read):self.assertFalse(d.isLoading())
+    def test_loading_progress_signature_ignores_background_animation(self):
+        import numpy as np
+        d=XDetectCN.__new__(XDetectCN);d.im=np.zeros((720,1280,3),np.uint8)
+        with patch.object(d,'isLoading',return_value=True):
+            before=d.getLoadingProgressSignature();d.im[:400]=255
+            self.assertEqual(before,d.getLoadingProgressSignature())
+            d.im[600:660,1150:1200]=255
+            self.assertNotEqual(before,d.getLoadingProgressSignature())
 
 class ResultTransitionTests(unittest.TestCase):
     def runPages(self,persistent=False):

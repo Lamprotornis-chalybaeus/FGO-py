@@ -64,6 +64,7 @@ class FlowTrace:
         score=float(detect._loc(detect.tmpl.ATTACK,(1155,635,1210,682))[0]) if hasattr(detect,'_loc') else None
         if score is not None and not math.isfinite(score):score=None
         row={'capture_started_monotonic':capture_started,'capture_finished_monotonic':capture_finished,'observed_monotonic':now,'signature':digest,'mean_brightness':float(image.mean()),'attack_score':score,'attack_threshold':.05,'isTurnBegin':bool(detect.isTurnBegin()),'state':name,'identical_previous':same,'sampled_mean_delta':delta,'near_identical_previous':delta is not None and delta<.5,'identical_seconds':now-session['unchanged_since']}
+        row['loading_progress_signature']=getattr(detect,'getLoadingProgressSignature',lambda:None)() if name=='LOADING' else None
         session['previous']=(digest,image[::8,::8].astype(np.int16))
         # Metadata is sampled at <=0.5Hz; full images occupy only four slots.
         if now-session['logged']>=2 or not session['samples'] or name!=session['samples'][-1]['state']:
