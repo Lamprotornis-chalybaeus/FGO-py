@@ -98,6 +98,10 @@ class ContextCacheTests(unittest.TestCase):
         swipe.assert_called_once();invalidate.assert_not_called()
 
 class GenericMenuTests(unittest.TestCase):
+    def test_top_bar_counters_do_not_compete_with_right_aligned_header(self):
+        p=Page([label('未来普通功能页',950,8,310,50),label('0/75',959,7,66,33),label('3/10',965,49,59,30),MENU])
+        with patch.object(nav.OCR.ZHS,'ocr_single_line',return_value=('未来普通功能页',.99)):
+            self.assertEqual(nav.safeMenuPageCN(p,p.rows),'MENU_PAGE')
     def test_future_menu_title_uses_structure_not_allowlist(self):
         p=Page([label('未来普通功能页',950,8,310,50),MENU])
         with patch.object(nav.OCR.ZHS,'ocr_single_line',return_value=('未来普通功能页',.99)):

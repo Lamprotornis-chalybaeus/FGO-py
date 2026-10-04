@@ -267,7 +267,9 @@ def confirmedMenuPageCN(detect,items):
     if not unique(items,'菜单',(1080,590,1280,710)):return False
     # Only prove a stable ordinary menu header, not its name. Known navigation
     # pages and unsafe contexts have priority in safeMenuPageCN below.
-    headers=[i for i in items if i.score>=.8 and i.center[0]>=850 and i.center[1]<65 and i.box[3]-i.box[1]>=18 and len(compact(i.text))>=2]
+    # The right-aligned page header is distinct from counters/status text in
+    # the middle of the top bar (e.g. friend/follow counts).
+    headers=[i for i in items if i.score>=.8 and i.center[0]>=850 and i.box[2]>=1230 and i.center[1]<65 and i.box[3]-i.box[1]>=18 and len(compact(i.text))>=2]
     if len(headers)!=1:return False
     header=headers[0]
     crop=detect._crop(header.box)
