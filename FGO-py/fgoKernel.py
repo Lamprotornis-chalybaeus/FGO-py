@@ -760,6 +760,7 @@ class Main:
                 raise ScriptStop('等待助战列表未达到预期状态；未选择助战，未进入下一场')
             # The refresh budget limits refreshes, not the initial list scan.
             if policy=='first' or not hasTemplates:
+                self.waitFirstSupportReady(flow)
                 flow.action('select_first_support',self.selectFirstSupport)
                 return self.finishFriendSelection(flow,None,refreshes)
             matched=False
@@ -780,6 +781,7 @@ class Main:
                 Detect(.4)
             action=fgoFriendPolicy.decision(policy,matched,hasTemplates,refreshes,maxRefresh)
             if action=='first':
+                self.waitFirstSupportReady(flow)
                 flow.action('select_first_support',self.selectFirstSupport)
                 return self.finishFriendSelection(flow,None,refreshes)
             if action=='stop':raise ScriptStop(f'未找到符合模板的助战（已刷新 {refreshes} 次）')
@@ -787,6 +789,15 @@ class Main:
             fgoDevice.device.perform('\xBAK',(500,1000))
             refreshes+=1
             nextRefreshAt=time.monotonic()+10
+    def waitFirstSupportReady(self,flow):
+        if XDetect.region!='CN':return
+        confirmed=0
+        def ready(detect):
+            nonlocal confirmed
+            confirmed=confirmed+1 if detect.isFirstSupportReady() else 0
+            return confirmed>=3
+        flow.waitForFlowState({BattleFlowState.FRIEND},timeout=20,
+            transition_name='first support body ready',accept=ready)
     def selectFirstSupport(self):
         # CN's first-row header at key 8 (845,203) can ignore selection.
         # Verified 1280x720 card body avoids the portrait/details controls.

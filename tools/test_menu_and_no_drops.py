@@ -76,7 +76,7 @@ class FriendWaitSafetyTests(unittest.TestCase):
         error,press,touch,perform=self.invoke(f,[0,0,0]+[20]*100)
         self.assertIn('连续出击确认未消失',error);press.assert_not_called();touch.assert_not_called();perform.assert_not_called()
     def test_confirmed_friend_page_keeps_existing_first_policy(self):
-        f=SimpleNamespace(isBattleContinue=lambda:False,isChooseFriend=lambda:True)
+        f=SimpleNamespace(isBattleContinue=lambda:False,isChooseFriend=lambda:True,isFirstSupportReady=lambda:True)
         error,press,touch,_=self.invoke(f);self.assertIsNone(error);press.assert_not_called();touch.assert_called_once_with((650,300),duration=.08)
 
 if __name__=='__main__':unittest.main()

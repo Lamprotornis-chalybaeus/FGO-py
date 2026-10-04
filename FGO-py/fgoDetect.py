@@ -194,6 +194,13 @@ class XDetectBase(metaclass=logMeta(logger)):
 class XDetectCN(XDetectBase):
     tmpl=IMG_CN
     ocr=OCR.ZHS
+    def isFirstSupportReady(self):
+        # Observed fixed first-row body labels, independent of support identity.
+        # The page header can precede this actionable part of the list.
+        for rect,expected in (((235,265,320,310),'从者'),((235,318,303,353),'宝具')):
+            text,score=OCR.ZHS.ocr_single_line(self._crop(rect))
+            if not float(score)>=.85 or re.sub(r'\s+','',str(text))!=expected:return False
+        return True
     def isChooseFriend(self):
         if super().isChooseFriend():return True
         # The original marker is tied to the first full row. When returning
