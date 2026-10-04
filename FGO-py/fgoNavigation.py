@@ -145,6 +145,13 @@ def labels(detect):
             result=[i for i in result if not(i.center[0]<200 and i.center[1]<95 and compact(i.text)==compact(text))]
             result.append(Label(text,rect,float(min(score,score2))))
             break
+    weakMenus=[i for i in result if compact(i.text)=='菜单' and 1080<i.center[0]<1280 and 590<i.center[1]<710 and i.score<.8]
+    if len(weakMenus)==1:
+        item=weakMenus[0];line=detect._crop(item.box)
+        a,sa=OCR.ZHS.ocr_single_line(line)
+        b,sb=OCR.ZHS.ocr_single_line(cv2.resize(line,None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC))
+        if min(sa,sb)>=.85 and compact(a)==compact(b)=='菜单':
+            result.remove(item);result.append(Label('菜单',item.box,float(min(sa,sb))))
     detect._navLabelsImage=detect.im;detect._navLabels=result
     return result
 

@@ -118,6 +118,12 @@ class GenericMenuTests(unittest.TestCase):
         self.assertFalse(nav.confirmedMenuPageCN(p,p.rows))
 
 class TerminalDirectoryProofTests(unittest.TestCase):
+    def test_weak_menu_promoted_only_by_two_scale_local_agreement(self):
+        span=SimpleNamespace(text='菜单',score=.792,box=[[1148,633],[1225,633],[1225,673],[1148,673]])
+        for answers,expected in ([('通知',.99)]*2+[('菜单',.99)]*2,True),([('通知',.99)]*2+[('菜单',.99),('另一页',.99)],False):
+            with patch.object(nav.OCR.ZHS,'detect_and_ocr',return_value=[span]),patch.object(nav.OCR.ZHS,'ocr_single_line',side_effect=answers):
+                rows=nav.labels(Page())
+            self.assertEqual(bool(nav.unique(rows,'菜单',(1080,590,1280,710))),expected)
     def test_weak_known_title_needs_two_agreeing_local_scales(self):
         rows=[label('通知',70,25,80,35),nav.Label('冬木',(863,224,952,275),.805),MENU]
         p=Page(rows)
