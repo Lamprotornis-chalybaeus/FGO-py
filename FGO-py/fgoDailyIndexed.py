@@ -202,7 +202,7 @@ def _continuous(acc,entries,thumb):
     before=acc.absolute[old[-1]];after=entries[0].discovered_position[2]+acc.scroll_scale*thumb[0]
     return .65*acc.card_pitch<=after-before<=1.3*acc.card_pitch
 
-def _targeted(acc,deadline,metrics,d=None,top_key=None):
+def _resolveConflicts(acc,deadline,metrics,d):
     import fgoQuickQuest as q
     # Conflicting OCR aliases occupy one slot. Resolve only with independent
     # real title/AP observations; two competing verified names remain unsafe.
@@ -210,6 +210,7 @@ def _targeted(acc,deadline,metrics,d=None,top_key=None):
         conflicts=acc.conflicts()
         if not conflicts:break
         for a,b in conflicts:
+            if a not in acc.absolute or b not in acc.absolute:continue
             absolute=(acc.absolute[a]+acc.absolute[b])/2
             for y in (185,275):
                 metrics.targetedRechecks+=1;prior=d
@@ -217,11 +218,18 @@ def _targeted(acc,deadline,metrics,d=None,top_key=None):
                 if d is prior:d=capture();safe(d)
                 entries=localEntries(d,absolute-acc.scroll_scale*q._scrollbar(d.im)[0])
                 _add(acc,d,entries,metrics.screensCaptured)
-            verified=[k for k in (a,b) if acc.verified(k)]
+            slot=[k for k,y in acc.absolute.items() if abs(y-absolute)<acc.card_pitch*.45]
+            verified=[k for k in slot if acc.verified(k)]
             if len(verified)!=1:raise ScriptStop('同一卡槽的标题仍有冲突，未发布完整列表')
-            stale=b if verified[0]==a else a
-            del acc.entries[stale];del acc.observations_by_title[stale];acc.calibrate()
+            for stale in slot:
+                if stale!=verified[0]:del acc.entries[stale];del acc.observations_by_title[stale]
+            acc.calibrate()
     if acc.conflicts():raise ScriptStop('每日任务标题位置冲突未解决，未发布完整列表')
+    return d
+
+def _targeted(acc,deadline,metrics,d=None,top_key=None,deferred_keys=()):
+    import fgoQuickQuest as q
+    d=_resolveConflicts(acc,deadline,metrics,d)
     # Recover actual content gaps, not names, with finite local-only observations.
     for _ in range(3):
         gaps=acc.gaps()
@@ -240,7 +248,12 @@ def _targeted(acc,deadline,metrics,d=None,top_key=None):
     # Group nearby single observations on one newly acquired frame. OCR remains
     # local per predicted band; edge exceptions are explicitly rechecked here.
     for _ in range(3):
-        pending=sorted((k for k in acc.unverified() if k!=top_key),key=acc.absolute.get)
+        # Rechecks can reveal the real title next to a one-frame OCR alias.
+        # Resolve newly created same-slot conflicts before spending another
+        # round trying to confirm a stale name. Never accept competing verified
+        # names or pick the requested/cached name without real observations.
+        d=_resolveConflicts(acc,deadline,metrics,d)
+        pending=sorted((k for k in acc.unverified() if k!=top_key and k not in deferred_keys),key=acc.absolute.get)
         if not pending:return d
         while pending:
             first=pending.pop(0);group=[first]
@@ -263,7 +276,8 @@ def _targeted(acc,deadline,metrics,d=None,top_key=None):
             for key in group:
                 if key in unique and key in (ordered[0],ordered[-1]) and (thumb[0]<=105 or thumb[1]>=574):
                     acc.edge_rechecks.add(key)
-    if any(k!=top_key for k in acc.unverified()):raise ScriptStop('每日任务单次观测定点复核仍未确认，未发布完整列表')
+    d=_resolveConflicts(acc,deadline,metrics,d)
+    if any(k!=top_key and k not in deferred_keys for k in acc.unverified()):raise ScriptStop('每日任务单次观测定点复核仍未确认，未发布完整列表')
     return d
 
 def scan():
@@ -318,7 +332,26 @@ def scan():
         top_key=min(acc.absolute,key=acc.absolute.get)
         first_observation=acc.observations_by_title[top_key][0]
         if first_observation.thumb_top>101 or first_observation.local_y>220:top_key=None
-        d=_targeted(acc,deadline,metrics,d,top_key)
+        pending=sorted((k for k in acc.unverified() if k!=top_key),key=acc.absolute.get)
+        deferred=[]
+        if pending and 99<(acc.absolute[pending[0]]-185)/acc.scroll_scale<=115:
+            deferred=[k for k in pending if acc.absolute[k]-acc.absolute[pending[0]]<=410]
+        d=_targeted(acc,deadline,metrics,d,top_key,deferred)
+        deferred=[k for k in deferred if k in acc.entries and not acc.verified(k)]
+        if deferred:
+            # Reuse the final normalization journey for a low-position group,
+            # rather than making an early trip there and returning again later.
+            # These are ordinary independent-position checks, not edge waivers.
+            prior_frame=d
+            d=dragTo((acc.absolute[deferred[0]]-185)/acc.scroll_scale,deadline,d)
+            if d is prior_frame:d=capture();safe(d)
+            rows=[];metrics.targetedRechecks+=1
+            for key in deferred:
+                rows.extend(localEntries(d,acc.absolute[key]-acc.scroll_scale*q._scrollbar(d.im)[0]))
+            _add(acc,d,list({q._title_key(e.title):e for e in rows}.values()),metrics.screensCaptured)
+            d=_resolveConflicts(acc,deadline,metrics,d)
+            if any(k in acc.entries and not acc.verified(k) for k in deferred):
+                raise ScriptStop('返回顶部途中的定点标题/AP独立确认失败，未发布列表')
         # The required final return to the top is also the independent top-edge
         # recheck. Do not make a separate early trip to this same boundary.
         d=dragTo(99,deadline,d);safe(d)

@@ -159,6 +159,22 @@ class SlotConflictTests(unittest.TestCase):
             acc=w.calibrated();key=self.alias(w,acc,200,(w.absolute(4)-200)/acc.scroll_scale);m=DailyScanMetrics()
             with indexed.measuring(m):indexed._targeted(acc,time.monotonic()+20,m)
             self.assertNotIn(key,acc.entries);self.assertEqual(acc.build().entry_count,25);self.assertEqual(m.targetedRechecks,2);w.touch.assert_not_called()
+    def test_correct_title_discovered_late_resolves_original_single_frame_alias(self):
+        with World().patched() as w:
+            acc=w.calibrated();actual=q._title_key(w.entry(4,200).title)
+            del acc.entries[actual];del acc.observations_by_title[actual];acc.calibrate()
+            stale=self.alias(w,acc,200,(w.absolute(4)-200)/acc.scroll_scale);m=DailyScanMetrics()
+            with indexed.measuring(m):indexed._targeted(acc,time.monotonic()+20,m)
+            self.assertNotIn(stale,acc.entries);self.assertTrue(acc.verified(actual));self.assertEqual(acc.build().entry_count,25)
+            w.touch.assert_not_called()
+    def test_multiple_single_frame_aliases_use_one_real_verified_slot(self):
+        with World().patched() as w:
+            acc=w.calibrated();self.alias(w,acc,200,(w.absolute(4)-200)/acc.scroll_scale)
+            other=q.DailyQuestEntry('另一种误读的挑战 特级','unknown','unknown','',(0,947,200))
+            key=q._title_key(other.title);top=(w.absolute(4)-200)/acc.scroll_scale
+            acc.add_frame([other],(top,top+40),201,{key:275});m=DailyScanMetrics()
+            with indexed.measuring(m):indexed._targeted(acc,time.monotonic()+20,m)
+            self.assertEqual(acc.build().entry_count,25);self.assertNotIn(key,acc.entries);w.touch.assert_not_called()
     def test_two_verified_competing_titles_still_stop(self):
         with World().patched() as w:
             acc=w.calibrated();self.alias(w,acc,200,(w.absolute(4)-200)/acc.scroll_scale);self.alias(w,acc,201,(w.absolute(4)-270)/acc.scroll_scale)
@@ -273,8 +289,8 @@ class FinalScanEvidenceTests(unittest.TestCase):
     def test_final_return_rechecks_top_without_separate_edge_trip(self):
         with World().patched() as w:
             seen=[];original=indexed._targeted
-            def targeted(acc,deadline,metrics,d=None,top_key=None):
-                seen.append(top_key);return original(acc,deadline,metrics,d,top_key)
+            def targeted(acc,deadline,metrics,d=None,top_key=None,deferred_keys=()):
+                seen.append(top_key);return original(acc,deadline,metrics,d,top_key,deferred_keys)
             with patch.object(indexed,'_targeted',side_effect=targeted):result=indexed.scan()
             self.assertTrue(result['complete']);self.assertEqual(seen,[q._title_key(w.entry(0,140).title)])
             self.assertEqual(w.top,99);w.touch.assert_not_called()
@@ -337,5 +353,17 @@ class LocalAnchorAPTests(unittest.TestCase):
         acc=DailyScanAccumulator(q._title_key);w=World();key=q._title_key(w.entry(0,200).title)
         for n in range(7):acc.add_frame([w.entry(0,400-n*35)],(100+n*5,140+n*5),n,{key:475-n*35})
         self.assertIsNone(acc.scroll_scale)
+
+class ReturnJourneyEvidenceTests(unittest.TestCase):
+    def test_deferred_low_group_requires_different_position_evidence(self):
+        with World().patched() as w:
+            result=indexed.scan();index=result['index']
+            record=index.entries[1];self.assertFalse(record.edge_verified)
+            self.assertGreaterEqual(len({o.thumb_top for o in record.observations}),2)
+            self.assertTrue(result['complete']);w.touch.assert_not_called()
+    def test_defer_is_not_publication_authority(self):
+        w=World();acc=w.calibrated();key=q._title_key(w.entry(1,200).title)
+        acc.observations_by_title[key]=acc.observations_by_title[key][:1]
+        with self.assertRaisesRegex(DailyIndexError,'unverified'):acc.build()
 
 if __name__=='__main__':unittest.main()
