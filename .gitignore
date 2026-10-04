@@ -64,3 +64,6 @@ fgoImage/**/local/
 *screencap*.png
 *adb-capture*.png
 *.dump
+
+# Advisory daily position cache is local runtime data
+**/daily-index.json*
