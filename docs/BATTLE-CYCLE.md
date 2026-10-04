@@ -33,9 +33,9 @@ The common `BattleCycle.prepare` handles both entry routes. `chooseFriend` selec
 | AP_EMPTY | existing AP dialog marker; unchanged configured fruit policy |
 | FRIEND / FRIEND_EMPTY | existing CN support/no-support predicates |
 | FORMATION | existing begin-task button marker |
-| LOADING | dark frame or injected loading predicate; authorizes waiting only |
+| LOADING | dark frame or CN fixed tips/loading labels; authorizes waiting only |
 | TURN_BEGIN | existing attack marker; only then increment startedBattles |
-| BATTLE_RESULT | existing result marker; no item recognition |
+| BATTLE_RESULT | existing reward marker or CN fixed Bond/Master EXP result labels and footer; no item recognition |
 | ADD_FRIEND / CONTINUE | existing foreground dialog predicates |
 | DEFEATED | existing defeat predicate; no revival input |
 | NETWORK_ERROR | existing dialog predicate; worker confirms once |
@@ -48,7 +48,11 @@ Foreground priority is explicit and included in evidence: NETWORK_ERROR, CONTINU
 
 ## Time bounds
 
-STARTING was removed on 2026-10-04: no real producer was established. No start confirmation is assumed. The original 90-second bound and ATTACK .05 threshold remain unchanged pending real evidence. The input observer now spans preparation, battle and settlement, recording logical actions and physical inputs separately.
+STARTING was removed on 2026-10-04: no real producer was established. Real formation-start captures showed a bright tips/loading page and battle introduction, without a start confirmation. The ATTACK .05 threshold remains unchanged. Formation start now has a 60-second stall budget and a 180-second hard deadline. Only a new positive intermediate state or a fixed-label-gated loading-indicator signature renews stall progress; arbitrary background animation and UNKNOWN flicker do not. The input observer spans preparation, battle and settlement, recording logical actions and physical inputs separately.
+
+CN first-support selection requires three fresh observations of the fixed body labels before its single input. It stops without input if the body is not confirmed within 20 seconds. One independently authorized 80ms body-touch reached formation, but a later trial still missed departure: duration alone is not a proven cause. Explicit 80ms taps apply to CN cycle/menu controls; battle AI inputs retain the original default duration and strategy.
+
+CN settlement distinguishes BOND, MASTER_EXP and REWARDS. Each positively identified page gets one advance input, followed by a wait for a different page or a later dialog. A persistent page times out without another input. This repairs the observed omission of the Bond result page, without restoring item recognition.
 
 Only verified FORMATION plus recorded start_quest opens the narrow TURN_BEGIN transition capture: first/middle/last UNKNOWN and one LOADING representative, local only. Other UNKNOWN screens remain excluded. Metadata includes acquisition monotonic times, signature, brightness, ATTACK score, state and exact/approximate frame equality. Completion or failure persists the diagnostic episode. Raw private captures are never test fixtures or CI artifacts.
 
@@ -58,9 +62,10 @@ All state polling uses `time.monotonic`, stop/suspend checks, fresh screenshots 
 |---|---:|
 | Quest / continue dismissal | 45 s |
 | Support selection departure | 30 s |
+| CN first-support body confirmation | 20 s |
 | Support overall acquisition | 180 s; existing navigation/refresh guards also apply |
 | Team switch | 10 s |
-| Formation start to TURN_BEGIN | 90 s |
+| Formation start to TURN_BEGIN | 60 s stall / 180 s hard |
 | Skill/master animation | 45 s, capped by remaining whole-battle deadline |
 | Battle without valid progress | 60 s |
 | Whole battle | 1800 s |
@@ -88,9 +93,9 @@ A run limit/appointment takes effect after settlement at a stable CONTINUE/QUEST
 
 ## Trace and local diagnostics
 
-`fgoFlowTrace.py` is Qt-free. Records contain wall/monotonic timestamps, from/to, elapsed, action, evidence, last input and intended battle sequence. An optional per-thread Device observer records physical press/touch/swipe during Battle and checks the whole-battle deadline before forwarding input; Android is unchanged. The trace sequence labels preparation; the actual started counter still waits for TURN_BEGIN.
+`fgoFlowTrace.py` is Qt-free. Records contain wall/monotonic timestamps, from/to, elapsed, action, evidence, last input and intended battle sequence. A per-thread Device observer records physical press/touch/swipe throughout the cycle and checks the whole-battle deadline before forwarding input. Device/Android accept an optional explicit input duration; omitted duration preserves the original behavior. The trace sequence labels preparation; the actual started counter still waits for TURN_BEGIN.
 
-Only two screenshots are held in memory. Failure writes `logs/flow/<timestamp>/trace.json`, `summary.txt`, and last/previous frame only for a positively classified safe game state. Unknown/login-sensitive frames and support identifiers are omitted. Successful validation traces are retained separately by the private local harness. Logs/screenshots/configuration/support templates never belong in Git.
+The ordinary trace holds two recent screenshots in memory. The separately authorized formation-start diagnostic holds up to four representative slots. Failure writes `logs/flow/<timestamp>/trace.json`, `summary.txt`, and last/previous frame only for a positively classified safe game state, plus the narrowly scoped formation-start episode when applicable. Other UNKNOWN/login-sensitive frames and support identifiers are omitted. Successful validation traces are retained separately by the private local harness. Logs/screenshots/configuration/support templates never belong in Git.
 
 ## Tests and scope
 
