@@ -12,7 +12,7 @@ class EntrySearchTests(unittest.TestCase):
     def runSearch(self,labels,movement,thumbs):
         frame=Frame()
         with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=frame),\
-             patch.object(daily,'_navigationLabels',side_effect=labels),patch.object(daily.schedule,'sleep'),\
+             env['DailyNavigationTests']().runNavigation(labels),patch.object(daily.schedule,'sleep'),\
              patch.object(daily,'_scrollbar',side_effect=thumbs),\
              patch.object(daily,'_swipe',side_effect=[(frame,x) for x in movement]) as swipe,\
              patch.object(daily.fgoDevice.device,'touch') as touch:

@@ -130,6 +130,7 @@ class Label:
     def center(self):return ((self.box[0]+self.box[2])//2,(self.box[1]+self.box[3])//2)
 
 def labels(detect):
+    if getattr(detect,'_navLabelsImage',None) is detect.im:return detect._navLabels
     result=[]
     for span in OCR.ZHS.detect_and_ocr(detect.im,drop_score=.65):
         points=numpy.asarray(span.box).reshape(-1,2)
@@ -144,6 +145,7 @@ def labels(detect):
             result=[i for i in result if not(i.center[0]<200 and i.center[1]<95 and compact(i.text)==compact(text))]
             result.append(Label(text,rect,float(min(score,score2))))
             break
+    detect._navLabelsImage=detect.im;detect._navLabels=result
     return result
 
 def unique(items,text,region,substring=False):
@@ -188,7 +190,9 @@ def classify(detect,items=None):
     header=[i for i in items if i.center[0]>=850 and i.center[1]<95]
     close=unique(items,'关闭',(0,0,200,95))
     if close and menu:
-        if any('每日任务' in i.text for i in header):return 'DAILY'
+        if any('每日任务' in i.text for i in header):
+            from fgoQuickQuest import dailyPageStructureCN
+            if dailyPageStructureCN(detect,items):return 'DAILY'
         if any('迦勒底之门' in i.text for i in header):return 'GATE'
         if any('第一部' in i.text for i in header):return 'FIRST_PART'
         if any('关卡举办时间' in i.text for i in items):return 'EVENT'
@@ -236,12 +240,19 @@ def expandedMenuCN(detect,items):
     crop=detect._crop(terminal.box);a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC))
     return terminal if min(sa,sb)>=.85 and compact(a)==compact(b)=='终端' else None
 
-# Observed CN menu page identities, including the shop's real title.
+# Observed identities for diagnostics/tests, never an authorization allowlist.
 MENU_PAGE_HEADERS_CN=('编队','编制','强化','召唤','商店','达芬奇工房','好友','个人空间')
 
 def confirmedMenuPageCN(detect,items):
-    if not detect.isMainInterface():return False
-    headers=[i for i in items if i.score>=.8 and i.center[0]>=850 and i.center[1]<95 and compact(i.text) in MENU_PAGE_HEADERS_CN]
+    if detect.im.shape[:2]!=(720,1280) or not detect.isMainInterface():return False
+    flags=('isTurnBegin','isBattleFinished','isBattleDefeated','isApEmpty','isBattleContinue','isSkillCastFailed','isAddFriend','isSummonContinue','isBattleFormation','isChooseFriend')
+    if any(getattr(detect,m,lambda:False)() for m in flags):return False
+    if any('是否' in i.text or compact(i.text) in ('确定','确认','取消','开始','ok','cancel','请选择奖励','选择奖励') for i in items if 300<i.center[0]<1100 and 150<i.center[1]<650):return False
+    if any(t in compact(' '.join(i.text for i in items)) for t in ('skip','跳过剧情','跳过故事','奖励选择','二选一')):return False
+    if not unique(items,'菜单',(1080,590,1280,710)):return False
+    # Only prove a stable ordinary menu header, not its name. Known navigation
+    # pages and unsafe contexts have priority in safeMenuPageCN below.
+    headers=[i for i in items if i.score>=.8 and i.center[0]>=850 and i.center[1]<65 and i.box[3]-i.box[1]>=18 and len(compact(i.text))>=2]
     if len(headers)!=1:return False
     header=headers[0]
     crop=detect._crop(header.box)

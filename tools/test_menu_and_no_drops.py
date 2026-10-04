@@ -14,23 +14,26 @@ finally:os.chdir(old)
 
 class MenuProofTests(unittest.TestCase):
     def frame(self):
-        f=Mock();f.im=np.zeros((720,1280,3),np.uint8);f._crop.side_effect=lambda r:f.im[r[1]:r[3],r[0]:r[2]]
+        f=Mock();f.isMainInterface.return_value=True
+        for name in ('isTurnBegin','isBattleFinished','isBattleDefeated','isApEmpty','isBattleContinue','isSkillCastFailed','isAddFriend','isSummonContinue','isBattleFormation','isChooseFriend'):getattr(f,name).return_value=False
+        f.im=np.zeros((720,1280,3),np.uint8);f._crop.side_effect=lambda r:f.im[r[1]:r[3],r[0]:r[2]]
         return f
+    def menu(self):return nav.Label('菜单',(1148,633,1225,674),.99)
     def header(self,title='达·芬奇工房',score=.97):return nav.Label(title,(951,8,1265,61),score)
     def test_observed_shop_name_has_two_read_proof(self):
         with patch.object(nav.OCR.ZHS,'ocr_single_line',side_effect=[('达·芬奇工房',.96),('达芬奇工房',.97)]):
-            self.assertTrue(nav.confirmedMenuPageCN(self.frame(),[self.header()]))
+            self.assertTrue(nav.confirmedMenuPageCN(self.frame(),[self.header(),self.menu()]))
     def test_all_known_menu_headers_require_two_read_proof(self):
         for title in nav.MENU_PAGE_HEADERS_CN:
             with self.subTest(title=title),patch.object(nav.OCR.ZHS,'ocr_single_line',return_value=(title,.97)):
-                self.assertTrue(nav.confirmedMenuPageCN(self.frame(),[self.header(title)]))
+                self.assertTrue(nav.confirmedMenuPageCN(self.frame(),[self.header(title),self.menu()]))
     def test_disagreement_or_low_read_does_not_authorize_menu(self):
         for reads in ([('达芬奇工房',.99),('商店',.99)],[('达芬奇工房',.84),('达芬奇工房',.99)]):
-            with patch.object(nav.OCR.ZHS,'ocr_single_line',side_effect=reads):self.assertFalse(nav.confirmedMenuPageCN(self.frame(),[self.header()]))
+            with patch.object(nav.OCR.ZHS,'ocr_single_line',side_effect=reads):self.assertFalse(nav.confirmedMenuPageCN(self.frame(),[self.header(),self.menu()]))
     def test_no_template_duplicate_header_or_wrong_band_rejected(self):
         f=self.frame();f.isMainInterface.return_value=False
         with patch.object(nav.OCR.ZHS,'ocr_single_line') as ocr:
-            self.assertFalse(nav.confirmedMenuPageCN(f,[self.header()]))
+            self.assertFalse(nav.confirmedMenuPageCN(f,[self.header(),self.menu()]))
             f.isMainInterface.return_value=True
             self.assertFalse(nav.confirmedMenuPageCN(f,[self.header(),self.header('个人空间')]))
             self.assertFalse(nav.confirmedMenuPageCN(f,[nav.Label('达芬奇工房',(850,160,1000,210),.99)]))

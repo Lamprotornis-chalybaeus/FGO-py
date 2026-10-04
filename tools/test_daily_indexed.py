@@ -133,9 +133,9 @@ class LocateTests(unittest.TestCase):
     def test_persistent_wrong_header_stops_and_invalidates(self):
         with World().patched() as w:
             self.setup_index(w)
-            with patch.object(q,'_isDailyPage',return_value=False):
+            with patch.object(q,'confirmedDailyPageCN',return_value=False):
                 with self.assertRaises(q.ScriptStop):indexed.safe(w.capture())
-            self.assertIsNone(indexed._cached);w.touch.assert_not_called()
+            self.assertIsNotNone(indexed._cached);w.touch.assert_not_called()
     def test_scrollbar_corrections_are_bounded(self):
         with World().patched() as w,patch.object(q,'_menuScrollbarDrag') as swipe:
             with self.assertRaisesRegex(q.ScriptStop,'有限校正'):indexed.dragTo(300,time.monotonic()+10)

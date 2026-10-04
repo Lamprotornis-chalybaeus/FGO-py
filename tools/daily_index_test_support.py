@@ -43,6 +43,7 @@ class World:
     def patched(self,**extra):
         with TemporaryDirectory() as temp,ExitStack() as stack:
             objects=[(q.XDetect,'region','CN'),(q,'Detect',self.capture),(q,'_isDailyPage',lambda d:True),
+                (q,'confirmedDailyPageCN',lambda d,*a:True),
                 (q,'_dailyLocatorFrameCN',lambda d:None),(q,'_scrollbar',lambda im:(self.frames[id(im)].top,self.frames[id(im)].top+self.height)),
                 (q,'_observeDailyScanPage',self.observe),(q,'_dailyEntriesAt',self.entries),(q,'_swipe_input_only',self.swipe),
                 (q,'_menuSwipe',self.drag),(q,'_menuScrollbarDrag',self.drag),(q,'openDailyPageCN',lambda:None),(q.schedule,'sleep',lambda *a:None),

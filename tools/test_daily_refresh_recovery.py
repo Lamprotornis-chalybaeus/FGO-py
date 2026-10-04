@@ -32,19 +32,19 @@ class ContinueFeatureTests(unittest.TestCase):
 
 class RefreshEntryTests(unittest.TestCase):
     def test_confirmed_daily_refresh_reuses_page_without_terminal_input(self):
-        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=Frame()),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value='DAILY'),patch.object(daily,'_isDailyPage',return_value=True),patch.object(daily,'scanDailyQuestsCN',return_value={'complete':True}) as scan,patch.object(nav,'normalizeToTerminalCN') as normalize,patch.object(daily,'_openDailyFromTerminalCN') as openPage:
+        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=Frame()),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value='DAILY'),patch.object(daily,'confirmedDailyPageCN',return_value=True),patch.object(daily,'scanDailyQuestsCN',return_value={'complete':True}) as scan,patch.object(nav,'normalizeToTerminalCN') as normalize,patch.object(daily,'_openDailyFromTerminalCN') as openPage:
             self.assertEqual(daily.refreshDailyQuestsCN(),{'complete':True})
         scan.assert_called_once();normalize.assert_not_called();openPage.assert_not_called()
     def test_modal_over_daily_background_cannot_use_direct_scan(self):
-        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=Frame()),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value='UNSAFE_MODAL'),patch.object(nav,'normalizeToTerminalCN',side_effect=daily.ScriptStop('unsafe modal')),patch.object(daily,'scanDailyQuestsCN') as scan:
+        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=Frame()),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value='UNSAFE_MODAL'),patch.object(daily,'confirmedDailyPageCN',return_value=False),patch.object(daily,'_waitDailyNavigationCN'),patch.object(nav,'normalizeToTerminalCN',side_effect=daily.ScriptStop('unsafe modal')),patch.object(daily,'scanDailyQuestsCN') as scan:
             with self.assertRaisesRegex(daily.ScriptStop,'unsafe modal'):daily.refreshDailyQuestsCN()
         scan.assert_not_called()
     def test_other_page_uses_shared_normalization(self):
-        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=Frame()),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value='GATE'),patch.object(nav,'normalizeToTerminalCN') as normalize,patch.object(daily,'_openDailyFromTerminalCN') as openPage,patch.object(daily,'scanDailyQuestsCN',return_value={'complete':True}):
+        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=Frame()),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value='GATE'),patch.object(daily,'confirmedDailyPageCN',return_value=False),patch.object(daily,'_waitDailyNavigationCN'),patch.object(nav,'normalizeToTerminalCN') as normalize,patch.object(daily,'_openDailyFromTerminalCN') as openPage,patch.object(daily,'scanDailyQuestsCN',return_value={'complete':True}):
             daily.refreshDailyQuestsCN()
         normalize.assert_called_once();openPage.assert_called_once()
     def test_daily_classification_alone_does_not_bypass_header_proof(self):
-        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=Frame()),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value='DAILY'),patch.object(daily,'_isDailyPage',return_value=False),patch.object(nav,'normalizeToTerminalCN') as normalize,patch.object(daily,'_openDailyFromTerminalCN'),patch.object(daily,'scanDailyQuestsCN'):
+        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=Frame()),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value='DAILY'),patch.object(daily,'confirmedDailyPageCN',return_value=False),patch.object(daily,'_waitDailyNavigationCN'),patch.object(nav,'normalizeToTerminalCN') as normalize,patch.object(daily,'_openDailyFromTerminalCN'),patch.object(daily,'scanDailyQuestsCN'):
             daily.refreshDailyQuestsCN()
         normalize.assert_called_once()
 

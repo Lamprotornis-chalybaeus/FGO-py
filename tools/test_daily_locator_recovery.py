@@ -10,21 +10,21 @@ import fgoNavigation as nav
 
 class OpenDailyTests(unittest.TestCase):
     def route(self,state):
-        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=Frame()),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value=state),patch.object(nav,'normalizeToTerminalCN') as normalize,patch.object(daily,'_openDailyFromTerminalCN',return_value={'type':'DailyPage'}) as openPage:
+        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=Frame()),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value=state),patch.object(daily,'confirmedDailyPageCN',return_value=False),patch.object(daily,'_waitDailyNavigationCN'),patch.object(nav,'normalizeToTerminalCN') as normalize,patch.object(daily,'_openDailyFromTerminalCN',return_value={'type':'DailyPage'}) as openPage:
             self.assertEqual(daily.openDailyPageCN(),{'type':'DailyPage'})
         normalize.assert_called_once();openPage.assert_called_once()
     def test_support_page_uses_shared_normalization(self):self.route('FRIEND')
     def test_my_room_uses_shared_normalization(self):self.route('MENU_PAGE')
     def test_confirmed_daily_never_goes_to_terminal(self):
-        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=Frame()),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value='DAILY'),patch.object(daily,'_isDailyPage',return_value=True),patch.object(nav,'normalizeToTerminalCN') as normalize,patch.object(daily,'_openDailyFromTerminalCN') as openPage:
+        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=Frame()),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value='DAILY'),patch.object(daily,'confirmedDailyPageCN',return_value=True),patch.object(nav,'normalizeToTerminalCN') as normalize,patch.object(daily,'_openDailyFromTerminalCN') as openPage:
             daily.openDailyPageCN()
         normalize.assert_not_called();openPage.assert_not_called()
     def test_modal_over_daily_is_rejected_by_shared_guard(self):
-        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=Frame()),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value='UNSAFE_MODAL'),patch.object(daily,'_isDailyPage',return_value=True),patch.object(nav,'normalizeToTerminalCN',side_effect=daily.ScriptStop('unsafe modal')),patch.object(daily,'_openDailyFromTerminalCN') as openPage:
+        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=Frame()),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value='UNSAFE_MODAL'),patch.object(daily,'confirmedDailyPageCN',return_value=False),patch.object(nav,'normalizeToTerminalCN',side_effect=daily.ScriptStop('unsafe modal')),patch.object(daily,'_openDailyFromTerminalCN') as openPage:
             with self.assertRaisesRegex(daily.ScriptStop,'unsafe modal'):daily.openDailyPageCN()
         openPage.assert_not_called()
     def test_unknown_normalization_failure_cannot_open_gate(self):
-        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=Frame()),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value='UNKNOWN'),patch.object(nav,'normalizeToTerminalCN',side_effect=daily.ScriptStop('UNKNOWN')),patch.object(daily,'_openDailyFromTerminalCN') as openPage:
+        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=Frame()),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value='UNKNOWN'),patch.object(daily,'confirmedDailyPageCN',return_value=False),patch.object(daily,'_waitDailyNavigationCN'),patch.object(nav,'normalizeToTerminalCN',side_effect=daily.ScriptStop('UNKNOWN')),patch.object(daily,'_openDailyFromTerminalCN') as openPage:
             with self.assertRaisesRegex(daily.ScriptStop,'UNKNOWN'):daily.openDailyPageCN()
         openPage.assert_not_called()
 
@@ -64,13 +64,13 @@ class DailyLocatorTests(unittest.TestCase):
 class LocatorPageSafetyTests(unittest.TestCase):
     def frame(self,network=False):return SimpleNamespace(im=np.zeros((720,1280,3),np.uint8),isNetworkError=lambda:network)
     def test_network_error_is_not_confirmed(self):
-        with patch.object(daily,'_isDailyPage',return_value=True),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value='DAILY'):
+        with patch.object(daily,'confirmedDailyPageCN',return_value=True),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value='DAILY'):
             with self.assertRaisesRegex(daily.ScriptStop,'网络错误'):daily._dailyLocatorFrameCN(self.frame(True))
     def test_wrong_size_is_rejected(self):
         frame=self.frame();frame.im=frame.im[:360]
         with self.assertRaisesRegex(daily.ScriptStop,'尺寸异常'):daily._dailyLocatorFrameCN(frame)
     def test_header_cannot_override_modal(self):
-        with patch.object(daily,'_isDailyPage',return_value=True),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value='UNSAFE_MODAL'):
+        with patch.object(daily,'confirmedDailyPageCN',return_value=False),patch.object(nav,'labels',return_value=[]),patch.object(nav,'safeMenuPageCN',return_value='UNSAFE_MODAL'):
             with self.assertRaisesRegex(daily.ScriptStop,'危险状态'):daily._dailyLocatorFrameCN(self.frame())
     def test_stop_is_obeyed_before_ocr(self):
         with patch.object(daily.schedule,'checkStop',side_effect=daily.ScriptStop('Stop Command Effected')),patch.object(daily,'_isDailyPage') as header:

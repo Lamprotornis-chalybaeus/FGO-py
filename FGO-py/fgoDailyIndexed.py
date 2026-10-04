@@ -13,6 +13,15 @@ from fgoLogging import getLogger
 logger=getLogger('DailyIndex');_metrics=ContextVar('daily_metrics',default=None)
 _cached=None;_invalid=False;_anchors={};_dragGain=1.;_dragSamples=[]
 
+class DailyContextError(ScriptStop):
+    """Not currently on a confirmed DAILY page; advisory data stays intact."""
+
+class DailyIndexMismatch(ValueError):
+    """Fresh confirmed DAILY content contradicts advisory index structure."""
+
+def dailyContextLost(reason):
+    logger.warning('[DailyIndex] %s; preserving cached index and anchors',reason)
+
 def count(field):
     if m:=_metrics.get():setattr(m,field,getattr(m,field)+1)
 
@@ -46,12 +55,14 @@ def currentIndex():
     if _cached is None and not _invalid:_cached=load_index(cachePath())
     return _cached
 
-def invalidate(reason):
+def invalidateIndex(reason):
     global _cached,_invalid,_anchors
     _cached=None;_invalid=True;_anchors={}
-    logger.warning('Daily index invalidated: %s',reason)
+    mismatch=DailyIndexMismatch(reason)
+    logger.warning('Daily index invalidated: confirmed DAILY mismatch: %s',mismatch)
     path=cachePath();path.parent.mkdir(parents=True,exist_ok=True)
     path.write_text(json.dumps({'version':1,'invalidated':True,'reason':reason}),encoding='utf-8')
+    return mismatch
 
 def remember(index):
     global _cached,_invalid
@@ -86,10 +97,10 @@ def locateAnchor(entry,anchor,metrics,deadline):
     import fgoQuickQuest as q
     d=capture();safe(d);thumb=q._scrollbar(d.im)
     if abs((thumb[1]-thumb[0])-(anchor['thumb_bottom']-anchor['thumb_top']))>2:
-        invalidate('partial anchor geometry changed');return None
+        invalidateIndex('partial anchor geometry changed');return None
     d=dragTo(anchor['thumb_top'],deadline,d)
     key=q._title_key(entry.title);target=_find(localEntries(d,anchor['local_y']),key)
-    if not target:invalidate('partial anchor title missing');return None
+    if not target:invalidateIndex('partial anchor title missing');return None
     d=capture();safe(d);target=_find(localEntries(d,target.discovered_position[2]),key)
     if not target or not 125<=target.discovered_position[2]<=220:raise ScriptStop('缓存定点标题/AP最终确认失败，未点击')
     return dict(type='DailyQuestReady',entry=entry,position=target.discovered_position[1:],mode='index')
@@ -111,9 +122,9 @@ def safe(d):
     import fgoQuickQuest as q
     if getattr(d,'_indexedSafeFrame',None) is d.im:return
     # Reuse the existing full foreground/modal safety proof. Count that OCR too.
-    if not q._isDailyPage(d):
-        invalidate('daily header changed')
-        raise ScriptStop('每日任务标题已变化，索引失效，未点击')
+    if not q.confirmedDailyPageCN(d):
+        dailyContextLost(f'current page is {q._dailyNavigationStateCN(d)}; NOT_ON_DAILY')
+        raise DailyContextError('当前未正向确认每日任务页，已停止菜单输入；保留索引，请等待导航完成')
     q._dailyLocatorFrameCN(d)
     d._indexedSafeFrame=d.im
 
@@ -312,7 +323,7 @@ def scan():
                     predicted=[e.discovered_position[2]+prior.scroll_scale*thumb[0] for e in entries]
                     if all(abs(y-prior.record(k).locator.absolute_y)<=60 for y,k in zip(predicted,keys)):
                         acc.scroll_scale=prior.scroll_scale;reused=True
-                if not reused:invalidate('fresh top anchors or geometry changed')
+                if not reused:invalidateIndex('fresh top anchors or geometry changed')
                 else:stable=3;stride=360
             if not _continuous(acc,entries,thumb):
                 previous=acc.frame_order[-1][0]
@@ -392,11 +403,11 @@ def locate(entry,index,metrics,deadline):
     key=q._title_key(entry.title);record=index.record(key)
     if not record:return None
     d=capture();safe(d)
-    if not index.geometry_matches(q._scrollbar(d.im)):invalidate('scrollbar geometry changed');return None
+    if not index.geometry_matches(q._scrollbar(d.im)):invalidateIndex('scrollbar geometry changed');return None
     d=dragTo(index.target_thumb(record.locator.absolute_y),deadline,d)
     y=record.locator.absolute_y-index.scroll_scale*q._scrollbar(d.im)[0]
     entries=localEntries(d,y)
-    if not index.order_matches([q._title_key(e.title) for e in entries]):invalidate('title order conflict');return None
+    if not index.order_matches([q._title_key(e.title) for e in entries]):invalidateIndex('title order conflict');return None
     target=_find(entries,key);mode='index'
     if target is None:
         anchors=[index.record(k) for k in (record.locator.before_key,record.locator.after_key) if k]
@@ -415,7 +426,7 @@ def locate(entry,index,metrics,deadline):
             if target:break
         if not target:
             if anchor_seen:raise ScriptStop('已定位目标卡槽，但标题未通过确认；未点击')
-            invalidate('target and neighboring anchors missing');return None
+            invalidateIndex('target and neighboring anchors missing');return None
     for attempt in range(3):
         safe(d);cy=target.discovered_position[2]
         if 125<=cy<=220:

@@ -295,7 +295,14 @@ def _menuSwipe(begin,end):
 
 def _swipe(detect,toTop,distance=180):
     from fgoDailyIndexed import _metrics,safe
-    if _metrics.get():safe(detect)
+    if _metrics.get():
+        from fgoNavigation import labels,safeMenuPageCN
+        items=labels(detect);state=safeMenuPageCN(detect,items)
+        if state=='DAILY':safe(detect)
+        elif state not in ('ROOT_CATEGORY','GATE') or dailyNavigationAction([(i.text,i.box) for i in items])!=('scroll',None):
+            from fgoDailyIndexed import dailyContextLost,DailyContextError
+            dailyContextLost(f'current page is {state}; directory scroll not confirmed')
+            raise DailyContextError('当前未确认可滚动的每日任务导航目录；保留索引，未滑动')
     before=detect.im
     _swipe_input_only(detect,toTop,distance)
     after=_dailyCapture(.2)
@@ -343,8 +350,28 @@ def _observeDailyScanPage(detect,scrollIndex=0,toTop=False):
 
 def _isDailyPage(detect):return _dailyHeader(detect)
 
+def dailyPageStructureCN(detect,items):
+    """Page identity, not a quest-click authorization; no cached index evidence."""
+    from fgoNavigation import unique,compact
+    if getattr(getattr(detect,'im',None),'shape',())[:2]!=(720,1280) or not getattr(detect,'isMainInterface',lambda:False)():return False
+    if not unique(items,'每日任务',(900,0,1280,95)) or not unique(items,'关闭',(0,0,200,95)):return False
+    if not _isDailyPage(detect):return False
+    try:_scrollbar(detect.im)
+    except ScriptStop:return False
+    # Actual foreground OCR must contain a card title paired with its own AP
+    # row. A terminal banner containing the words 每日任务 is insufficient.
+    ap=[i for i in items if i.score>=.8 and 750<=i.center[0]<=910 and 190<=i.center[1]<=675 and re.fullmatch(r'AP\d+',_compact_title(i.text),re.I)]
+    titles=[i for i in items if i.score>=.8 and 750<=i.center[0]<=1120 and 115<=i.center[1]<=600 and _valid_daily_title(i.text)]
+    return any(40<=a.center[1]-t.center[1]<=105 for a in ap for t in titles)
+
+def confirmedDailyPageCN(detect,items=None):
+    from fgoNavigation import labels,safeMenuPageCN
+    items=labels(detect) if items is None else items
+    return dailyPageStructureCN(detect,items) and safeMenuPageCN(detect,items)=='DAILY'
+
 def _navigationLabels(detect):
-    return [(_clean_text(item.text),_span_rect(item)) for item in _dailyBatch(detect.im,drop_score=.5)]
+    from fgoNavigation import labels
+    return [(_clean_text(item.text),item.box) for item in labels(detect)]
 
 def _navigationLabel(labels,text,region):
     x0,y0,x1,y1=region
@@ -359,81 +386,100 @@ def dailyNavigationAction(labels):
     header=(900,0,1280,95);cards=(640,95,1230,600);back=(0,0,200,95)
     # A visible confirmation must not be treated as a navigable background.
     if any(350<=(r[0]+r[2])/2<1100 and 180<=(r[1]+r[3])/2<650 and (_title_key(t) in ('取消','确定','确认','开始','ok','cancel') or '是否' in t) for t,r in labels):return ('blocked',None)
-    if _navigationLabel(labels,'每日任务',header):return ('ready',None)
-    if _navigationLabel(labels,'迦勒底之门',header):
-        position=_navigationLabel(labels,'每日任务',cards)
-        return ('daily',position) if position else ('scroll',None)
-    close=_navigationLabel(labels,'关闭',back)
-    listHeader=any(r[0]>=900 and r[1]<95 and len(_title_key(t))>=2 for t,r in labels)
-    listTimer=any('关卡举办时间' in _title_key(t) and r[0]>=640 for t,r in labels)
-    if close and (listHeader or listTimer):return ('close',close)
+    # A real terminal directory outranks incidental banner/header text.
     if _navigationLabel(labels,'通知',back):
         position=_navigationLabel(labels,'迦勒底之门',cards)
         return ('gate',position) if position else ('scroll',None)
+    close=_navigationLabel(labels,'关闭',back)
+    if close and _navigationLabel(labels,'迦勒底之门',header):
+        position=_navigationLabel(labels,'每日任务',cards)
+        return ('daily',position) if position else ('scroll',None)
+    if close and _navigationLabel(labels,'每日任务',header):return ('candidate_ready',None)
+    listHeader=any(r[0]>=900 and r[1]<95 and len(_title_key(t))>=2 for t,r in labels)
+    listTimer=any('关卡举办时间' in _title_key(t) and r[0]>=640 for t,r in labels)
+    if close and (listHeader or listTimer):return ('close',close)
     return ('blocked',None)
 
+def _dailyNavigationStateCN(detect):
+    from fgoNavigation import labels,safeMenuPageCN
+    if not getattr(detect,'isMainInterface',lambda:False)():return 'UNKNOWN'
+    return safeMenuPageCN(detect,labels(detect))
+
+def _waitDailyNavigationCN(guard,expected,timeout=25):
+    """Read-only after one verified navigation input; never retry that tap."""
+    from fgoNavigation import labels,safeMenuPageCN,terminalHomeCN
+    deadline=min(guard.deadline,time.monotonic()+timeout)
+    for _ in range(100):
+        guard.check()
+        if time.monotonic()>=deadline:break
+        d=_dailyCapture(.3)
+        if d.im.shape[:2]!=(720,1280):raise ScriptStop('每日任务导航截图尺寸异常，未点击')
+        raw=_navigationLabels(d) if d.isMainInterface() else []
+        state=_dailyNavigationStateCN(d)
+        if state.startswith('UNSAFE'):raise ScriptStop(f'每日任务导航遇到 {state}，未点击')
+        if getattr(d,'isNetworkError',lambda:False)():raise ScriptStop('每日任务导航出现网络错误，未重试输入')
+        reached=(expected=='DAILY' and confirmedDailyPageCN(d) or expected=='GATE' and state=='GATE' or
+                 expected=='ROOT_CATEGORY' and state=='ROOT_CATEGORY' and terminalHomeCN(d,labels(d)))
+        if reached:
+            d._dailyRouteObservation=(d.im,raw,state)
+            return d
+    raise ScriptStop(f'每日任务导航等待 {expected} 超时；未重复点击，保留索引')
+
 def _openDailyFromTerminalCN():
-    """Open the CN daily-quest list without selecting or starting a battle."""
+    """Verified terminal → Gate → confirmed DAILY; no quest-card selection."""
+    from fgoNavigation import NavigationGuard,labels,safeMenuPageCN,publish
     if XDetect.region!='CN':raise ScriptStop('每日任务快捷入口仅适配简体中文服务器')
-    closes=scrolls=unchanged=transitionWaits=0;lastTap=None;toTop=True
+    guard=NavigationGuard('进入每日任务',180,100)
+    closes=scrolls=0;toTop=True;detect=None
     for _ in range(DAILY_NAVIGATION_LIMIT):
-        detect=_dailyCapture(.3)
+        guard.check();detect=detect or _dailyCapture(.3)
         if detect.im.shape[:2]!=(720,1280):raise ScriptStop('每日任务快捷入口仅支持 1280x720 横屏')
-        action,position=dailyNavigationAction(_navigationLabels(detect)) if detect.isMainInterface() else ('blocked',None)
-        if action=='ready':return {'type':'DailyPage'}
-        if action=='blocked':
-            # Navigation animations can temporarily hide both the menu and its title.
-            # Only wait after a verified navigation tap; never act on the unknown frame.
-            if lastTap is not None and transitionWaits<3:
-                transitionWaits+=1
-                schedule.sleep(.5)
-                continue
-            raise ScriptStop('未能唯一确认每日任务导航入口，或存在确认弹窗；请关闭弹窗或返回主界面后刷新')
-        transitionWaits=0
-        if action in ('gate','daily') and lastTap==(action,position):
-            unchanged+=1
-            if unchanged>=3:raise ScriptStop('点击导航入口后页面未变化，已停止重复点击')
-            schedule.sleep(.3)
-            continue
-        unchanged=0
+        observed=getattr(detect,'_dailyRouteObservation',None)
+        if observed is not None and observed[0] is detect.im:
+            _,raw,state=observed;del detect._dailyRouteObservation
+        else:
+            raw=_navigationLabels(detect) if detect.isMainInterface() else []
+            state=_dailyNavigationStateCN(detect)
+        if state.startswith('UNSAFE'):raise ScriptStop(f'每日任务导航遇到 {state}，未点击')
+        action,position=dailyNavigationAction(raw) if detect.isMainInterface() else ('blocked',None)
+        if action=='candidate_ready':
+            if confirmedDailyPageCN(detect):return {'type':'DailyPage'}
+            raise ScriptStop('每日任务候选页尚未通过联合确认；保留索引，未点击')
+        if action=='blocked':raise ScriptStop('未能正向确认安全每日任务导航入口；保留索引，未点击')
         if action=='scroll':
+            if state not in ('ROOT_CATEGORY','GATE'):raise ScriptStop('当前不是已确认导航目录，未滑动')
             if scrolls>=DAILY_NAV_SCROLL_LIMIT:raise ScriptStop('主目录入口未找到；已停止导航滚动，未选择任何关卡')
-            scrolls+=1
-            after,moved=_swipe(detect,toTop)
+            scrolls+=1;after,moved=_swipe(detect,toTop)
             if not moved:
-                # Pinned costume quests can precede Daily in the Gate directory.
-                # Unchanged pixels alone do not prove an endpoint (a drag may fail).
-                # Only two positive scrollbar endpoints authorize reversing once.
                 thumbs=(_scrollbar(detect.im),_scrollbar(after.im))
                 endpoint=all(t[0]<=105 for t in thumbs) if toTop else all(t[1]>=575 for t in thumbs)
                 if not endpoint:raise ScriptStop('导航滚动未移动且未确认列表边界，已停止；未选择任何关卡')
                 if not toTop:raise ScriptStop('已扫描导航列表至底部，但未唯一识别入口；未选择任何关卡')
-                toTop=False
-                from fgoNavigation import publish
-                publish('导航列表顶部未见入口，正在向下寻找…')
-            lastTap=None
-        else:
-            if action=='daily':
-                from fgoNavigation import publish
-                publish('正在打开每日任务…')
-            if action=='close':
-                if closes>=DAILY_NAV_CLOSE_LIMIT:raise ScriptStop('返回主界面超过 3 层导航上限，已停止')
-                closes+=1
-            fgoDevice.device.touch(position)
-            lastTap=(action,position)
-            toTop=True
-            schedule.sleep(.6)
+                toTop=False;publish('导航列表顶部未见入口，正在向下寻找…')
+            detect=after;continue
+        if action=='gate' and state!='ROOT_CATEGORY' or action=='daily' and state!='GATE':
+            raise ScriptStop('导航候选入口与已确认页面不符，未点击')
+        if action=='close':
+            if state not in ('EVENT','FIRST_PART','MAP','FREE_QUEST','GATE'):raise ScriptStop('关闭入口缺少安全页面证明，未点击')
+            if closes>=DAILY_NAV_CLOSE_LIMIT:raise ScriptStop('返回主界面超过 3 层导航上限，已停止')
+            closes+=1
+        if action=='daily':publish('正在打开每日任务…')
+        fgoDevice.device.touch(position)
+        expected={'gate':'GATE','daily':'DAILY','close':'ROOT_CATEGORY'}[action]
+        detect=_waitDailyNavigationCN(guard,expected);toTop=True
     raise ScriptStop('每日任务导航超过有限步骤上限；未选择任何关卡')
 
 def openDailyPageCN():
-    """Every daily entry point uses the shared, guarded terminal normalization."""
-    from fgoNavigation import normalizeToTerminalCN,publish,safeMenuPageCN,labels
+    """Normalize arbitrary safe pages, then independently confirm DAILY."""
+    from fgoNavigation import normalizeToTerminalCN,publish,NavigationGuard
     if XDetect.region!='CN':raise ScriptStop('每日任务快捷入口仅适配简体中文服务器')
     detect=_dailyCapture(.2)
-    if safeMenuPageCN(detect,labels(detect))=='DAILY' and _isDailyPage(detect):return {'type':'DailyPage'}
-    normalizeToTerminalCN()
-    publish('正在进入迦勒底之门…')
-    return _openDailyFromTerminalCN()
+    if confirmedDailyPageCN(detect):return {'type':'DailyPage'}
+    normalizeToTerminalCN();publish('正在进入迦勒底之门…')
+    _openDailyFromTerminalCN()
+    # Candidate navigation readiness is not the index-layer handoff proof.
+    _waitDailyNavigationCN(NavigationGuard('每日任务最终确认',25),'DAILY')
+    return {'type':'DailyPage'}
 
 def _open_chapter(chapter):
     for _ in range(30):
@@ -499,7 +545,7 @@ def refreshDailyQuestsCN():
     detect=_dailyCapture(.2)
     # Already at the confirmed target: reset the list itself, avoiding an
     # unnecessary terminal/loading round trip. Modal guards still take priority.
-    if safeMenuPageCN(detect,labels(detect))=='DAILY' and _isDailyPage(detect):
+    if confirmedDailyPageCN(detect):
         publish('已确认每日任务页，直接重新扫描…')
         return scanDailyQuestsCN()
     openDailyPageCN()
@@ -563,10 +609,10 @@ def _dailyLocatorFrameCN(detect):
     from fgoNavigation import safeMenuPageCN,labels
     schedule.checkStop()
     if detect.im.shape[:2]!=(720,1280):raise ScriptStop('每日任务定位截图尺寸异常，未点击')
-    items=labels(detect)
-    if not _isDailyPage(detect) or safeMenuPageCN(detect,items)!='DAILY':raise ScriptStop('每日任务定位页面已变化或存在危险状态，未点击')
-    detect._dailyNavigationImage=detect.im;detect._dailyNavigationLabels=items
     if detect.isNetworkError():raise ScriptStop('每日任务定位出现网络错误，未确认或重试')
+    items=labels(detect)
+    if not confirmedDailyPageCN(detect,items):raise ScriptStop('每日任务定位页面未通过联合确认或存在危险状态，未点击')
+    detect._dailyNavigationImage=detect.im;detect._dailyNavigationLabels=items
 
 def _reacquireDailyTargetCN(detect,entry,deadline):
     """After a verified alignment, never resume a blind search past the target."""

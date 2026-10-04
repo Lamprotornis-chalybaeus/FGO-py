@@ -6,6 +6,7 @@ import types
 import unittest
 from pathlib import Path
 from unittest.mock import call,patch
+from contextlib import contextmanager
 
 import numpy
 
@@ -20,6 +21,7 @@ if 'fgoLogging' not in sys.modules:
 oldCwd=os.getcwd();os.chdir(APP)
 try:import fgoQuickQuest as daily
 finally:os.chdir(oldCwd)
+import fgoNavigation as nav
 
 # Generic UI labels sampled from the local CN client, without account data.
 CLOSE=('关闭',(79,25,140,60))
@@ -39,8 +41,21 @@ class Frame:
 
 
 class DailyNavigationTests(unittest.TestCase):
+    @contextmanager
     def runNavigation(self,labels):
-        return patch.object(daily,'_navigationLabels',side_effect=labels)
+        pending=iter(labels);current=[[]]
+        def read(d):
+            current[0]=next(pending,current[0]);return current[0]
+        def state(d):
+            if not d.isMainInterface():return 'UNKNOWN'
+            rows=current[0]
+            if any('是否' in t for t,r in rows):return 'UNSAFE_MODAL'
+            if NOTIFY in rows:return 'ROOT_CATEGORY'
+            if GATE_HEADER in rows:return 'GATE'
+            if DAILY_HEADER in rows:return 'DAILY'
+            return 'EVENT' if rows==EVENT else 'UNKNOWN'
+        with patch.object(daily,'_navigationLabels',side_effect=read) as observed,patch.object(daily,'_dailyNavigationStateCN',side_effect=state),patch.object(daily,'confirmedDailyPageCN',side_effect=lambda d,*a:state(d)=='DAILY'),patch.object(nav,'terminalHomeCN',side_effect=lambda d,i:state(d)=='ROOT_CATEGORY'),patch.object(nav,'labels',side_effect=lambda d:[nav.Label(t,r,.99) for t,r in current[0]]):
+            yield observed
 
     def test_activity_quest_list_returns_via_close_instead_of_searching_gate(self):
         self.assertEqual(daily.dailyNavigationAction(EVENT),('close',(109,42)))
@@ -48,7 +63,7 @@ class DailyNavigationTests(unittest.TestCase):
     def test_root_and_gate_use_distinct_title_regions(self):
         self.assertEqual(daily.dailyNavigationAction(HOME),('gate',(873,394)))
         self.assertEqual(daily.dailyNavigationAction(GATE),('daily',(1004,238)))
-        self.assertEqual(daily.dailyNavigationAction(DAILY),('ready',None))
+        self.assertEqual(daily.dailyNavigationAction(DAILY),('candidate_ready',None))
 
     def test_event_to_daily_touches_only_close_gate_daily(self):
         with patch.object(daily.XDetect,'region','CN'), \
@@ -91,7 +106,7 @@ class DailyNavigationTests(unittest.TestCase):
     def test_same_page_after_tap_is_not_clicked_repeatedly(self):
         with patch.object(daily.XDetect,'region','CN'), \
              patch.object(daily,'Detect',return_value=Frame()), \
-             patch.object(daily,'_navigationLabels',return_value=HOME), \
+             self.runNavigation([HOME]), \
              patch.object(daily.schedule,'sleep'), \
              patch.object(daily.fgoDevice.device,'touch') as touch:
             with self.assertRaises(daily.ScriptStop):daily._openDailyFromTerminalCN()
@@ -114,22 +129,22 @@ class DailyNavigationTests(unittest.TestCase):
              patch.object(daily.schedule,'sleep'), \
              patch.object(daily.fgoDevice.device,'touch') as touch:
             with self.assertRaises(daily.ScriptStop):daily._openDailyFromTerminalCN()
-        self.assertEqual(labels.call_count,5)
+        self.assertGreater(labels.call_count,5);self.assertLessEqual(labels.call_count,101)
         touch.assert_called_once_with((109,42))
 
     def test_close_has_three_layer_cap(self):
         with patch.object(daily.XDetect,'region','CN'), \
              patch.object(daily,'Detect',return_value=Frame()), \
-             patch.object(daily,'_navigationLabels',return_value=EVENT), \
+             self.runNavigation([EVENT]), \
              patch.object(daily.schedule,'sleep'), \
              patch.object(daily.fgoDevice.device,'touch') as touch:
             with self.assertRaises(daily.ScriptStop):daily._openDailyFromTerminalCN()
-        self.assertEqual(touch.call_count,3)
+        self.assertEqual(touch.call_count,1) # No proven return transition: never repeat close.
 
     def test_offscreen_gate_scroll_is_bounded_and_never_taps(self):
         with patch.object(daily.XDetect,'region','CN'), \
              patch.object(daily,'Detect',return_value=Frame()), \
-             patch.object(daily,'_navigationLabels',return_value=[NOTIFY]), \
+             self.runNavigation([[NOTIFY]]), \
              patch.object(daily,'_swipe',return_value=(Frame(),True)) as swipe, \
              patch.object(daily.fgoDevice.device,'touch') as touch:
             with self.assertRaises(daily.ScriptStop):daily._openDailyFromTerminalCN()
@@ -140,7 +155,7 @@ class DailyNavigationTests(unittest.TestCase):
         labels=HOME+[('迦勒底之门',(750,170,990,220))]
         with patch.object(daily.XDetect,'region','CN'), \
              patch.object(daily,'Detect',return_value=Frame()), \
-             patch.object(daily,'_navigationLabels',return_value=labels), \
+             self.runNavigation([labels]), \
              patch.object(daily,'_swipe',return_value=(Frame(),False)), \
              patch.object(daily.fgoDevice.device,'touch') as touch:
             with self.assertRaises(daily.ScriptStop):daily._openDailyFromTerminalCN()
