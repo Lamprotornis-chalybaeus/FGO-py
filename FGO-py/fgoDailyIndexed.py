@@ -280,6 +280,16 @@ def _targeted(acc,deadline,metrics,d=None,top_key=None,deferred_keys=()):
     if any(k!=top_key and k not in deferred_keys for k in acc.unverified()):raise ScriptStop('每日任务单次观测定点复核仍未确认，未发布完整列表')
     return d
 
+def _nextScanShift(entries,acc,stride):
+    # A repeated two-card advance leaves every middle card observed only once.
+    # Keep that real, unverified card in the next forward overlap instead of
+    # making a separate return trip after reaching the bottom. Once it has
+    # independent title/AP evidence, the larger bounded advance is safe again.
+    anchor=entries[-1]
+    if len(entries)>=3 and not acc.verified(__import__('fgoQuickQuest')._title_key(entries[-2].title)):
+        anchor=entries[-2]
+    return max(180,min(stride,anchor.discovered_position[2]-170))
+
 def scan():
     import fgoQuickQuest as q
     from fgoNavigation import publish
@@ -320,10 +330,9 @@ def scan():
             if stable>=3 and acc.scroll_scale:stride=min(380,stride+20)
             safe(d)
             if acc.scroll_scale and stable>=3:
-                # Place the last real visible anchor near the top. This keeps
-                # three complete cards in view and avoids inertial swipe skips.
-                # Advance stays within the same bounded adaptive content step.
-                shift=max(180,min(stride,entries[-1].discovered_position[2]-170))
+                # Finish independent verification within the forward overlap;
+                # avoid leaving every middle card for a later targeted trip.
+                shift=_nextScanShift(entries,acc,stride)
                 d=dragTo(thumb[0]+shift/acc.scroll_scale,deadline,d)
             else:q._swipe_input_only(d,False,stride);d=capture()
             new=q._scrollbar(d.im);stalled=stalled+1 if new[0]<=thumb[0]+1 else 0

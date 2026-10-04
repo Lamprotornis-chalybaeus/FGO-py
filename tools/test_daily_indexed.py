@@ -404,4 +404,26 @@ class NearHeaderCropTests(unittest.TestCase):
         self.assertFalse(acc.verified(q._title_key(e.title)))
         self.assertIn('125<=',inspect.getsource(indexed.locate))
 
+class ForwardVerificationStrideTests(unittest.TestCase):
+    def test_unverified_middle_card_is_kept_in_next_overlap(self):
+        w=World();acc=Mock();acc.verified.return_value=False
+        entries=[w.entry(i,y) for i,y in enumerate((160,347,534))]
+        self.assertEqual(indexed._nextScanShift(entries,acc,380),180)
+        acc.verified.assert_called_once_with(q._title_key(entries[1].title))
+    def test_verified_middle_card_allows_bounded_large_step(self):
+        w=World();acc=Mock();acc.verified.return_value=True
+        entries=[w.entry(i,y) for i,y in enumerate((160,347,534))]
+        self.assertEqual(indexed._nextScanShift(entries,acc,380),364)
+    def test_two_card_view_preserves_last_real_anchor(self):
+        w=World();acc=Mock();entries=[w.entry(0,160),w.entry(1,347)]
+        self.assertEqual(indexed._nextScanShift(entries,acc,380),180)
+        acc.verified.assert_not_called()
+    def test_stride_does_not_use_cached_names_as_observation(self):
+        with World(75).patched() as w:
+            indexed.scan()
+            result=indexed.scan()
+            self.assertTrue(result['complete']);self.assertTrue(result['reusedCalibration'])
+            self.assertLessEqual(result['metrics']['targetedRechecks'],5)
+            self.assertEqual(result['index'].entry_count,75);w.touch.assert_not_called()
+
 if __name__=='__main__':unittest.main()
