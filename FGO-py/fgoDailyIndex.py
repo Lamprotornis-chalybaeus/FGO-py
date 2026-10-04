@@ -113,16 +113,16 @@ class DailyScanAccumulator:
         self.frame_order.append((float(thumb[0]),keys));self.thumb_positions.append(tuple(thumb))
         self.calibrate()
     def calibrate(self):
-        samples=[]
-        for values in self.observations_by_title.values():
+        samples=[];sample_keys=set()
+        for key,values in self.observations_by_title.items():
             for a,b in zip(values,values[1:]):
                 dt=b.thumb_top-a.thumb_top;dy=b.local_y-a.local_y
                 if abs(dt)>=3 and abs(dy)>=20:
                     scale=-dy/dt
-                    if 1<=scale<=150:samples.append(scale)
-        if len(samples)>=3:
+                    if 1<=scale<=150:samples.append(scale);sample_keys.add(key)
+        if len(samples)>=5 and len(sample_keys)>=3:
             center=median(samples);good=[s for s in samples if abs(s-center)<=center*.25]
-            if len(good)>=3:self.scroll_scale=float(median(good))
+            if len(good)>=5:self.scroll_scale=float(median(good))
         if self.scroll_scale:
             self.absolute={k:float(median(o.local_y+self.scroll_scale*o.thumb_top for o in values)) for k,values in self.observations_by_title.items()}
             for k,values in self.observations_by_title.items():

@@ -289,7 +289,7 @@ def scan():
                     if all(abs(y-prior.record(k).locator.absolute_y)<=60 for y,k in zip(predicted,keys)):
                         acc.scroll_scale=prior.scroll_scale;reused=True
                 if not reused:invalidate('fresh top anchors or geometry changed')
-                else:stable=3;stride=320
+                else:stable=3;stride=360
             if not _continuous(acc,entries,thumb):
                 previous=acc.frame_order[-1][0]
                 # Return toward the last verified anchor, not a full reverse pass.

@@ -178,7 +178,7 @@ def _dailyEntriesAt(detect,scrollIndex=0,strict=True):
         # Foreground OCR can omit a low-level card's AP/title together. Read
         # the AP column independently in small overlapping local strips; every
         # complete AP row still requires its actual full-title consensus.
-        spans=list(detect._dailyNavigationLabels)+_dailyAPSpans(detect.im);x0=y0=0
+        spans=list(detect._dailyNavigationLabels);x0=y0=0
     else:spans=_dailyBatch(detect.im[y0:y1,x0:x1],drop_score=.5)
     entries=parseDailyQuestEntries(spans,detect.im,scrollIndex,(x0,y0))
     # Acceptance below still requires two local title reads plus the AP row.
@@ -198,6 +198,15 @@ def _dailyEntriesAt(detect,scrollIndex=0,strict=True):
     # An AP row well inside the viewport represents a complete card. Fail the
     # whole scan if its title is missing or disagrees; do not advertise a partial
     # recognition as a complete list or retain stale items from the previous day.
+    agreed=_dailyUniqueVisibleCards(agreed)
+    # Narrow AP batch detection upscales the strip and is expensive. When two
+    # actual title/AP anchors define the visible card pitch, recover omitted
+    # neighboring slots with independent Latin AP + full-title crop reads.
+    # Insufficient real anchors still use the independent AP-column batches.
+    centers=sorted(e.discovered_position[2] for e in agreed)
+    measurable=any(any(145<=(b-a)/n<=230 for n in range(1,4)) for a,b in zip(centers,centers[1:]))
+    if getattr(detect,'_dailyNavigationImage',None) is detect.im and not measurable and getattr(detect,'_dailyAPFallbackImage',None) is not detect.im:
+        spans+=_dailyAPSpans(detect.im);detect._dailyAPFallbackImage=detect.im
     apRows=[(_span_rect(s,(x0,y0))[1]+_span_rect(s,(x0,y0))[3])/2 for s in spans if re.fullmatch(r'AP\d+',_compact_title(s.text),re.I)]
     for y in apRows:
         if not 190<=y<=675 or any(40<=y-e.discovered_position[2]<=105 for e in agreed):continue
@@ -208,6 +217,11 @@ def _dailyEntriesAt(detect,scrollIndex=0,strict=True):
         if title:
             agreed.append(DailyQuestEntry(title,_quest_type(title),_difficulty(title),'',(int(scrollIndex),947,int(y)-75)))
     agreed.extend(_recoverDailyNeighborsCN(detect,agreed,apRows,scrollIndex))
+    if getattr(detect,'_dailyNeighborNeedsBatch',False) and getattr(detect,'_dailyNavigationImage',None) is detect.im and getattr(detect,'_dailyAPFallbackImage',None) is not detect.im:
+        detect._dailyNavigationLabels=spans+_dailyAPSpans(detect.im)
+        detect._dailyAPFallbackImage=detect.im
+        return _dailyEntriesAt(detect,scrollIndex,strict)
+    apRows.extend(getattr(detect,'_dailyNeighborAPRows',()))
     if strict and any(190<=y<=675 and not any(40<=y-e.discovered_position[2]<=105 for e in agreed) for y in apRows):raise ScriptStop('完整每日任务卡片的标题未通过双重校验；未发布扫描列表，请刷新重试')
     agreed=_dailyUniqueVisibleCards(agreed)
     detect._dailyVerifiedAP={_title_key(e.title):next((y for y in apRows if 40<=y-e.discovered_position[2]<=105),e.discovered_position[2]+71.5) for e in agreed}
@@ -215,14 +229,20 @@ def _dailyEntriesAt(detect,scrollIndex=0,strict=True):
 
 def _recoverDailyNeighborsCN(detect,observed,apRows,scrollIndex=0):
     """Neighbour positions propose crops; only real title/AP pixels add a card."""
+    detect._dailyNeighborNeedsBatch=False;detect._dailyNeighborAPRows=[]
     centers=sorted(set(e.discovered_position[2] for e in observed))
     apRows=sorted(set(apRows));proposals=[]
     # Measure this screenshot's card spacing, never infer a missing quest name
     # or difficulty from a class schedule, cached task, or ordinal sequence.
     spacings=[b-a for rows in (centers,apRows) for a,b in zip(rows,rows[1:]) if 145<=b-a<=230]
+    if not spacings:
+        for a,b in zip(centers,centers[1:]):
+            candidates=[(b-a)/n for n in range(2,4) if 145<=(b-a)/n<=230]
+            if len(candidates)==1:spacings.extend(candidates)
     pitch=float(numpy.median(spacings)) if spacings else None
     unresolved=[y for y in apRows if 190<=y<=675 and not any(40<=y-c<=105 for c in centers)]
     if pitch is not None:
+        if centers:proposals.extend((centers[0]-pitch,centers[-1]+pitch))
         for ap in unresolved:
             for anchor in centers:
                 for direction in (-1,1):
@@ -242,9 +262,12 @@ def _recoverDailyNeighborsCN(detect,observed,apRows,scrollIndex=0):
         hasAp=any(40<=y-center<=105 for y in apRows)
         if not hasAp:
             ap,score=_dailyLine(OCR.EN,detect.im[center+50:center+93,775:900])
-            if score<.8 or not re.fullmatch(r'AP\d+',_compact_title(ap),re.I):continue
+            if score<.8 or not re.fullmatch(r'AP\d+',_compact_title(ap),re.I):
+                detect._dailyNeighborNeedsBatch=True;continue
+            detect._dailyNeighborAPRows.append(center+71.5)
         title=_readDailyTitle(detect.im,center)
-        if not title or _title_key(title) in known:continue
+        if not title:detect._dailyNeighborNeedsBatch=True;continue
+        if _title_key(title) in known:continue
         known.add(_title_key(title));recovered.append(DailyQuestEntry(title,_quest_type(title),_difficulty(title),'',(int(scrollIndex),947,center)))
         from fgoLogging import getLogger
         getLogger('QuickQuest').info(f'Daily neighbour crop verified: title={title!r}, y={center}, anchors={centers}, measured_pitch={pitch}')

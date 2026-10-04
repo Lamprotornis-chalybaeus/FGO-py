@@ -307,4 +307,35 @@ class QuantizedHandleTests(unittest.TestCase):
             w.top=300;d=indexed.dragTo(303,time.monotonic()+10)
             self.assertEqual(d.top,303);self.assertEqual(len(w.drags),1)
 
+class LocalAnchorAPTests(unittest.TestCase):
+    def fixture(self):
+        from daily_index_test_support import env
+        frame=env['FakeDetect']();item=env['item']
+        frame._dailyNavigationImage=frame.im
+        frame._dailyNavigationLabels=[item('未来挑战 中级',795,310,180,20),item('AP20',795,385,60,20),item('未来挑战 上级',795,497,180,20),item('AP30',795,572,60,20)]
+        return frame
+    def title(self,image,y):
+        return '未来挑战 初级' if abs(y-133)<10 else ('未来挑战 中级' if abs(y-320)<10 else '未来挑战 上级')
+    def test_real_two_anchors_recover_missing_leading_title_without_batch(self):
+        frame=self.fixture()
+        with patch.object(q,'_readDailyTitle',side_effect=self.title),patch.object(q.OCR.EN,'ocr_single_line',return_value=('AP10',.99)),patch.object(q,'_dailyAPSpans',side_effect=AssertionError('no unnecessary batch')):
+            entries=q._dailyEntriesAt(frame)
+        self.assertEqual({e.title for e in entries},{'未来挑战 初级','未来挑战 中级','未来挑战 上级'})
+        self.assertIn(q._title_key('未来挑战 初级'),frame._dailyVerifiedAP)
+    def test_failed_local_ap_uses_independent_batch_fallback(self):
+        from types import SimpleNamespace
+        frame=self.fixture();ap=SimpleNamespace(text='AP10',box=(795,198,855,218),score=.99)
+        with patch.object(q,'_readDailyTitle',side_effect=self.title),patch.object(q.OCR.EN,'ocr_single_line',return_value=('',0)),patch.object(q,'_dailyAPSpans',return_value=[ap]) as batch:
+            entries=q._dailyEntriesAt(frame)
+        batch.assert_called_once();self.assertEqual(len(entries),3)
+    def test_real_ap_with_unreadable_neighbor_title_stops(self):
+        frame=self.fixture()
+        def read(image,y):return None if abs(y-133)<10 else self.title(image,y)
+        with patch.object(q,'_readDailyTitle',side_effect=read),patch.object(q.OCR.EN,'ocr_single_line',return_value=('AP10',.99)),patch.object(q,'_dailyAPSpans',return_value=[]):
+            with self.assertRaisesRegex(q.ScriptStop,'标题未通过双重校验'):q._dailyEntriesAt(frame)
+    def test_single_task_cannot_calibrate_scroll_scale(self):
+        acc=DailyScanAccumulator(q._title_key);w=World();key=q._title_key(w.entry(0,200).title)
+        for n in range(7):acc.add_frame([w.entry(0,400-n*35)],(100+n*5,140+n*5),n,{key:475-n*35})
+        self.assertIsNone(acc.scroll_scale)
+
 if __name__=='__main__':unittest.main()
