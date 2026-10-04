@@ -50,3 +50,8 @@ Priority: P1. Event-specific formation requirements and a general Mission solver
 # CN navigation normalization coverage
 
 Priority: P1. New page identities can appear. Extend coverage using verified page titles and return controls, while preserving refusal of battle, purchase, AP recovery, story and reward-choice modals. Complete daily scanning remains comparatively slow.
+# 2026-10-04 formation-start diagnostic follow-up
+
+P0 remains open. STARTING without a producer has been removed. Full-cycle physical input tracing and a narrowly scoped local formation-start capture diagnostic are implemented; the 90-second limit and .05 attack threshold are unchanged. Every remaining state has a tested producer.
+
+Fresh read-only observation found QUEST_READY, not the previous unfinished battle, so no replacement legacy entry was made. The next preflight stopped on strict report-only AP OCR; a visual reading was used only for the private report harness, without changing game AP policy. The subsequent single attempt stopped at FRIEND -> FORMATION after one recorded first-card body input; zero new quest entries occurred. A normal window click on the same body reached FORMATION. Touch-backend/duration causality is unconfirmed: the proposed one-input diagnostic was blocked by automatic approval review and requires explicit confirmation. No five/ten-battle stage was run. No new private screenshots or logs are published.

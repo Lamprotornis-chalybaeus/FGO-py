@@ -42,3 +42,6 @@ Details and the next reproduction plan: [CURRENT-ISSUES.md](CURRENT-ISSUES.md).
 Keep `origin` pointed at the user's fork and `upstream` at the official repository. Preserve the full commit history. Fetch upstream, review its diff, and use a dedicated integration branch to merge changes; run portable tests and review CN recognition changes before merging into `cn-dev`. Do not force-push or automatically merge upstream changes into the deployment branch.
 
 For a contribution upstream, create a narrowly scoped branch and review its code, templates, tests and AGPL attribution. This repository preparation does not create or submit an upstream PR.
+# 2026-10-04 diagnostic follow-up
+
+The unmerged `fix/battle-cycle-state-machine` branch now traces physical inputs across preparation, Battle and settlement. It includes local-only formation-start capture signatures, acquisition timestamps and ATTACK scores; UNKNOWN full frames are authorized only in the explicit verified-start transition, with four bounded representative slots. No timeout/threshold relaxation or guessed confirmation detector was added. STARTING was removed; all remaining enum producers are tested. Offline suite: 389 cases, 386 executed successfully, three existing integration skips. Live clean single remains unpassed at support departure; five/ten stages are unrun and P0 remains open.

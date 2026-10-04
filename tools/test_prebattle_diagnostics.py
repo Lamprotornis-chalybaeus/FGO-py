@@ -38,6 +38,12 @@ class PrebattleDiagnosticsTests(unittest.TestCase):
             trace.formationSample(detect,S.UNKNOWN,0,1);trace.endFormationStart()
             self.assertIsNone(trace.prebattle)
             self.assertEqual({p.name for p in Path(root).rglob('*.png')},{'first-unknown.png','last-unknown.png'})
+    def test_other_positive_page_revokes_unknown_capture(self):
+        trace=FlowTrace();trace.record(S.FORMATION,action='start_quest');trace.beginFormationStart()
+        detect=frame();detect.im=np.full((720,1280,3),100,np.uint8)
+        trace.formationSample(detect,S.NETWORK_ERROR,0,1)
+        trace.formationSample(detect,S.UNKNOWN,1,2)
+        self.assertFalse(trace.prebattle['frames'])
     def test_input_observer_spans_preparation_and_settlement_and_resets(self):
         from test_battle_cycle import Scenario,CycleTests
         from fgoAutomation import INPUT_OBSERVER,noteDeviceInput
