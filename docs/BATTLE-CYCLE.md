@@ -13,6 +13,7 @@ stateDiagram-v2
     AP_EMPTY --> FRIEND: existing configured fruit policy
     AP_EMPTY --> Stopped: zero fruit / cancel
     FRIEND --> FORMATION: choose support / confirm departure
+    FRIEND --> LOADING: verified CN continue / existing party reused
     FORMATION --> LOADING: existing team handling / start once
     LOADING --> TURN_BEGIN: positive attack marker
     TURN_BEGIN --> BATTLE_RESULT: unchanged battle AI
@@ -23,7 +24,7 @@ stateDiagram-v2
     CONTINUE --> QUEST_READY: limit / decline continue once
 ```
 
-The common `BattleCycle.prepare` handles both entry routes. `chooseFriend` selects a support and returns a `FriendSelectionResult` only after confirming FORMATION. It cannot imply that a battle has started. The CN first-selection input uses the verified first card's blue body at 1280x720 `(650,300)`; the old header input `(845,203)` could be ignored. Template and first/prefer/strict policies remain intact.
+The common `BattleCycle.prepare` handles both entry routes. Initial support selection confirms FORMATION. The observed CN CONTINUE route can instead reuse the existing party: selecting support loads directly into TURN_BEGIN. Only a previously confirmed CONTINUE action enables this alternate exit, and `FriendSelectionResult.state` reports the actual observed exit. Positive TURN_BEGIN is required before AI and counting; it never sends another start input. The CN first-selection input uses the verified first card's blue body at 1280x720 `(650,300)`; the old header input `(845,203)` could be ignored. Template and first/prefer/strict policies remain intact.
 
 ## States and evidence
 
@@ -58,10 +59,13 @@ Only verified FORMATION plus recorded start_quest opens the narrow TURN_BEGIN tr
 
 All state polling uses `time.monotonic`, stop/suspend checks, fresh screenshots and a 0.2-second scheduled pause. State changes/actions/errors log to the ordinary logger and GUI log, not every poll.
 
+The battle's 60-second no-progress wait starts after the completed skill/card input phase, not before it. A real existing-battle resume exposed that the earlier clock counted legitimate input execution against this wait. Input completion is logged as progress; it does not renew the fixed whole-battle deadline or change AI strategy. Unknown animation alone still cannot renew this budget.
+
 | Phase | Limit |
 |---|---:|
 | Quest / continue dismissal | 45 s |
 | Support selection departure | 30 s |
+| CN continue support direct battle acquisition | 60 s stall / 180 s hard |
 | CN first-support body confirmation | 20 s |
 | Support overall acquisition | 180 s; existing navigation/refresh guards also apply |
 | Team switch | 10 s |
@@ -106,3 +110,9 @@ Removed: repeat sleep(6), ten blind result spaces, four skill busy waits, unboun
 ## Live validation status (2026-10-03)
 
 Single stage incomplete: normalization refusal and support-departure timeout were recorded; the support input was corrected with an evidence-based regression. The next entry timed out at FORMATION -> TURN_BEGIN after 90.20 seconds. Subsequent read-only sampling found the existing attack template valid, but it cannot prove what was displayed during the failed interval. No threshold/time-limit relaxation was made. An unfinished battle remains in the client; no AI turn or settlement was run by this branch. Five/ten stages have not started. P0 remains open. Private reports contain exact traces and local artifact paths; these are not uploaded.
+
+## Live validation follow-up (2026-10-04)
+
+Fresh observation found the historical battle had already ended; no replacement entry was made. A diagnostic victory exposed a missing Bond result detector, then the result sequence was recovered. After repairs, a clean single passed preparation, three AI turns, all result pages and final QUEST_READY.
+
+The five-stage trial completed its first battle but stopped acquiring the second: the real CN repeat route bypassed FORMATION and loaded directly into battle after support selection. A fresh read-only TURN_BEGIN proved the second actual entry despite no second start_quest action. This failed stage is not a five-gate pass, and the ten-stage gate was not started. The new regression first failed on the observed 44-second direct route; route-scoped positive TURN_BEGIN acquisition now passes offline. Existing entered-battle recovery is tracked separately and cannot substitute for an uninterrupted five-stage gate. P0 remains open.
