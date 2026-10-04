@@ -219,9 +219,17 @@ def cnFreeQuestReturn(detect,items):
 
 def terminalHomeCN(detect,items):
     if classify(detect,items)!='ROOT_CATEGORY':return False
-    directory=any(i.score>=.85 and 640<i.center[0]<1230 and 95<i.center[1]<720 and
-                  (compact(i.text)=='迦勒底之门' or any(compact(questTitle(k))==compact(i.text) for k in chapterImg if len(k)==2)) for i in items)
-    return bool(directory and unique(items,'通知',(0,0,200,95)))
+    names={compact(questTitle(k)) for k in chapterImg if len(k)==2}|{'迦勒底之门'}
+    for item in items:
+        if not (640<item.center[0]<1230 and 95<item.center[1]<720 and compact(item.text) in names):continue
+        if item.score>=.85:return True
+        # Animated directory backgrounds can weaken global OCR. Require the
+        # same existing title at both local scales; do not lower confidence.
+        crop=detect._crop(item.box)
+        a,sa=OCR.ZHS.ocr_single_line(crop)
+        b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC))
+        if min(sa,sb)>=.85 and compact(a)==compact(b)==compact(item.text):return True
+    return False
 
 def expandedMenuCN(detect,items):
     terminal=unique(items,'终端',(40,600,215,700))

@@ -117,6 +117,22 @@ class GenericMenuTests(unittest.TestCase):
         p.isBattleFormation=lambda:False;p.rows.append(label('是否购买？',450,300,400))
         self.assertFalse(nav.confirmedMenuPageCN(p,p.rows))
 
+class TerminalDirectoryProofTests(unittest.TestCase):
+    def test_weak_known_title_needs_two_agreeing_local_scales(self):
+        rows=[label('通知',70,25,80,35),nav.Label('冬木',(863,224,952,275),.805),MENU]
+        p=Page(rows)
+        with patch.object(nav.OCR.ZHS,'ocr_single_line',return_value=('冬木',.99)) as read:
+            self.assertTrue(nav.terminalHomeCN(p,rows))
+        self.assertEqual(read.call_count,2)
+    def test_disagreement_or_weak_local_title_does_not_prove_terminal(self):
+        rows=[label('通知',70,25,80,35),nav.Label('冬木',(863,224,952,275),.805),MENU]
+        for answers in ([('冬木',.99),('另一页',.99)],[('冬木',.84),('冬木',.99)]):
+            with patch.object(nav.OCR.ZHS,'ocr_single_line',side_effect=answers):
+                self.assertFalse(nav.terminalHomeCN(Page(rows),rows))
+    def test_notification_alone_is_not_terminal_home(self):
+        rows=[label('通知',70,25,80,35),MENU]
+        self.assertFalse(nav.terminalHomeCN(Page(rows),rows))
+
 class VerifiedTransitionTests(unittest.TestCase):
     def test_more_than_three_unknown_frames_wait_read_only_after_verified_tap(self):
         frames=[Page([],False) for _ in range(5)]+[Page(DAILY)]
