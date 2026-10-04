@@ -52,16 +52,19 @@ class FullDailyTests(unittest.TestCase):
         self.assertEqual([e.title for e in entries],['每日替换 骑之修炼场 超级'])
 
     def test_forward_reverse_disagreement_does_not_publish_complete_list(self):
-        frame=Frame();entry=daily.DailyQuestEntry('搜集种火 极级','ember','极级','sig',(0,900,150))
-        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=frame),patch.object(daily,'_isDailyPage',return_value=True),patch.object(daily,'_scrollToTop',return_value=(frame,True)),patch.object(daily,'_swipe',return_value=(frame,True)),patch.object(daily,'_scrollbar',side_effect=[(462,575),(462,575),(462,575),(99,213),(99,213),(99,213)]),patch.object(daily,'_dailyEntriesAt',side_effect=[[entry],[entry],[],[],[]]),patch.object(daily,'_reverifyDailyTitlesCN',side_effect=daily.ScriptStop('missing actual quest')):
-            with self.assertRaisesRegex(daily.ScriptStop,'missing actual quest'):daily.scanDailyQuestsCN()
+        # Reverse passes are retired: a missing actual card still forbids publication.
+        from daily_index_test_support import World
+        with World().patched() as w:
+            w.missing={4};w.local_missing={4}
+            with self.assertRaises(daily.ScriptStop):daily.scanDailyQuestsCN()
+            w.touch.assert_not_called()
 
     def test_return_omission_must_be_independently_located_before_publication(self):
-        frame=Frame();entry=daily.DailyQuestEntry('搜集种火 极级','ember','极级','sig',(0,900,150))
-        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=frame),patch.object(daily,'_isDailyPage',return_value=True),patch.object(daily,'_scrollToTop',return_value=(frame,True)) as top,patch.object(daily,'_swipe',return_value=(frame,True)),patch.object(daily,'_scrollbar',side_effect=[(462,575),(462,575),(462,575),(99,213),(99,213),(99,213)]),patch.object(daily,'_dailyEntriesAt',side_effect=[[entry],[entry],[],[],[]]),patch.object(daily,'_reverifyDailyTitlesCN') as locate:
-            result=daily.scanDailyQuestsCN()
-        locate.assert_called_once_with([entry],{daily._title_key(entry.title)});self.assertEqual(top.call_count,1)
-        self.assertEqual(result['entries'],[entry]);self.assertEqual(result['reverified'],1)
+        from daily_index_test_support import World
+        with World().patched() as w:
+            w.missing={4};result=daily.scanDailyQuestsCN()
+        self.assertTrue(result['complete']);self.assertEqual(len(result['entries']),25)
+        self.assertGreater(result['metrics']['gapRecoveries'],0);self.assertEqual(w.top,99)
 
     def test_near_top_thumb_is_not_accepted_until_it_stops_moving(self):
         frame=Frame()
@@ -109,13 +112,11 @@ class FullDailyTests(unittest.TestCase):
         self.assertEqual(daily._scrollbar(im),(462,575))
 
     def test_stalled_scan_aborts_without_partial_result(self):
-        frame=Frame()
-        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=frame), \
-             patch.object(daily,'_isDailyPage',return_value=True),patch.object(daily,'_scrollToTop',return_value=(frame,True)), \
-             patch.object(daily,'_scrollbar',return_value=(200,310)),patch.object(daily,'_dailyEntriesAt',return_value=[]), \
-             patch.object(daily,'_swipe',return_value=(frame,True)) as swipe:
+        from daily_index_test_support import World
+        with World().patched() as w:
+            w.stalled=True
             with self.assertRaises(daily.ScriptStop):daily.scanDailyQuestsCN()
-        self.assertEqual(swipe.call_count,3)
+        self.assertEqual(len(w.swipes),3)
 
     def test_selected_quest_must_cover_kernel_first_quest_coordinate(self):
         entry=daily.DailyQuestEntry('剑之修炼场 极级','training','极级','sig',(0,880,160))

@@ -150,8 +150,9 @@ class ScanRecoveryTests(unittest.TestCase):
             daily._swipe(Frame(),True)
         swipe.assert_called_once_with((950,240),(950,420))
     def test_progressing_large_list_can_complete_after_old_180_second_budget(self):
-        frame=Frame();entry=daily.DailyQuestEntry('搜集种火 极级','ember','极级','',(0,940,150))
-        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=frame),patch.object(daily,'_isDailyPage',return_value=True),patch.object(daily,'_scrollToTop',return_value=(frame,True)),patch.object(daily,'_dailyEntriesAt',return_value=[entry]),patch.object(daily,'_swipe',return_value=(frame,True)),patch.object(daily,'_scrollbar',side_effect=[(462,575),(462,575),(462,575),(99,213),(99,213),(99,213)]),patch.object(daily.time,'monotonic',side_effect=[0,200,200,400,450]):
+        from daily_index_test_support import World,indexed
+        ticks=iter([0,200]);clock=lambda:next(ticks,200)
+        with World().patched(),patch.object(indexed.time,'monotonic',side_effect=clock):
             result=daily.scanDailyQuestsCN()
         self.assertTrue(result['complete']);self.assertTrue(result['reachedEnd']);self.assertTrue(result['restoredTop'])
 

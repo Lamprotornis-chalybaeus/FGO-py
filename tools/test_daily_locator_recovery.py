@@ -107,5 +107,5 @@ class NeighbourCropTests(unittest.TestCase):
         read.assert_not_called()
     def test_shared_scan_and_locator_reader_use_neighbour_recovery(self):
         self.assertIn('_recoverDailyNeighborsCN',daily._dailyEntriesAt.__code__.co_names)
-        self.assertIn('_observeDailyScanPage',daily.gotoDailyEntry.__code__.co_names)
+        self.assertIn('_observeDailyScanPage',daily._gotoDailyEntrySequential.__code__.co_names)
 if __name__=='__main__':unittest.main()

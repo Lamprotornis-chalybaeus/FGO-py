@@ -90,27 +90,12 @@ class DailyQuestTests(unittest.TestCase):
         self.assertEqual(daily.deduplicateDailyEntries(entries),[entries[0]])
 
     def test_scan_goes_past_ten_scrolls_until_verified_bottom(self):
-        detect=FakeDetect()
-        entry=daily.DailyQuestEntry('搜集种火 极级','ember','极级','sig',(0,900,150))
-        # Each swipe consumes another scrollbar observation; 12 moves precede
-        # the true bottom. Animated background pixels are deliberately ignored.
-        thumbs=[]
-        for index in range(12):thumbs.extend([(100+index*20,210+index*20),(120+index*20,230+index*20)])
-        thumbs.extend([(462,575),(462,575),(462,575),(462,575),(99,213),(99,213),(99,213),(99,213)])
-        with patch.object(daily.XDetect,'region','CN'), \
-             patch.object(daily,'Detect',return_value=detect), \
-             patch.object(daily,'_isDailyPage',return_value=True), \
-             patch.object(daily,'_scrollToTop',return_value=(detect,True)) as to_top, \
-             patch.object(daily,'_swipe',return_value=(detect,True)) as swipe, \
-             patch.object(daily,'_scrollbar',side_effect=thumbs), \
-             patch.object(daily,'_dailyEntriesAt',return_value=[entry]):
+        from daily_index_test_support import World,indexed
+        with World(40).patched() as w:
             result=daily.scanDailyQuestsCN()
-        self.assertEqual(swipe.call_count,15)
-        self.assertEqual(to_top.call_count,1)
-        self.assertTrue(result['reachedEnd'])
-        self.assertTrue(result['complete'])
-        self.assertEqual(result['screens'],17)
-        self.assertEqual(result['entries'],[entry])
+        self.assertGreater(len(w.swipes)+len(w.drags),10)
+        self.assertTrue(result['reachedEnd']);self.assertTrue(result['complete'])
+        self.assertEqual(len(result['entries']),40);self.assertFalse(any(w.swipes))
 
     def test_scroll_to_top_uses_thumb_boundary_despite_animation(self):
         detect=FakeDetect()

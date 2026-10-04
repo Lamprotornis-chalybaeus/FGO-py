@@ -45,13 +45,14 @@ class RepositionTests(unittest.TestCase):
             with self.assertRaisesRegex(daily.ScriptStop,'页面已变化'):daily._scrollToTop()
         swipe.assert_not_called()
     def test_recovery_at_endpoint_requires_returning_to_that_endpoint(self):
-        bottom,middle,top=Frame(),Frame(),Frame();entry=self.entry()
-        positions={id(bottom.im):(520,575),id(middle.im):(300,350),id(top.im):(99,149)}
-        # Both final endpoint observations recover onto a middle frame. The
-        # scanner must continue each trip instead of claiming its old boundary.
-        observations=[bottom,middle,middle,bottom,bottom,bottom,top,middle,middle,top,top]
-        with patch.object(daily.XDetect,'region','CN'),patch.object(daily,'Detect',return_value=bottom),patch.object(daily,'_isDailyPage',return_value=True),patch.object(daily,'_scrollToTop',return_value=(bottom,True)),patch.object(daily,'_observeDailyScanPage',side_effect=[(f,[entry]) for f in observations]),patch.object(daily,'_scrollbar',side_effect=lambda im:positions[id(im)]),patch.object(daily,'_swipe',side_effect=lambda frame,toTop,distance=180:(top if toTop else bottom,True)) as swipe:
-            result=daily.scanDailyQuestsCN()
-        self.assertTrue(result['reachedEnd']);self.assertTrue(result['restoredTop'])
-        self.assertEqual(result['entries'],[entry]);self.assertEqual(swipe.call_count,7)
+        from daily_index_test_support import World,indexed
+        with World().patched() as w:
+            real=w.observe;moved=[False]
+            def observe(d,n):
+                if d.top>=534 and not moved[0]:
+                    moved[0]=True;w.top=520;d=w.capture()
+                return real(d,n)
+            with patch.object(daily,'_observeDailyScanPage',side_effect=observe):result=daily.scanDailyQuestsCN()
+        self.assertTrue(moved[0]);self.assertTrue(result['reachedEnd']);self.assertEqual(w.top,99)
+
 if __name__=='__main__':unittest.main()
