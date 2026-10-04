@@ -140,6 +140,19 @@ class CycleTests(unittest.TestCase):
         self.assertEqual(s.actions.count(('FORMATION',' ')),1)
         self.assertEqual(s.actions.count(('FRIEND','8')),5)
         self.assertEqual(sum(r.action=='continue_support_start' for r in flow.trace.records),4)
+    def test_cn_continue_can_still_confirm_formation_and_start_once(self):
+        s=Scenario()
+        with patch.object(kernel.XDetect,'region','CN'),patch.object(kernel.fgoDevice.device,'touch',side_effect=lambda pos,**kwargs:s.press('8')):
+            run,flow,error=self.runScenario(s,2)
+        self.assertIsNone(error);self.assertCounters(run,2,2,2,0)
+        self.assertEqual(s.actions.count(('FORMATION',' ')),2)
+    def test_initial_support_never_assumes_the_continue_shortcut(self):
+        clock=Clock();state=['FRIEND'];inputs=[]
+        flow=BattleFlow(lambda:frame(state[0]),clock,clock=clock,trace=FlowTrace(clock=clock))
+        def touch(pos,**kwargs):inputs.append(pos);state[0]='TURN_BEGIN'
+        with patch.object(kernel.XDetect,'region','CN'),patch.object(kernel,'schedule',clock),patch.object(kernel.friendImg,'flush',return_value=False),patch.object(kernel.fgoDevice.device,'touch',side_effect=touch):
+            with self.assertRaises(FlowTimeout):kernel.Main(friendPolicy='first').chooseFriend(flow)
+        self.assertEqual(inputs,[(650,300)])
     def test_two_complete_cycles_share_formation_start(self):
         s=Scenario();run,flow,error=self.runScenario(s,2)
         self.assertIsNone(error);self.assertCounters(run,2,2,2,0)

@@ -35,6 +35,24 @@ class BattleWaitTests(unittest.TestCase):
         battle=kernel.Battle(turnClass=lambda:turns.append);battle.flow=self.flow(clock,reader)
         with patch.object(kernel,'schedule',clock):self.assertTrue(battle())
         self.assertEqual(turns,[1]);self.assertGreaterEqual(clock.now,20)
+    def test_skill_and_card_inputs_do_not_consume_the_unknown_wait_budget(self):
+        # Real resume: ~36 seconds of legitimate inputs followed by animation.
+        # The old clock expired 60 seconds after turn start, not 60 seconds
+        # after input completion. No larger timeout or synthetic popup.
+        clock=Clock();turns=[]
+        def turn(n):turns.append(n);clock.now+=36
+        def reader():return frame('TURN_BEGIN' if not turns else 'BATTLE_RESULT' if clock.now>=76 else 'UNKNOWN')
+        battle=kernel.Battle(turnClass=lambda:turn);battle.flow=self.flow(clock,reader)
+        with patch.object(kernel,'schedule',clock):self.assertTrue(battle())
+        self.assertEqual(turns,[1]);self.assertGreaterEqual(clock.now,76)
+    def test_input_completion_cannot_renew_the_whole_battle_hard_deadline(self):
+        clock=Clock();turns=[]
+        def turn(n):turns.append(n);clock.now+=36
+        battle=kernel.Battle(turnClass=lambda:turn);battle.flow=self.flow(clock,lambda:frame('TURN_BEGIN'))
+        battle.totalTimeout=30
+        with patch.object(kernel,'schedule',clock):
+            with self.assertRaisesRegex(FlowTimeout,'battle total'):battle()
+        self.assertEqual(turns,[1])
     def test_skill_animation_wait_is_bounded(self):
         clock=Clock();flow=self.flow(clock,lambda:frame());token=kernel._activeBattleFlow.set(flow)
         try:

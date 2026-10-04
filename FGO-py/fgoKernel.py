@@ -568,6 +568,12 @@ class Battle:
                     self.turn+=1;progress=flow.clock();lastProgressState=state.name
                     try:self.turnProc(self.turn)
                     except BattlePhaseEnded as ended:state=ended.state
+                    else:
+                        # Completed skill/card inputs are real progress. The
+                        # unchanged 60s unknown wait begins after those inputs,
+                        # while the whole-battle deadline never moves.
+                        progress=flow.clock()
+                        logger.info('[FLOW][PROGRESS] turn inputs complete; waiting for next positive battle state')
                 if state==S.BATTLE_RESULT:
                     logger.info('Battle Finished');return True
                 if state==S.DEFEATED:
