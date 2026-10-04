@@ -88,6 +88,8 @@ class DailyScanAccumulator:
         self.absolute={};self.card_pitch=None
         self.edge_rechecks=set()
     def add_frame(self,entries,thumb,frame_index,ap_rows=None,forward=False):
+        if not 95<=thumb[0]<thumb[1]<=585 or not 30<=thumb[1]-thumb[0]<=490:raise DailyIndexError('invalid scrollbar geometry')
+        if any(not 120<=e.discovered_position[2]<=600 for e in entries):raise DailyIndexError('clipped title position')
         keys=[self.key(e.title) for e in entries]
         if len(keys)!=len(set(keys)):raise DailyIndexError('duplicate title on one frame')
         if forward and self.frame_order:
@@ -142,7 +144,12 @@ class DailyScanAccumulator:
                 if n>6 or abs(distance/n-self.card_pitch)>self.card_pitch*.2:raise DailyIndexError('unresolved nonuniform content gap')
                 result.extend(MissingPositionCandidate(a,b,self.absolute[a]+distance*i/n) for i in range(1,n))
         return result
+    def conflicts(self):
+        if not self.card_pitch:return []
+        ordered=sorted(self.absolute,key=self.absolute.get)
+        return [(a,b) for a,b in zip(ordered,ordered[1:]) if self.absolute[b]-self.absolute[a]<self.card_pitch*.45]
     def build(self):
+        if self.conflicts():raise DailyIndexError('conflicting titles at the same absolute card slot')
         if self.unresolved_ap_rows or self.unverified() or self.gaps():raise DailyIndexError('unverified entries or unresolved content gap')
         if not self.scroll_scale or len(self.absolute)!=len(self.entries):raise DailyIndexError('insufficient independent scrollbar calibration')
         keys=tuple(sorted(self.entries,key=self.absolute.get));records=[]

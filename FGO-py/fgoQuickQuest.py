@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from fgoDailyIndex import DailyQuestLocator
 import cv2,hashlib,re,time,unicodedata
 import numpy
 import fgoDevice
@@ -13,7 +14,7 @@ DAILY_NAVIGATION_LIMIT=20
 DAILY_NAV_CLOSE_LIMIT=3
 # Locate title/AP rows in the left text column; full titles are read separately.
 # Exclude timers, infinity icons and recommendation text from expensive OCR.
-DAILY_TITLE_REGION=(750,105,910,610)
+DAILY_TITLE_REGION=(750,105,910,695)
 DAILY_VIEWPORT=(620,140,1120,675)
 DIFFICULTIES=('极级','超级','上级','中级','初级')
 
@@ -26,8 +27,7 @@ class DailyQuestEntry:
     discovered_position:tuple[int,int,int]
     @property
     def type(self):return 'daily'
-    @property
-    def locator(self):return self.discovered_position[1:]
+    locator:DailyQuestLocator|None=None
 
 def _clean_text(text):
     return unicodedata.normalize('NFKC',str(text)).replace('\u3000',' ').strip()
@@ -57,7 +57,7 @@ def _readDailyTitle(image,center):
     def read(height,gray):
         y=int(round(center));line=image[y-height//2:y+height//2,775:1120]
         if gray:line=cv2.cvtColor(cv2.cvtColor(line,cv2.COLOR_BGR2GRAY),cv2.COLOR_GRAY2BGR)
-        name,score=OCR.ZHS.ocr_single_line(line)
+        name,score=_dailyLine(OCR.ZHS,line)
         if score>=.85 and _valid_daily_title(name):reads.setdefault(_title_key(name),[]).append(name)
     for height,gray in ((20,False),(32,False)):read(height,gray)
     winners=[names for names in reads.values() if len(names)>=2]
@@ -158,24 +158,32 @@ def _viewportMoved(before,after,threshold=2.5):
 
 def _dailyHeader(detect):
     image=detect.im
-    spans=OCR.ZHS.detect_and_ocr(image[0:95,900:1280],drop_score=.35)
-    return any('每日任务' in _clean_text(item.text) for item in spans)
+    if getattr(detect,'_dailyHeaderImage',None) is image:return detect._dailyHeaderValue
+    spans=_dailyBatch(image[0:95,900:1280],drop_score=.35)
+    value=any('每日任务' in _clean_text(item.text) for item in spans)
+    detect._dailyHeaderImage=image;detect._dailyHeaderValue=value
+    return value
 
 def _dailyEntriesAt(detect,scrollIndex=0,strict=True):
     if detect.im.shape[:2]!=(720,1280):raise ScriptStop(f'每日任务扫描要求 1280x720，实际为 {detect.im.shape[1]}x{detect.im.shape[0]}')
     x0,y0,x1,y1=DAILY_TITLE_REGION
-    spans=OCR.ZHS.detect_and_ocr(detect.im[y0:y1,x0:x1],drop_score=.5)
+    if getattr(detect,'_dailyNavigationImage',None) is detect.im:
+        # Foreground OCR can omit a low-level card's AP/title together. Read
+        # the AP column independently in small overlapping local strips; every
+        # complete AP row still requires its actual full-title consensus.
+        spans=list(detect._dailyNavigationLabels)+_dailyAPSpans(detect.im);x0=y0=0
+    else:spans=_dailyBatch(detect.im[y0:y1,x0:x1],drop_score=.5)
     entries=parseDailyQuestEntries(spans,detect.im,scrollIndex,(x0,y0))
     # Acceptance below still requires two local title reads plus the AP row.
     agreed=[]
     for entry in entries:
         y=entry.discovered_position[2]
-        if not 130<=y<=520:continue
+        if not 120<=y<=600:continue
         hasAp=any(re.fullmatch(r'AP\d+',_compact_title(s.text),re.I) and 740<=_span_rect(s,(x0,y0))[0]<900 and 40<=(_span_rect(s,(x0,y0))[1]+_span_rect(s,(x0,y0))[3])/2-y<=105 for s in spans)
         if not hasAp:
             # CN multi-line OCR sometimes drops/misreads AP10. Independently
             # verify the same visible card's AP label with the Latin model.
-            apText,apScore=OCR.EN.ocr_single_line(detect.im[y+50:y+93,775:900])
+            apText,apScore=_dailyLine(OCR.EN,detect.im[y+50:y+93,775:900])
             if apScore<.8 or not re.fullmatch(r'AP\d+',_compact_title(apText),re.I):continue
         title=_readDailyTitle(detect.im,y)
         if title:
@@ -185,7 +193,7 @@ def _dailyEntriesAt(detect,scrollIndex=0,strict=True):
     # recognition as a complete list or retain stale items from the previous day.
     apRows=[(_span_rect(s,(x0,y0))[1]+_span_rect(s,(x0,y0))[3])/2 for s in spans if re.fullmatch(r'AP\d+',_compact_title(s.text),re.I)]
     for y in apRows:
-        if not 200<=y<=580 or any(40<=y-e.discovered_position[2]<=105 for e in agreed):continue
+        if not 190<=y<=675 or any(40<=y-e.discovered_position[2]<=105 for e in agreed):continue
         # Recover a title rejected/missed by multi-line OCR using the AP row on
         # that actual card. Verify the fixed title band by crop consensus; never fill from a
         # schedule or from the requested quest name.
@@ -193,7 +201,9 @@ def _dailyEntriesAt(detect,scrollIndex=0,strict=True):
         if title:
             agreed.append(DailyQuestEntry(title,_quest_type(title),_difficulty(title),'',(int(scrollIndex),947,int(y)-75)))
     agreed.extend(_recoverDailyNeighborsCN(detect,agreed,apRows,scrollIndex))
-    if strict and any(200<=y<=580 and not any(40<=y-e.discovered_position[2]<=105 for e in agreed) for y in apRows):raise ScriptStop('完整每日任务卡片的标题未通过双重校验；未发布扫描列表，请刷新重试')
+    if strict and any(190<=y<=675 and not any(40<=y-e.discovered_position[2]<=105 for e in agreed) for y in apRows):raise ScriptStop('完整每日任务卡片的标题未通过双重校验；未发布扫描列表，请刷新重试')
+    agreed=_dailyUniqueVisibleCards(agreed)
+    detect._dailyVerifiedAP={_title_key(e.title):next((y for y in apRows if 40<=y-e.discovered_position[2]<=105),e.discovered_position[2]+71.5) for e in agreed}
     return agreed
 
 def _recoverDailyNeighborsCN(detect,observed,apRows,scrollIndex=0):
@@ -204,7 +214,7 @@ def _recoverDailyNeighborsCN(detect,observed,apRows,scrollIndex=0):
     # or difficulty from a class schedule, cached task, or ordinal sequence.
     spacings=[b-a for rows in (centers,apRows) for a,b in zip(rows,rows[1:]) if 145<=b-a<=230]
     pitch=float(numpy.median(spacings)) if spacings else None
-    unresolved=[y for y in apRows if 200<=y<=580 and not any(40<=y-c<=105 for c in centers)]
+    unresolved=[y for y in apRows if 190<=y<=675 and not any(40<=y-c<=105 for c in centers)]
     if pitch is not None:
         for ap in unresolved:
             for anchor in centers:
@@ -220,11 +230,11 @@ def _recoverDailyNeighborsCN(detect,observed,apRows,scrollIndex=0):
     recovered=[];tested=[];known={_title_key(e.title) for e in observed}
     for value in proposals:
         center=int(round(value))
-        if not 130<=center<=520 or any(abs(center-y)<12 for y in centers+tested):continue
+        if not 120<=center<=600 or any(abs(center-y)<12 for y in centers+tested):continue
         tested.append(center);schedule.checkStop()
         hasAp=any(40<=y-center<=105 for y in apRows)
         if not hasAp:
-            ap,score=OCR.EN.ocr_single_line(detect.im[center+50:center+93,775:900])
+            ap,score=_dailyLine(OCR.EN,detect.im[center+50:center+93,775:900])
             if score<.8 or not re.fullmatch(r'AP\d+',_compact_title(ap),re.I):continue
         title=_readDailyTitle(detect.im,center)
         if not title or _title_key(title) in known:continue
@@ -252,16 +262,15 @@ def _menuSwipe(begin,end):
     else:fgoDevice.device.swipe(begin,end)
 
 def _swipe(detect,toTop,distance=180):
+    from fgoDailyIndexed import _metrics,safe
+    if _metrics.get():safe(detect)
     before=detect.im
-    # Scan stride 280 retains overlap within the 390px title verification band.
-    start=240 if distance==180 else 210
-    _menuSwipe((950,start),(950,start+distance)) if toTop else _menuSwipe((950,start+distance),(950,start))
-    schedule.sleep(.7)
-    after=Detect(.2)
+    _swipe_input_only(detect,toTop,distance)
+    after=_dailyCapture(.2)
     return after,_viewportMoved(before,after.im)
 
 def _scrollToTop():
-    detect=Detect(.2)
+    detect=_dailyCapture(.2)
     # The confirmed CN scrollbar supports direct dragging. This avoids dozens
     # of short swipes on long lists; verify the endpoint, never assume success.
     android=getattr(fgoDevice.device,'I',None)
@@ -269,7 +278,7 @@ def _scrollToTop():
         thumb=_scrollbar(detect.im)
         if thumb[0]>105:
             _menuSwipe((1258,sum(thumb)//2),(1258,100));schedule.sleep(.7)
-            detect=Detect(.2)
+            detect=_dailyCapture(.2)
             if not _isDailyPage(detect):raise ScriptStop('每日任务返回顶部时页面已变化，已停止')
     deadline=time.monotonic()+DAILY_SCROLL_TIMEOUT;stalled=0
     while time.monotonic()<deadline:
@@ -303,7 +312,7 @@ def _observeDailyScanPage(detect,scrollIndex=0,toTop=False):
 def _isDailyPage(detect):return _dailyHeader(detect)
 
 def _navigationLabels(detect):
-    return [(_clean_text(item.text),_span_rect(item)) for item in OCR.ZHS.detect_and_ocr(detect.im,drop_score=.5)]
+    return [(_clean_text(item.text),_span_rect(item)) for item in _dailyBatch(detect.im,drop_score=.5)]
 
 def _navigationLabel(labels,text,region):
     x0,y0,x1,y1=region
@@ -336,7 +345,7 @@ def _openDailyFromTerminalCN():
     if XDetect.region!='CN':raise ScriptStop('每日任务快捷入口仅适配简体中文服务器')
     closes=scrolls=unchanged=transitionWaits=0;lastTap=None;toTop=True
     for _ in range(DAILY_NAVIGATION_LIMIT):
-        detect=Detect(.3)
+        detect=_dailyCapture(.3)
         if detect.im.shape[:2]!=(720,1280):raise ScriptStop('每日任务快捷入口仅支持 1280x720 横屏')
         action,position=dailyNavigationAction(_navigationLabels(detect)) if detect.isMainInterface() else ('blocked',None)
         if action=='ready':return {'type':'DailyPage'}
@@ -388,7 +397,7 @@ def openDailyPageCN():
     """Every daily entry point uses the shared, guarded terminal normalization."""
     from fgoNavigation import normalizeToTerminalCN,publish,safeMenuPageCN,labels
     if XDetect.region!='CN':raise ScriptStop('每日任务快捷入口仅适配简体中文服务器')
-    detect=Detect(.2)
+    detect=_dailyCapture(.2)
     if safeMenuPageCN(detect,labels(detect))=='DAILY' and _isDailyPage(detect):return {'type':'DailyPage'}
     normalizeToTerminalCN()
     publish('正在进入迦勒底之门…')
@@ -396,16 +405,16 @@ def openDailyPageCN():
 
 def _open_chapter(chapter):
     for _ in range(30):
-        detect=Detect(.4)
+        detect=_dailyCapture(.4)
         if detect.isMainInterface():break
     else:raise ScriptStop('等待关卡导航界面超时')
     for _ in range(10):
-        detect=Detect(.4)
+        detect=_dailyCapture(.4)
         if detect.isQuestListBegin():break
         fgoDevice.device.swipe((1000,200),(1000,600))
     else:raise ScriptStop('无法确认章节列表起始位置，已停止每日任务导航')
     for _ in range(20):
-        detect=Detect(.4)
+        detect=_dailyCapture(.4)
         if pos:=detect.findChapter(chapter):
             fgoDevice.device.touch(pos)
             schedule.sleep(.8)
@@ -421,7 +430,7 @@ def _settledDailyEntriesAt(detect,scrollIndex=0):
         except ScriptStop as error:
             if '标题未通过双重校验' not in str(error) or attempt==2:raise
             getLogger('QuickQuest').warning(f'Daily title disagreement at page {scrollIndex}; observation retry {attempt+1}/2')
-            schedule.sleep(.4);detect=Detect(.2)
+            schedule.sleep(.4);detect=_dailyCapture(.2)
             if not _isDailyPage(detect):raise ScriptStop('每日任务标题重读时页面已变化，未发布列表')
 
 def _reverifyDailyTitlesCN(entries,missing):
@@ -447,67 +456,15 @@ def _reverifyDailyTitlesCN(entries,missing):
     raise ScriptStop(f'每日任务遗漏项未获独立确认，未发布列表：{titles}')
 
 def scanDailyQuestsCN():
-    """Scan overlapping, settled pages until the scrollbar confirms the bottom."""
-    if XDetect.region!='CN':raise ScriptStop('每日任务 OCR 仅适配简体中文服务器')
-    detect=Detect(.2)
-    if not _isDailyPage(detect):
-        openDailyPageCN()
-        detect=Detect(.3)
-    from fgoNavigation import publish
-    publish('正在扫描每日任务…')
-    detect,_=_scrollToTop();entries=[];screens=0;stalled=0
-    deadline=time.monotonic()+DAILY_SCAN_TIMEOUT
-    while time.monotonic()<deadline:
-        detect,observed=_observeDailyScanPage(detect,screens)
-        thumb=_scrollbar(detect.im)
-        entries.extend(observed);screens+=1
-        publish(f'正在扫描每日任务：第 {screens} 屏，已核验 {len(deduplicateDailyEntries(entries))} 项…')
-        after,_=_swipe(detect,False,280);newThumb=_scrollbar(after.im)
-        if thumb[1]>=574 and abs(newThumb[0]-thumb[0])<=1:
-            detect,observed=_observeDailyScanPage(after,screens)
-            entries.extend(observed);screens+=1
-            if _scrollbar(detect.im)[1]>=574:break
-            stalled=0;continue
-        stalled=stalled+1 if newThumb[0]<=thumb[0]+1 else 0
-        if stalled>=3:raise ScriptStop('每日任务滚动条连续未向末端移动，未发布不完整列表')
-        detect=after
-    else:raise ScriptStop('每日任务完整扫描超时，未发布不完整列表')
-    entries=deduplicateDailyEntries(entries)
-    # Independently verify the list on the return trip. A single pass can miss
-    # a cropped edge title or an AP label during animation; never label that
-    # partial OCR collection as complete.
-    reverse=[];stalled=0;deadline=time.monotonic()+DAILY_SCAN_TIMEOUT
-    while time.monotonic()<deadline:
-        detect,observed=_observeDailyScanPage(detect,screens,True)
-        reverse.extend(observed);screens+=1
-        publish(f'正在返回校验每日任务：第 {screens} 屏…')
-        thumb=_scrollbar(detect.im);after,_=_swipe(detect,True,280);newThumb=_scrollbar(after.im)
-        if thumb[0]<=105 and abs(newThumb[0]-thumb[0])<=1:
-            detect,observed=_observeDailyScanPage(after,screens,True)
-            reverse.extend(observed);screens+=1
-            if _scrollbar(detect.im)[0]<=105:break
-            stalled=0;continue
-        stalled=stalled+1 if newThumb[0]>=thumb[0]-1 else 0
-        if stalled>=3:raise ScriptStop('每日任务返回校验滚动没有进展，未发布列表')
-        detect=after
-    else:raise ScriptStop('每日任务返回校验超时，未发布列表')
-    missing={_title_key(e.title) for e in entries}^{_title_key(e.title) for e in reverse}
-    if missing:
-        from fgoLogging import getLogger
-        getLogger('QuickQuest').debug(f'Daily forward titles: {[e.title for e in entries]}; reverse titles: {[e.title for e in deduplicateDailyEntries(reverse)]}')
-        # Edge clipping can omit a title in one direction. Confirm its actual
-        # presence on a new alignment; never call the battle-position locator.
-        combined=deduplicateDailyEntries(entries+reverse)
-        _reverifyDailyTitlesCN(combined,missing)
-        entries=combined
-    if not entries:raise ScriptStop('未校验到完整每日任务卡片，请检查识别日志')
-    publish(f'已确认 {len(entries)} 项任务')
-    return {'type':'DailyQuestScan','entries':entries,'screens':screens,'complete':True,'reachedEnd':True,'restoredTop':True,'reverified':len(missing)}
+    from fgoDailyIndexed import scan
+    from fgoAutomation import automationOwner
+    with automationOwner.claim():return scan()
+
 
 def refreshDailyQuestsCN():
     from fgoNavigation import normalizeToTerminalCN,publish,safeMenuPageCN,labels
     if XDetect.region!='CN':raise ScriptStop('每日任务刷新仅支持国服中文界面')
-    detect=Detect(.2)
+    detect=_dailyCapture(.2)
     # Already at the confirmed target: reset the list itself, avoiding an
     # unnecessary terminal/loading round trip. Modal guards still take priority.
     if safeMenuPageCN(detect,labels(detect))=='DAILY' and _isDailyPage(detect):
@@ -516,11 +473,17 @@ def refreshDailyQuestsCN():
     openDailyPageCN()
     return scanDailyQuestsCN()
 
+
 def gotoDailyEntry(entry):
+    from fgoDailyIndexed import goto
+    from fgoAutomation import automationOwner
+    with automationOwner.claim():return goto(entry)
+
+def _gotoDailyEntrySequential(entry,*,opened=False):
     """Return to top, then scroll the matched dynamic title into the first visible quest-card row."""
     if not isinstance(entry,DailyQuestEntry):raise ScriptStop('每日任务队列项格式无效')
     if XDetect.region!='CN':raise ScriptStop('每日任务定位仅适配简体中文服务器')
-    openDailyPageCN()
+    if not opened:openDailyPageCN()
     detect,_=_scrollToTop()
     from fgoNavigation import publish
     from fgoLogging import getLogger
@@ -552,7 +515,7 @@ def gotoDailyEntry(entry):
             distance=max(-180,min(180,int(y-185)))
             start=420;end=start-distance
             publish(f'已找到 {entry.title}，正在对齐出击位置：y={y}，第 {alignments+1}/6 次…')
-            _menuSwipe((950,start),(950,end));schedule.sleep(.8);after=Detect(.2)
+            _menuSwipe((950,start),(950,end));schedule.sleep(.8);after=_dailyCapture(.2)
             aligning=True;alignments+=1
             stalled=stalled+1 if abs(_scrollbar(after.im)[0]-_scrollbar(detect.im)[0])<=1 else 0
         else:
@@ -568,7 +531,9 @@ def _dailyLocatorFrameCN(detect):
     from fgoNavigation import safeMenuPageCN,labels
     schedule.checkStop()
     if detect.im.shape[:2]!=(720,1280):raise ScriptStop('每日任务定位截图尺寸异常，未点击')
-    if not _isDailyPage(detect) or safeMenuPageCN(detect,labels(detect))!='DAILY':raise ScriptStop('每日任务定位页面已变化或存在危险状态，未点击')
+    items=labels(detect)
+    if not _isDailyPage(detect) or safeMenuPageCN(detect,items)!='DAILY':raise ScriptStop('每日任务定位页面已变化或存在危险状态，未点击')
+    detect._dailyNavigationImage=detect.im;detect._dailyNavigationLabels=items
     if detect.isNetworkError():raise ScriptStop('每日任务定位出现网络错误，未确认或重试')
 
 def _reacquireDailyTargetCN(detect,entry,deadline):
@@ -583,10 +548,80 @@ def _reacquireDailyTargetCN(detect,entry,deadline):
         if attempt==4:break
         if attempt<2:
             publish(f'正在原地重读已找到的目标：{entry.title}，第 {attempt+1}/2 次…')
-            schedule.sleep(.3);detect=Detect(.2)
+            schedule.sleep(.3);detect=_dailyCapture(.2)
         else:
             # Every alignment scroll moves upward from a visible title y>220.
             # A small downward restoration returns to the known overlap.
             publish(f'正在回移复核已找到的目标：{entry.title}，第 {attempt-1}/2 次…')
             _scrollbar(detect.im);detect,_=_swipe(detect,True,60)
     raise ScriptStop(f'已找到“{entry.title}”，但对齐后失去唯一识别；已停止，未继续滚向末端或启动战斗')
+
+
+def _dailyCapture(*args,**kwargs):
+    from fgoDailyIndexed import count
+    count('screensCaptured')
+    return Detect(*args,**kwargs)
+
+def _dailyBatch(image,**kwargs):
+    return OCR.ZHS.detect_and_ocr(image,**kwargs)
+
+def _dailyLine(model,*args,**kwargs):
+    return model.ocr_single_line(*args,**kwargs)
+
+def _swipe_input_only(detect,toTop,distance=180):
+    from fgoDailyIndexed import count
+    count('scrollSwipes')
+    start=240 if distance==180 else 210
+    _menuSwipe((950,start),(950,start+distance)) if toTop else _menuSwipe((950,start+distance),(950,start))
+    schedule.sleep(.7)
+
+def _dragDailyScrollbarTo(target_thumb_top):
+    from fgoDailyIndexed import dragTo
+    return dragTo(target_thumb_top,time.monotonic()+30)
+
+
+def _menuScrollbarDrag(begin,end):
+    """One held drag in the positively detected track, including a held tail.
+
+    A short end-to-end swipe can be ignored within the thumb. A bounded
+    excursion arms dragging; returning to the requested endpoint stays in the
+    same gesture. Holding the final point avoids losing its last MOVE frame.
+    """
+    android=getattr(fgoDevice.device,'I',None)
+    if isinstance(android,fgoDevice.Android) and android.name and android.display_info['orientation']==0:
+        from airtest.core.android.android import Android as AirAndroid
+        from fgoAutomation import noteDeviceInput
+        direction=1 if end[1]>begin[1] else -1
+        if not 100<=begin[1]+65*direction<=574:direction=-direction
+        excursion=(1258,begin[1]+65*direction)
+        end=(end[0],max(100,min(574,end[1])))
+        points=[begin,excursion,end,end]
+        points=[[round(p[i]/android.scale+android.border[i]+android.render[i]) for i in range(2)] for p in points]
+        noteDeviceInput('daily scrollbar drag '+repr((begin,end)))
+        with android.mutex:AirAndroid.swipe_along(android,points,duration=.12,steps=4)
+    else:fgoDevice.device.swipe(begin,end)
+
+
+def _dailyUniqueVisibleCards(entries):
+    # Broad OCR and AP-neighbour recovery can propose the same actual card
+    # twice with slightly different title centres. Merge only that spatially
+    # coincident evidence; identical names on different cards remain ambiguous.
+    result={}
+    for entry in sorted(entries,key=lambda e:e.discovered_position[2]):
+        key=_title_key(entry.title)
+        if key in result:
+            if abs(result[key].discovered_position[2]-entry.discovered_position[2])>20:
+                raise ScriptStop('每日任务不同卡片出现重复标题，未唯一确认')
+        else:result[key]=entry
+    return list(result.values())
+
+
+def _dailyAPSpans(image):
+    from types import SimpleNamespace
+    spans=[]
+    for top,bottom in ((170,445),(425,700)):
+        for span in _dailyBatch(image[top:bottom,775:900],drop_score=.5):
+            if not re.fullmatch(r'AP\d+',_compact_title(span.text),re.I):continue
+            rect=_span_rect(span,(775,top))
+            spans.append(SimpleNamespace(text=span.text,box=rect,score=float(span.score)))
+    return spans
