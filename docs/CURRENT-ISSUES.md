@@ -1,6 +1,8 @@
 # Intermittent stop during repeated farming
 
-Priority: **P0**. Status: open; no confirmed complete fix.
+Priority: **P0**. Current status: **mitigated / awaiting longer-term observation**. Not proven permanently fixed.
+
+The open/unverified statements below are retained historical development snapshots; the dated successful-gate and final-review acceptance section at the end is authoritative.
 
 ## Observed
 
@@ -63,3 +65,19 @@ One diagnostic battle reached victory, but the omitted Bond result detector caus
 The subsequent clean single gate passed: started/completed/wins/defeats=1/1/1/0, with all result pages, optional friend request, CONTINUE and final QUEST_READY confirmed. The five-stage trial then completed one battle and stopped on the second support departure: CN continuous entry reused the party and bypassed FORMATION, so its FORMATION-only wait was wrong. Fresh TURN_BEGIN confirmed the second actual entry. A failing regression now covers this observed route; only a confirmed CN CONTINUE action admits direct TURN_BEGIN. Repeated live validation has not passed; ten-stage was not run and P0 remains open. No private screenshots, raw traces or logs are published.
 
 Recovery of the already entered second battle exposed another timing error: the no-progress clock included legitimate skill/card execution. The clock now starts after completed turn inputs; its 60-second limit and the whole-battle hard deadline remain unchanged. The earlier clean-single pass predates these follow-up fixes; the final revision still needs uninterrupted clean/repeated gates before mitigation.
+
+## 2026-10-04 successful repeated gate and final-review acceptance
+
+P0: **mitigated / awaiting longer-term observation**. Mitigated does not mean proven permanently fixed.
+
+The completed live gate at `b5bff1e493d841ceb325eca36d660996260268cb` passed clean1, continuous5 and continuous10 on the same runtime revision: wins=16, defeats=0, Fused=0, FlowTimeout=0, consistent started/completed counters and an empty queue at each final boundary. Three initial entries used FORMATION; thirteen CN repeats went directly from FRIEND through loading to TURN_BEGIN. All sixteen used the first-support policy, not templates. A repeated FORMATION route and template/direct combination have offline coverage, not a claim of live coverage.
+
+Earlier development failures remain historical evidence: support timeout; formation/start timeout; result-page timeout; continuous-route timeout; and bond-level-up timeout. The original start timeout lacks an interval screenshot and cannot be attributed conclusively. Recovery of an already entered battle/result is not a clean gate. No historical failure is erased by the successful run.
+
+Final-review hardening adds two fresh outer UNKNOWN observations before turn rearm (LOADING may rearm immediately) and three stable captures of a distinct CN BOND_LEVEL_UP instance before advancing it once. A small local foreground-mask difference is ignored as raster jitter. Persistent or indistinguishable overlays fail closed. No OCR/ATTACK threshold or AI card/skill strategy is relaxed. Capture sequence proves another reader acquisition, not that JAVACAP can never return stale pixels. Instance features stay in memory and are not logged or published.
+
+Offline validation: 456 cases, 453 executed successfully and the original three integration skips; original 436 cases retained. Compileall, diff whitespace check and baseline AI strategy AST preservation pass. Raw frames, private templates, traces and local integration data are excluded from Git and CI artifacts.
+
+**Final merge acceptance still requires the latest candidate HEAD to repeat clean1 PASS, continuous5 PASS and continuous10 PASS after this hardening**, with wins=16, defeats=0, Fused=0, FlowTimeout=0, duplicate AI turn input=0, consistent statistics and queues empty. Earlier gate results are evidence, not a substitute for that fresh run. The operator's final review report records the exact HEAD and each stage; raw game artifacts remain local. Template smoke must reach FORMATION through a real existing private template, three fresh confirmations and one 80ms touch, without starting a quest or spending AP; an absent usable template must be explicitly recorded rather than fabricated.
+
+This branch is not merged into cn-dev/master. Zero apples, quartz, AP recovery and revival are required. A failed stage stops later stages. Longer-term stability remains under observation.

@@ -117,10 +117,26 @@ Removed: repeat sleep(6), ten blind result spaces, four skill busy waits, unboun
 
 Single stage incomplete: normalization refusal and support-departure timeout were recorded; the support input was corrected with an evidence-based regression. The next entry timed out at FORMATION -> TURN_BEGIN after 90.20 seconds. Subsequent read-only sampling found the existing attack template valid, but it cannot prove what was displayed during the failed interval. No threshold/time-limit relaxation was made. An unfinished battle remains in the client; no AI turn or settlement was run by this branch. Five/ten stages have not started. P0 remains open. Private reports contain exact traces and local artifact paths; these are not uploaded.
 
-## Live validation follow-up (2026-10-04)
+## Historical live validation follow-up (2026-10-04, before full gates)
 
 Fresh observation found the historical battle had already ended; no replacement entry was made. A diagnostic victory exposed a missing Bond result detector, then the result sequence was recovered. After repairs, a clean single passed preparation, three AI turns, all result pages and final QUEST_READY.
 
 The five-stage trial completed its first battle but stopped acquiring the second: the real CN repeat route bypassed FORMATION and loaded directly into battle after support selection. A fresh read-only TURN_BEGIN proved the second actual entry despite no second start_quest action. This failed stage is not a five-gate pass, and the ten-stage gate was not started. The new regression first failed on the observed 44-second direct route; route-scoped positive TURN_BEGIN acquisition now passes offline. Existing entered-battle recovery is tracked separately and cannot substitute for an uninterrupted five-stage gate. P0 remains open.
 
 The subsequent review-gap revision passed a clean single and completed four victories in its five-stage trial. The fifth entry reached a bond-level-up result overlay, but the missing subtype caused a 60-second battle-progress timeout. The five-stage gate failed and ten did not start. The overlay producer and fail-closed one-input regression repair that observed gap. Fresh complete gates are still required; P0 remains open.
+
+## 2026-10-04 successful repeated gate and final-review acceptance
+
+P0: **mitigated / awaiting longer-term observation**. Mitigated does not mean proven permanently fixed.
+
+The completed live gate at `b5bff1e493d841ceb325eca36d660996260268cb` passed clean1, continuous5 and continuous10 on the same runtime revision: wins=16, defeats=0, Fused=0, FlowTimeout=0, consistent started/completed counters and an empty queue at each final boundary. Three initial entries used FORMATION; thirteen CN repeats went directly from FRIEND through loading to TURN_BEGIN. All sixteen used the first-support policy, not templates. A repeated FORMATION route and template/direct combination have offline coverage, not a claim of live coverage.
+
+Earlier development failures remain historical evidence: support timeout; formation/start timeout; result-page timeout; continuous-route timeout; and bond-level-up timeout. The original start timeout lacks an interval screenshot and cannot be attributed conclusively. Recovery of an already entered battle/result is not a clean gate. No historical failure is erased by the successful run.
+
+Final-review hardening adds two fresh outer UNKNOWN observations before turn rearm (LOADING may rearm immediately) and three stable captures of a distinct CN BOND_LEVEL_UP instance before advancing it once. A small local foreground-mask difference is ignored as raster jitter. Persistent or indistinguishable overlays fail closed. No OCR/ATTACK threshold or AI card/skill strategy is relaxed. Capture sequence proves another reader acquisition, not that JAVACAP can never return stale pixels. Instance features stay in memory and are not logged or published.
+
+Offline validation: 456 cases, 453 executed successfully and the original three integration skips; original 436 cases retained. Compileall, diff whitespace check and baseline AI strategy AST preservation pass. Raw frames, private templates, traces and local integration data are excluded from Git and CI artifacts.
+
+**Final merge acceptance still requires the latest candidate HEAD to repeat clean1 PASS, continuous5 PASS and continuous10 PASS after this hardening**, with wins=16, defeats=0, Fused=0, FlowTimeout=0, duplicate AI turn input=0, consistent statistics and queues empty. Earlier gate results are evidence, not a substitute for that fresh run. The operator's final review report records the exact HEAD and each stage; raw game artifacts remain local. Template smoke must reach FORMATION through a real existing private template, three fresh confirmations and one 80ms touch, without starting a quest or spending AP; an absent usable template must be explicitly recorded rather than fabricated.
+
+This branch is not merged into cn-dev/master. Zero apples, quartz, AP recovery and revival are required. A failed stage stops later stages. Longer-term stability remains under observation.
