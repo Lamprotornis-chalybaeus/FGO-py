@@ -74,12 +74,16 @@ class BattleFlow:
         self.network=network;self.observation=None;self.detect=None;self.networkHandled=False
     def observe(self):
         self.schedule.checkStop();self.schedule.checkSuspend()
+        if self.deadline is not None and self.clock()>=self.deadline:
+            self.fail(FlowTimeout,'TIMEOUT active hard deadline',(),0)
         capture_started=self.clock();self.detect=self.reader();capture_finished=self.clock()
         self.observation=observeBattleFlow(self.detect,clock=self.clock)
         self.trace.formationSample(self.detect,self.observation.state,capture_started,capture_finished)
         if self.observation.state not in {BattleFlowState.NETWORK_ERROR,BattleFlowState.UNKNOWN,BattleFlowState.LOADING}:self.networkHandled=False
         self.trace.frame(getattr(self.detect,'im',None),self.observation.state)
         self.trace.record(self.observation.state,self.observation.evidence)
+        if self.deadline is not None and self.clock()>=self.deadline:
+            self.fail(FlowTimeout,'TIMEOUT active hard deadline',(),0)
         if self.observation.state==BattleFlowState.AMBIGUOUS:
             self.fail(AmbiguousState,'AMBIGUOUS',(),0)
         return self.observation
@@ -137,10 +141,15 @@ class BattleFlow:
 def waitForFlowState(flow,expected,**kwargs):return flow.waitForFlowState(expected,**kwargs)
 
 class BattleCycle:
-    """Both initial and repeat entries converge on FRIEND -> FORMATION -> TURN."""
+    """Initial formation and CN repeat direct entry share one preparation budget."""
     def __init__(self,main,flow):self.main,self.flow=main,flow
     def prepare(self,quest_index=0):
-        S=BattleFlowState;deadline=self.flow.clock()+180;continued=False
+        previousDeadline=self.flow.deadline
+        self.flow.deadline=min(self.flow.clock()+180,previousDeadline if previousDeadline is not None else float('inf'))
+        try:return self._prepare(quest_index,self.flow.deadline)
+        finally:self.flow.deadline=previousDeadline
+    def _prepare(self,quest_index,deadline):
+        S=BattleFlowState;continued=False
         observation=self.flow.observe()
         while self.flow.clock()<deadline:
             state=observation.state

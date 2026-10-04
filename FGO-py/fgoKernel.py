@@ -561,10 +561,15 @@ class Battle:
         token=_activeBattleFlow.set(flow)
         inputToken=INPUT_OBSERVER.set(flow.deviceInput)
         lastProgressState=flow.trace.state
+        # Only outer observations after the complete skill/card phase may
+        # rearm. Nested skill animations cannot create another AI turn.
+        turnArmed=True
         try:
             while flow.clock()<deadline:
                 observation=flow.observe();state=observation.state
-                if state==S.TURN_BEGIN:
+                if state in {S.UNKNOWN,S.LOADING}:turnArmed=True
+                if state==S.TURN_BEGIN and turnArmed:
+                    turnArmed=False
                     self.turn+=1;progress=flow.clock();lastProgressState=state.name
                     try:self.turnProc(self.turn)
                     except BattlePhaseEnded as ended:state=ended.state
@@ -776,7 +781,8 @@ class Main:
                 if time.monotonic()>deadline:raise ScriptStop('扫描助战列表超时')
                 for name,img in friendImg.orderedItems():
                     if pos:=Detect.cache.findFriend(img):
-                        flow.action('continue_support_start' if directBattle else 'select_support_template',lambda:fgoDevice.device.touch(pos))
+                        pos=self.waitTemplateSupportReady(flow,img,pos)
+                        flow.action('continue_support_start' if directBattle else 'select_support_template',lambda:self.selectTemplateSupport(pos))
                         ClassicTurn.friendInfo=(lambda r:(lambda p:[
                             [[-1 if p[i*4+j]=='X'else int(p[i*4+j],16)for j in range(4)]for i in range(3)],
                             [-1 if p[i+12]=='X'else int(p[i+12],16)for i in range(2)],
@@ -796,6 +802,24 @@ class Main:
             fgoDevice.device.perform('\xBAK',(500,1000))
             refreshes+=1
             nextRefreshAt=time.monotonic()+10
+    def waitTemplateSupportReady(self,flow,img,position):
+        if XDetect.region!='CN':return position
+        deadline=min(flow.clock()+15,flow.deadline if flow.deadline is not None else float('inf'))
+        confirmed=0
+        while flow.clock()<deadline:
+            state=flow.observe().state
+            if state==BattleFlowState.FRIEND:
+                found=flow.detect.findFriend(img)
+                stable=found is not None and max(abs(found[i]-position[i]) for i in range(2))<=3
+                confirmed=confirmed+1 if stable else 0
+                if confirmed>=3:return found
+            elif state in {BattleFlowState.UNKNOWN,BattleFlowState.LOADING}:confirmed=0
+            else:flow.fail(FlowTimeout,'UNEXPECTED template confirmation',{BattleFlowState.FRIEND},0)
+            schedule.sleep(.2)
+        flow.fail(FlowTimeout,'TIMEOUT stable support template',{BattleFlowState.FRIEND},15)
+    def selectTemplateSupport(self,position):
+        if XDetect.region=='CN':return fgoDevice.device.touch(position,duration=.08)
+        return fgoDevice.device.touch(position)
     def waitFirstSupportReady(self,flow):
         if XDetect.region!='CN':return
         confirmed=0
