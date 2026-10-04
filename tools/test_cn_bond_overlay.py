@@ -31,7 +31,9 @@ class BondOverlayTests(unittest.TestCase):
         pages=['BOND_LEVEL_UP','BOND','MASTER_EXP','REWARDS','ADD_FRIEND','CONTINUE'];index=[0];inputs=[];clock=Clock()
         def read():
             page=pages[index[0]];d=frame(page if page in {'ADD_FRIEND','CONTINUE'} else 'BATTLE_RESULT')
-            d.getBattleResultPage=lambda:page;return d
+            d.getBattleResultPage=lambda:page
+            d._battleResultInstanceSignature=lambda:bytes([0])*2560
+            return d
         def press(key):
             inputs.append(key)
             if not persistent:index[0]+=1

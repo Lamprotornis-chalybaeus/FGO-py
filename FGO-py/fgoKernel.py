@@ -564,12 +564,22 @@ class Battle:
         # Only outer observations after the complete skill/card phase may
         # rearm. Nested skill animations cannot create another AI turn.
         turnArmed=True
+        unknownDeparture=0;departureCapture=None
         try:
             while flow.clock()<deadline:
                 observation=flow.observe();state=observation.state
-                if state in {S.UNKNOWN,S.LOADING}:turnArmed=True
+                if state==S.UNKNOWN and not turnArmed:
+                    capture=observation.capture_sequence
+                    if capture is not None and capture!=departureCapture:
+                        unknownDeparture=unknownDeparture+1 if departureCapture is not None and capture==departureCapture+1 else 1
+                        departureCapture=capture
+                        if unknownDeparture>=2:turnArmed=True
+                else:
+                    unknownDeparture=0;departureCapture=None
+                    if state==S.LOADING:turnArmed=True
                 if state==S.TURN_BEGIN and turnArmed:
                     turnArmed=False
+                    unknownDeparture=0;departureCapture=None
                     self.turn+=1;progress=flow.clock();lastProgressState=state.name
                     try:self.turnProc(self.turn)
                     except BattlePhaseEnded as ended:state=ended.state

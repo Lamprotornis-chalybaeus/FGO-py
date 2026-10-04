@@ -255,6 +255,13 @@ class XDetectCN(XDetectBase):
         self._cnResultPage=page
         return page
     def isBattleFinished(self):return self.getBattleResultPage() is not None
+    def _battleResultInstanceSignature(self):
+        # Local-only foreground mask inside the observed fixed overlay panel.
+        # It distinguishes level/coin instances without logging servant text,
+        # hashing background animation, storing pixels or changing OCR gates.
+        if self.getBattleResultPage()!='BOND_LEVEL_UP':return None
+        marker=cv2.resize(self._crop((660,350,1190,570)),(80,32),interpolation=cv2.INTER_AREA)
+        return (numpy.max(marker,axis=2)>=210).astype(numpy.uint8).tobytes()
     def inject(self,img):
         self.__dict__.pop('_cnResultPage',None)
         self.__dict__.pop('_cnLoading',None)
