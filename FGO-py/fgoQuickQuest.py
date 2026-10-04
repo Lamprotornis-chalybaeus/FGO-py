@@ -187,7 +187,7 @@ def _dailyEntriesAt(detect,scrollIndex=0,strict=True):
     agreed=[]
     for entry in entries:
         y=entry.discovered_position[2]
-        if not 120<=y<=600:continue
+        if not 115<=y<=600:continue
         hasAp=any(re.fullmatch(r'AP\d+',_compact_title(s.text),re.I) and 740<=_span_rect(s,(x0,y0))[0]<900 and 40<=(_span_rect(s,(x0,y0))[1]+_span_rect(s,(x0,y0))[3])/2-y<=105 for s in spans)
         if not hasAp:
             # CN multi-line OCR sometimes drops/misreads AP10. Independently
@@ -259,7 +259,7 @@ def _recoverDailyNeighborsCN(detect,observed,apRows,scrollIndex=0):
     recovered=[];tested=[];known={_title_key(e.title) for e in observed}
     for value in proposals:
         center=int(round(value))
-        if not 120<=center<=600 or any(abs(center-y)<12 for y in centers+tested):continue
+        if not 115<=center<=600 or any(abs(center-y)<12 for y in centers+tested):continue
         tested.append(center);schedule.checkStop()
         hasAp=any(40<=y-center<=105 for y in apRows)
         if not hasAp:

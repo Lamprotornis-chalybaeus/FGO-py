@@ -89,7 +89,7 @@ class DailyScanAccumulator:
         self.edge_rechecks=set()
     def add_frame(self,entries,thumb,frame_index,ap_rows=None,forward=False):
         if not 95<=thumb[0]<thumb[1]<=585 or not 30<=thumb[1]-thumb[0]<=490:raise DailyIndexError('invalid scrollbar geometry')
-        if any(not 120<=e.discovered_position[2]<=600 for e in entries):raise DailyIndexError('clipped title position')
+        if any(not 115<=e.discovered_position[2]<=600 for e in entries):raise DailyIndexError('clipped title position')
         keys=[self.key(e.title) for e in entries]
         if len(keys)!=len(set(keys)):raise DailyIndexError('duplicate title on one frame')
         if forward and self.frame_order:
@@ -128,7 +128,7 @@ class DailyScanAccumulator:
             for k,values in self.observations_by_title.items():
                 if len(values)>1 and max(abs(o.local_y+self.scroll_scale*o.thumb_top-self.absolute[k]) for o in values)>70:
                     raise DailyIndexError('same-title absolute position conflict')
-            positions=sorted(self.absolute.values());distances=[b-a for a,b in zip(positions,positions[1:]) if 120<=b-a<=240]
+            positions=sorted(self.absolute.values());distances=[b-a for a,b in zip(positions,positions[1:]) if 115<=b-a<=240]
             if len(distances)>=3:self.card_pitch=float(median(distances))
     def verified(self,key):
         values=self.observations_by_title[key]

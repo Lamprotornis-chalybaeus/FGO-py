@@ -247,7 +247,7 @@ class PhysicalGeometryTests(unittest.TestCase):
     def test_local_read_uses_actual_ap_and_title(self):
         frame=env_frame=__import__('types').SimpleNamespace(im=__import__('numpy').zeros((720,1280,3),dtype=__import__('numpy').uint8))
         item=__import__('daily_index_test_support').env['item'];title='未来的新型每日挑战 特级'
-        spans=[item(title,25,50,135,20),item('AP20',25,125,60,20)]
+        spans=[item(title,25,78,135,20),item('AP20',25,153,60,20)]
         with patch.object(q.OCR.ZHS,'detect_and_ocr',return_value=spans),patch.object(q,'_readDailyTitle',return_value=title):
             entries=indexed.localEntries(frame,200)
         self.assertEqual([e.title for e in entries],[title]);self.assertEqual(frame._dailyVerifiedAP[q._title_key(title)],275)
@@ -266,7 +266,7 @@ class FinalScanEvidenceTests(unittest.TestCase):
         item=__import__('daily_index_test_support').env['item']
         frame=SimpleNamespace(im=numpy.zeros((720,1280,3),dtype=numpy.uint8))
         actual='未来新增每日挑战 特级'
-        with patch.object(q.OCR.ZHS,'detect_and_ocr',return_value=[item('AP20',25,125,60,20)]),patch.object(q,'_readDailyTitle',return_value=actual) as title:
+        with patch.object(q.OCR.ZHS,'detect_and_ocr',return_value=[item('AP20',25,153,60,20)]),patch.object(q,'_readDailyTitle',return_value=actual) as title:
             entries=indexed.localEntries(frame,200)
         self.assertEqual([e.title for e in entries],[actual]);title.assert_called_once_with(frame.im,200)
         self.assertEqual(frame._dailyVerifiedAP[q._title_key(actual)],275)
@@ -275,7 +275,7 @@ class FinalScanEvidenceTests(unittest.TestCase):
         from types import SimpleNamespace
         item=__import__('daily_index_test_support').env['item']
         frame=SimpleNamespace(im=numpy.zeros((720,1280,3),dtype=numpy.uint8))
-        with patch.object(q.OCR.ZHS,'detect_and_ocr',return_value=[item('AP20',25,125,60,20)]),patch.object(q,'_readDailyTitle',return_value=None):
+        with patch.object(q.OCR.ZHS,'detect_and_ocr',return_value=[item('AP20',25,153,60,20)]),patch.object(q,'_readDailyTitle',return_value=None):
             self.assertEqual(indexed.localEntries(frame,200),[])
         self.assertEqual(frame._dailyVerifiedAP,{})
     def test_independent_ap_column_backreads_top_card_omitted_by_navigation(self):
@@ -385,5 +385,23 @@ class IndependentGlyphContextTests(unittest.TestCase):
     def test_unknown_name_uses_same_context_rule_without_whitelist(self):
         result,calls=self.read(['未来新增每日试炼特级']*3)
         self.assertEqual(result,'未来新增每日试炼特级');self.assertEqual(calls,3)
+
+class NearHeaderCropTests(unittest.TestCase):
+    def test_local_ocr_keeps_whole_glyph_at_predicted_band_edge(self):
+        import numpy
+        from types import SimpleNamespace
+        item=__import__('daily_index_test_support').env['item']
+        frame=SimpleNamespace(im=numpy.zeros((720,1280,3),dtype=numpy.uint8))
+        # y=117 lies fully below the y=95 header and has a visible AP row.
+        spans=[item('未来挑战 超级',25,12,140,16),item('AP40',25,87,65,16)]
+        with patch.object(q.OCR.ZHS,'detect_and_ocr',return_value=spans) as batch,patch.object(q,'_readDailyTitle',return_value='未来挑战 超级'):
+            entries=indexed.localEntries(frame,185)
+        self.assertEqual(entries[0].discovered_position[2],117)
+        self.assertEqual(batch.call_args.args[0].shape[0],253)
+    def test_near_header_scan_position_does_not_relax_ready_click_band(self):
+        w=World();acc=DailyScanAccumulator(q._title_key);e=w.entry(0,117)
+        acc.add_frame([e],(120,160),1,{q._title_key(e.title):192})
+        self.assertFalse(acc.verified(q._title_key(e.title)))
+        self.assertIn('125<=',inspect.getsource(indexed.locate))
 
 if __name__=='__main__':unittest.main()

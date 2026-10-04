@@ -160,13 +160,13 @@ def _readPage(d,n):
 def localEntries(d,y,radius=60):
     """Local proposals are accepted only by real full-title consensus + own AP."""
     import fgoQuickQuest as q
-    top=max(95,int(y-radius));bottom=min(695,int(y+radius+105))
+    top=max(95,int(y-radius-28));bottom=min(695,int(y+radius+105))
     spans=q.OCR.ZHS.detect_and_ocr(d.im[top:bottom,750:910],drop_score=.5)
     proposals=q.parseDailyQuestEntries(spans,d.im,0,(750,top));entries=[];apMap={}
     rows=[sum((q._span_rect(s,(750,top))[1],q._span_rect(s,(750,top))[3]))/2 for s in spans if q.re.fullmatch(r'AP\d+',q._compact_title(s.text),q.re.I)]
     for e in proposals:
         cy=e.discovered_position[2]
-        if not 120<=cy<=600:continue
+        if not 115<=cy<=600:continue
         ap=next((a for a in rows if 40<=a-cy<=105),None)
         if ap is None:
             text,score=q.OCR.EN.ocr_single_line(d.im[cy+50:cy+93,775:900])
@@ -179,7 +179,7 @@ def localEntries(d,y,radius=60):
     for ap in rows:
         if not 190<=ap<=675 or any(40<=ap-e.discovered_position[2]<=105 for e in entries):continue
         cy=round(ap-75)
-        if not 120<=cy<=600:continue
+        if not 115<=cy<=600:continue
         title=q._readDailyTitle(d.im,cy)
         if title:
             entries.append(q.DailyQuestEntry(title,q._quest_type(title),q._difficulty(title),'',(0,947,cy)))
