@@ -244,7 +244,13 @@ class XDetectCN(XDetectBase):
                 text,score=OCR.ZHS.ocr_single_line(self._crop(rect))
                 return re.sub(r'^[√>›»▶]+','',re.sub(r'\s+','',str(text))) if float(score)>=.85 else ''
             if label((490,20,775,110))=='战斗结果' and label((480,625,815,690))=='请点击游戏界面':
-                if label((75,160,420,215)) in {'与从者的牵','与从者的牵绊'}:page='BOND'
+                # Real bond-level-up overlay occludes the ordinary BOND label.
+                # Distinguish the overlay so one dismissal can reveal BOND;
+                # a persistent overlay still cannot authorize another input.
+                # These exact alternate glyphs were observed by CN OCR.
+                if (label((460,85,1260,230)) in {'牵绊等级提升','牵纤等级提升'}
+                    and label((630,275,1100,345)) in {'与从者的牵绊加深了','与从者的牵纤加深了'}):page='BOND_LEVEL_UP'
+                elif label((75,160,420,215)) in {'与从者的牵','与从者的牵绊'}:page='BOND'
                 elif label((635,175,860,245))=='获得经验值':page='MASTER_EXP'
         self._cnResultPage=page
         return page

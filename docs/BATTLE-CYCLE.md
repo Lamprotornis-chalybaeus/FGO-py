@@ -49,11 +49,17 @@ Foreground priority is explicit and included in evidence: NETWORK_ERROR, CONTINU
 
 ## Time bounds
 
+The 2026-10-04 review adds three-frame confirmation for a matched CN support template at the same card position, then one 80ms touch. Non-CN template input and the matching algorithm remain unchanged. Initial support selection still requires FORMATION; only verified CN continuation may exit directly to TURN_BEGIN. Preparation shares one 180-second parent hard deadline across all child waits and restores any prior deadline on every exit.
+
+AI turns execute once per outer TURN_BEGIN episode. Only an outer UNKNOWN/LOADING observation after the full skill/card phase rearms the next episode. Nested skill-animation observations cannot increment the turn. The strategy AST remains unchanged.
+
 STARTING was removed on 2026-10-04: no real producer was established. Real formation-start captures showed a bright tips/loading page and battle introduction, without a start confirmation. The ATTACK .05 threshold remains unchanged. Formation start now has a 60-second stall budget and a 180-second hard deadline. Only a new positive intermediate state or a fixed-label-gated loading-indicator signature renews stall progress; arbitrary background animation and UNKNOWN flicker do not. The input observer spans preparation, battle and settlement, recording logical actions and physical inputs separately.
 
 CN first-support selection requires three fresh observations of the fixed body labels before its single input. It stops without input if the body is not confirmed within 20 seconds. One independently authorized 80ms body-touch reached formation, but a later trial still missed departure: duration alone is not a proven cause. Explicit 80ms taps apply to CN cycle/menu controls; battle AI inputs retain the original default duration and strategy.
 
 CN settlement distinguishes BOND, MASTER_EXP and REWARDS. Each positively identified page gets one advance input, followed by a wait for a different page or a later dialog. A persistent page times out without another input. This repairs the observed omission of the Bond result page, without restoring item recognition.
+
+A later five-stage trial exposed a bond-level-up overlay occluding the ordinary BOND label. BOND_LEVEL_UP requires the existing result title and footer plus two fixed overlay labels. It is a distinct result subtype; one dismissal reveals BOND, then the original three-page progression continues. A persistent overlay fails closed without reclick. Multiple consecutive indistinguishable overlays are not claimed verified. Public regressions contain only derived fixed-label OCR observations, never private pixels or servant identifiers.
 
 Only verified FORMATION plus recorded start_quest opens the narrow TURN_BEGIN transition capture: first/middle/last UNKNOWN and one LOADING representative, local only. Other UNKNOWN screens remain excluded. Metadata includes acquisition monotonic times, signature, brightness, ATTACK score, state and exact/approximate frame equality. Completion or failure persists the diagnostic episode. Raw private captures are never test fixtures or CI artifacts.
 
@@ -116,3 +122,5 @@ Single stage incomplete: normalization refusal and support-departure timeout wer
 Fresh observation found the historical battle had already ended; no replacement entry was made. A diagnostic victory exposed a missing Bond result detector, then the result sequence was recovered. After repairs, a clean single passed preparation, three AI turns, all result pages and final QUEST_READY.
 
 The five-stage trial completed its first battle but stopped acquiring the second: the real CN repeat route bypassed FORMATION and loaded directly into battle after support selection. A fresh read-only TURN_BEGIN proved the second actual entry despite no second start_quest action. This failed stage is not a five-gate pass, and the ten-stage gate was not started. The new regression first failed on the observed 44-second direct route; route-scoped positive TURN_BEGIN acquisition now passes offline. Existing entered-battle recovery is tracked separately and cannot substitute for an uninterrupted five-stage gate. P0 remains open.
+
+The subsequent review-gap revision passed a clean single and completed four victories in its five-stage trial. The fifth entry reached a bond-level-up result overlay, but the missing subtype caused a 60-second battle-progress timeout. The five-stage gate failed and ten did not start. The overlay producer and fail-closed one-input regression repair that observed gap. Fresh complete gates are still required; P0 remains open.
