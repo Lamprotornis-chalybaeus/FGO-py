@@ -41,6 +41,8 @@ def observeBattleFlow(detect,*,clock=time.monotonic):
         predicate=getattr(detect,method,None)
         if callable(predicate) and bool(predicate()):
             hits.append(BattleFlowState[state]);evidence.append(method+'=True')
+            if state=='BATTLE_RESULT' and callable(getattr(detect,'getBattleResultPage',None)):
+                evidence.append('result_page='+str(detect.getBattleResultPage()))
     # Foreground dialogs may have a recognized background. This precedence is
     # explicit, recorded, and never permits a friend input through CONTINUE.
     foreground=('NETWORK_ERROR','CONTINUE','AP_EMPTY','ADD_FRIEND','DEFEATED','SKILL_CAST_FAILED','SPECIAL_MODAL','FRIEND_EMPTY')
@@ -57,7 +59,9 @@ def observeBattleFlow(detect,*,clock=time.monotonic):
             image=getattr(detect,'im',None)
             # Darkness only authorizes waiting; never input or battle counting.
             loading=getattr(detect,'isLoading',None)
-            if callable(loading) and loading() or getattr(image,'shape',None)==(720,1280,3) and float(image.mean())<18:
+            if callable(loading) and loading():
+                state=BattleFlowState.LOADING;evidence.append('isLoading=True; positive fixed loading labels; wait only')
+            elif getattr(image,'shape',None)==(720,1280,3) and float(image.mean())<18:
                 state=BattleFlowState.LOADING;evidence.append('dark loading frame; wait only')
             else:state=BattleFlowState.UNKNOWN;evidence.append('all known positive detectors false')
     return FlowObservation(state,tuple(evidence),clock())
@@ -97,14 +101,16 @@ class BattleFlow:
         evidence=self.observation.evidence if self.observation else ()
         summary=self.trace.failure(kind,expected,elapsed,evidence,from_state or getattr(self,'waitFrom',None))
         raise exception(f'Flow {kind}: from={summary["from"]} expected={"|".join(summary["expected"])} elapsed={elapsed:.2f} last_input={summary["last_input"]} evidence={evidence}')
-    def waitForFlowState(self,expected,*,timeout,transition_name,allowed_intermediate=(),on_skill_error=None):
+    def waitForFlowState(self,expected,*,timeout,transition_name,allowed_intermediate=(),on_skill_error=None,accept=None):
         expected=set(expected);allowed=set(allowed_intermediate);start=self.clock()
         if self.deadline is not None:timeout=min(timeout,max(0,self.deadline-start))
         skillHandled=self.trace.last_input=='skill_cast_failed_recover'
         self.waitFrom=self.trace.state
         while self.clock()-start<timeout:
             observation=self.observe();state=observation.state
-            if state in expected:self.waitFrom=None;return observation
+            if state in expected:
+                if accept is None or accept(self.detect):self.waitFrom=None;return observation
+                self.schedule.sleep(self.poll);continue
             if state==BattleFlowState.NETWORK_ERROR and self.network:
                 if not self.networkHandled:
                     self.action('network_error_confirm',lambda:self.network(self.detect));self.networkHandled=True
@@ -159,8 +165,10 @@ class BattleCycle:
             state=observation.state
             if state in {S.CONTINUE,S.QUEST_READY}:return observation
             if state==S.BATTLE_RESULT:
+                page=getattr(self.flow.detect,'getBattleResultPage',lambda:None)()
                 self.flow.action('result_next',lambda:self.main.press(' '))
-                observation=self.flow.waitForFlowState({S.ADD_FRIEND,S.CONTINUE,S.QUEST_READY,S.SPECIAL_MODAL},timeout=30,transition_name='result dismissal',allowed_intermediate={S.BATTLE_RESULT})
+                expected={S.ADD_FRIEND,S.CONTINUE,S.QUEST_READY,S.SPECIAL_MODAL}|({S.BATTLE_RESULT} if page else set())
+                observation=self.flow.waitForFlowState(expected,timeout=min(30,max(0,deadline-self.flow.clock())),transition_name='result dismissal',allowed_intermediate={S.BATTLE_RESULT},accept=lambda d:not page or not d.isBattleFinished() or d.getBattleResultPage()!=page)
             elif state==S.ADD_FRIEND:
                 self.flow.action('close_add_friend',lambda:self.main.press('X'))
                 observation=self.flow.waitForFlowState({S.CONTINUE,S.QUEST_READY,S.BATTLE_RESULT},timeout=20,transition_name='friend request close',allowed_intermediate={S.ADD_FRIEND})

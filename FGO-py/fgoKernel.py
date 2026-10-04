@@ -613,7 +613,10 @@ class Main:
     def makeFlow(self):
         return BattleFlow(lambda:Detect(0,0),schedule,
             trace=FlowTrace(root=paths.logRoot/'flow'),network=handleNetworkError)
-    def press(self,key):return fgoDevice.device.press(key)
+    def press(self,key):
+        # Menu/cycle controls only; Battle/Turn continue their original inputs.
+        if XDetect.region=='CN':return fgoDevice.device.press(key,duration=.08)
+        return fgoDevice.device.press(key)
     def startQuest(self):
         # CN MAXTOUCH's short tap was ignored on a verified support card;
         # 80ms down/up was observed to select it. This is one physical tap,

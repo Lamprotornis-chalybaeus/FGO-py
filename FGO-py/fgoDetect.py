@@ -213,6 +213,29 @@ class XDetectCN(XDetectBase):
         values=[tuple(map(int,match.groups())) for match in parsed]
         if values[0]!=values[1] or values[0][1]<=0:raise ScriptStop('CN AP识别失败：两次读数不一致或上限无效，已停止')
         return values[0][0]
+    def isLoading(self):
+        # Real CN bright tips page: both fixed labels, never random animation.
+        for rect,expected in (((520,160,760,225),'小贴士'),((900,665,1060,716),'加载中')):
+            text,score=OCR.ZHS.ocr_single_line(self._crop(rect))
+            if not float(score)>=.85 or re.sub(r'\s+','',str(text))!=expected:return False
+        return True
+    def getBattleResultPage(self):
+        if hasattr(self,'_cnResultPage'):return self._cnResultPage
+        page=None
+        if super().isBattleFinished():page='REWARDS'
+        else:
+            def label(rect):
+                text,score=OCR.ZHS.ocr_single_line(self._crop(rect))
+                return re.sub(r'^[√>›»▶]+','',re.sub(r'\s+','',str(text))) if float(score)>=.85 else ''
+            if label((490,20,775,110))=='战斗结果' and label((480,625,815,690))=='请点击游戏界面':
+                if label((75,160,420,215)) in {'与从者的牵','与从者的牵绊'}:page='BOND'
+                elif label((635,175,860,245))=='获得经验值':page='MASTER_EXP'
+        self._cnResultPage=page
+        return page
+    def isBattleFinished(self):return self.getBattleResultPage() is not None
+    def inject(self,img):
+        self.__dict__.pop('_cnResultPage',None)
+        return super().inject(img)
     def isBattleContinue(self):
         # White title glyphs alone also match the bright daily-list background.
         # Require the same fixed dialog crop including its dark panel pixels.

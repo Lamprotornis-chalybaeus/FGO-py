@@ -2,7 +2,7 @@
 from dataclasses import asdict,dataclass
 from datetime import datetime
 from pathlib import Path
-import json,logging,time,hashlib
+import json,logging,time,hashlib,math
 
 @dataclass(frozen=True)
 class TransitionRecord:
@@ -22,16 +22,17 @@ class FlowTrace:
         self.logger=logger or logging.getLogger('fgo.Flow')
         self.root=Path(root) if root is not None else None
         self.records=[];self.state='UNKNOWN';self.since=clock()
-        self.last_input='';self.battle_sequence=0;self.frames=[]
+        self.last_input='';self.battle_sequence=0;self.frames=[];self.last_evidence=()
         self.prebattle=None;self.last_physical_input=''
     def record(self,state,evidence=(),action=''):
         name=getattr(state,'name',str(state));now=self.clock()
-        if name==self.state and not action:return
+        if name==self.state and not action and tuple(evidence)==self.last_evidence:return
         if action:
             if action.startswith(('press ','touch ','swipe ')):self.last_physical_input=action
             else:self.last_input=action
         row=TransitionRecord(self.wall(),now,self.state,name,max(0,now-self.since),action,tuple(evidence),self.last_input,self.battle_sequence)
         self.records.append(row)
+        self.last_evidence=tuple(evidence)
         self.logger.info('[FLOW][流程] %s → %s (%.2fs) action=%s evidence=%s battle=%s',row.from_state,row.to_state,row.elapsed,action or '-',row.evidence,row.battle_sequence)
         if name!=self.state:self.state=name;self.since=now
     def beginFormationStart(self):
@@ -61,6 +62,7 @@ class FlowTrace:
         delta=None if previous is None else float(np.mean(np.abs(image[::8,::8].astype(np.int16)-previous[1])))
         if not same:session['unchanged_since']=now
         score=float(detect._loc(detect.tmpl.ATTACK,(1155,635,1210,682))[0]) if hasattr(detect,'_loc') else None
+        if score is not None and not math.isfinite(score):score=None
         row={'capture_started_monotonic':capture_started,'capture_finished_monotonic':capture_finished,'observed_monotonic':now,'signature':digest,'mean_brightness':float(image.mean()),'attack_score':score,'attack_threshold':.05,'isTurnBegin':bool(detect.isTurnBegin()),'state':name,'identical_previous':same,'sampled_mean_delta':delta,'near_identical_previous':delta is not None and delta<.5,'identical_seconds':now-session['unchanged_since']}
         session['previous']=(digest,image[::8,::8].astype(np.int16))
         # Metadata is sampled at <=0.5Hz; full images occupy only four slots.
