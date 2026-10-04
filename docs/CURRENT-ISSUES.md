@@ -52,6 +52,12 @@ Priority: P1. Event-specific formation requirements and a general Mission solver
 # CN navigation normalization coverage
 
 Priority: P1. New page identities can appear. Extend coverage using verified page titles and return controls, while preserving refusal of battle, purchase, AP recovery, story and reward-choice modals. Complete daily scanning remains comparatively slow.
+
+## 2026-10-04 daily directory entry search repair
+
+The real CN Gate directory showed three costume quests before the Daily entry. The former upward-only search stopped at the top although the entry was below the visible cards. Search now reverses downward once after two observed scrollbar endpoints confirm the top; a stationary mid-list drag does not authorize reversal. Exact unique entry text and foreground guards remain required; duplicate entries, modals, an unverified boundary, the bottom without a match, or the finite search budget stop without selecting a quest.
+
+Eight new offline regressions preserve these guards. The complete suite passes 464 cases (461 executed, three existing local-integration skips), including the unchanged battle AI strategy AST check. A local zero-AP navigation test started from the confirmed failing Gate-top layout, normalized to Terminal, reopened Gate, found Daily below the pinned cards and verified the daily header and three visible card titles. It did not start a quest or rerun the complete daily-list scan. Private screenshots and raw logs remain local. The battle-cycle implementation and its approved gate record are unchanged.
 # Historical 2026-10-04 formation-start diagnostic follow-up (superseded)
 
 P0 remains open. STARTING without a producer has been removed. Full-cycle physical input tracing and a narrowly scoped local formation-start capture diagnostic are implemented. Every remaining state has a tested producer; the .05 attack threshold is unchanged.

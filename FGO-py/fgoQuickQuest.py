@@ -308,7 +308,8 @@ def _navigationLabels(detect):
 def _navigationLabel(labels,text,region):
     x0,y0,x1,y1=region
     matches=[rect for title,rect in labels if _title_key(title)==_title_key(text) and x0<=(rect[0]+rect[2])/2<x1 and y0<=(rect[1]+rect[3])/2<y1]
-    if len(matches)!=1:return None
+    if len(matches)>1:raise ScriptStop(f'导航入口“{text}”重复，未选择任何关卡')
+    if not matches:return None
     rect=matches[0]
     return ((rect[0]+rect[2])//2,(rect[1]+rect[3])//2)
 
@@ -333,7 +334,7 @@ def dailyNavigationAction(labels):
 def _openDailyFromTerminalCN():
     """Open the CN daily-quest list without selecting or starting a battle."""
     if XDetect.region!='CN':raise ScriptStop('每日任务快捷入口仅适配简体中文服务器')
-    closes=scrolls=unchanged=transitionWaits=0;lastTap=None
+    closes=scrolls=unchanged=transitionWaits=0;lastTap=None;toTop=True
     for _ in range(DAILY_NAVIGATION_LIMIT):
         detect=Detect(.3)
         if detect.im.shape[:2]!=(720,1280):raise ScriptStop('每日任务快捷入口仅支持 1280x720 横屏')
@@ -357,8 +358,18 @@ def _openDailyFromTerminalCN():
         if action=='scroll':
             if scrolls>=DAILY_NAV_SCROLL_LIMIT:raise ScriptStop('主目录入口未找到；已停止导航滚动，未选择任何关卡')
             scrolls+=1
-            after,moved=_swipe(detect,True)
-            if not moved:raise ScriptStop('已到导航列表顶部，但未唯一识别迦勒底之门/每日任务入口')
+            after,moved=_swipe(detect,toTop)
+            if not moved:
+                # Pinned costume quests can precede Daily in the Gate directory.
+                # Unchanged pixels alone do not prove an endpoint (a drag may fail).
+                # Only two positive scrollbar endpoints authorize reversing once.
+                thumbs=(_scrollbar(detect.im),_scrollbar(after.im))
+                endpoint=all(t[0]<=105 for t in thumbs) if toTop else all(t[1]>=575 for t in thumbs)
+                if not endpoint:raise ScriptStop('导航滚动未移动且未确认列表边界，已停止；未选择任何关卡')
+                if not toTop:raise ScriptStop('已扫描导航列表至底部，但未唯一识别入口；未选择任何关卡')
+                toTop=False
+                from fgoNavigation import publish
+                publish('导航列表顶部未见入口，正在向下寻找…')
             lastTap=None
         else:
             if action=='daily':
@@ -369,6 +380,7 @@ def _openDailyFromTerminalCN():
                 closes+=1
             fgoDevice.device.touch(position)
             lastTap=(action,position)
+            toTop=True
             schedule.sleep(.6)
     raise ScriptStop('每日任务导航超过有限步骤上限；未选择任何关卡')
 
