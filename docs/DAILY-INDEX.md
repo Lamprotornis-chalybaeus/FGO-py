@@ -1,6 +1,6 @@
-# CN daily scrollbar index (review branch)
+# CN daily scrollbar index
 
-Development branch: `feat/daily-indexed-scan`, based on `05ba7ff` (the daily-entry fix after the requested `c25b140` baseline). This feature has not been merged into `cn-dev`.
+Development history: `feat/daily-indexed-scan`, based on `05ba7ff` (the daily-entry fix after the requested `c25b140` baseline). Integration uses an approved fast-forward after offline, CI and zero-AP live gates; private evidence remains local.
 
 ## Scan contract
 
@@ -37,3 +37,9 @@ DAILY confirmation requires 1280×720, the main-interface template, the exact he
 `DailyScanMetrics` counts screenshot acquisitions, actual OCR calls (including navigation guards), content swipes, scrollbar drags, targeted checks, gap recovery, micro-adjustments and fallback searches. Batch crops over 300 pixels high count as full OCR; narrow batches and single-line reads count as local OCR. Same immutable-frame foreground OCR is reused for title proposals; title crop consensus and AP verification remain independent. OCR instrumentation is context-local and restored on exit, including exceptions.
 
 Private measurements and local screenshots remain outside the repository. See the local `C:\FGO-Automation\DAILY-INDEXED-SCAN.md` report for live validation. The battle loop, AI, settlement, guardian, counters and drop-recognition removal are unchanged.
+
+## 2026-10-04 acceptance evidence
+
+The context/leading-edge follow-up preserves the original suite and passes 580 tests, with three existing local-integration skips. Six live starting contexts (terminal, event map, friends, shop, formation menu and Free Quest) reach the same indexed target with zero sequential fallbacks, unchanged cache bytes, zero battles and unchanged AP. A fresh complete scan verifies all 75 actual titles in baseline order, with no unresolved gaps: 53 captures/full OCR calls, 715 local OCR calls, 51 scrollbar drags, one list-to-top normalization gesture and one targeted edge check.
+
+The scan took 179.16 seconds, compared with the prior 160.45–172.72-second runs and the 245.99-second sequential baseline. The extra top-edge proof accounts for an additional acquisition/gesture; timings vary with local rendering and OCR. The earlier 74-title proposal was rejected before cache publication by the independent local accuracy gate, and its missing leading-card evidence produced a regression and the bounded top-card fix above. No cached or fabricated title supplied that missing card.
