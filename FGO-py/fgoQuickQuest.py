@@ -38,7 +38,14 @@ def _compact_title(text):
     return re.sub(r'([<〈《「【])([剑弓枪骑术杀狂暗])[·・‧]?([剑弓枪骑术杀狂暗])篇([>〉》」】])',
                   lambda m:'<'+m[2]+'·'+m[3]+'篇>',text)
 
-def _title_key(text):return re.sub(r'^每日替换','',_compact_title(text)).casefold()
+def _dailyTitleBody(text):
+    # A campaign annotation precedes the daily replacement marker on the same
+    # compressed line. Normalize that display annotation, never quest/class
+    # names. Both an ordinary and annotated copy still collide and fail unique
+    # positioning; the actual title body and AP must be independently read.
+    return re.sub(r'^(?:【[^】]+】|\[[^\]]+\])(?=每日替换)','',_compact_title(text))
+
+def _title_key(text):return re.sub(r'^每日替换','',_dailyTitleBody(text)).casefold()
 
 def _valid_daily_title(text):
     # This is text hygiene, not a quest/class whitelist. Eligibility comes from
@@ -78,7 +85,7 @@ def _difficulty(text):
     return next((value for value in DIFFICULTIES if compact.endswith(value)),'unknown')
 
 def _format_title(text,difficulty):
-    compact=_compact_title(text)
+    compact=_dailyTitleBody(text)
     if difficulty!='unknown':compact=compact[:-len(difficulty)].rstrip()+ ' '+difficulty
     if compact.startswith('每日替换'):
         compact='每日替换 '+compact[len('每日替换'):].strip()

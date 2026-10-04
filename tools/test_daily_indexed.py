@@ -279,4 +279,32 @@ class FinalScanEvidenceTests(unittest.TestCase):
             self.assertTrue(result['complete']);self.assertEqual(seen,[q._title_key(w.entry(0,140).title)])
             self.assertEqual(w.top,99);w.touch.assert_not_called()
 
+class CampaignTitleTests(unittest.TestCase):
+    def test_generic_annotation_is_not_a_task_name_whitelist(self):
+        raw='【未来新支援标签】每日替换 未知每日试炼 特级'
+        self.assertEqual(q._format_title(raw,'unknown'),'每日替换 未知每日试炼特级')
+        self.assertEqual(q._title_key(raw),q._title_key('每日替换 未知每日试炼 特级'))
+    def test_bracket_inside_actual_name_is_preserved(self):
+        self.assertEqual(q._dailyTitleBody('未知【新任务】 特级'),'未知【新任务】特级')
+    def test_unrelated_bracketed_task_without_replacement_marker_preserved(self):
+        self.assertEqual(q._dailyTitleBody('【未来任务】挑战 特级'),'【未来任务】挑战特级')
+    def test_annotated_and_ordinary_cards_remain_ambiguous(self):
+        a=q.DailyQuestEntry('每日替换 未知试炼 特级','unknown','unknown','',(0,947,200))
+        b=q.DailyQuestEntry('【新标签】每日替换 未知试炼 特级','unknown','unknown','',(0,947,387))
+        with self.assertRaisesRegex(q.ScriptStop,'不同卡片'):q._dailyUniqueVisibleCards([a,b])
+
+class QuantizedHandleTests(unittest.TestCase):
+    def test_two_pixel_handle_quantization_needs_no_extra_input(self):
+        with World().patched() as w:
+            w.top=300;d=indexed.dragTo(302,time.monotonic()+10)
+            self.assertEqual(d.top,300);self.assertEqual(w.drags,[]);w.touch.assert_not_called()
+    def test_bottom_endpoint_requires_positive_bottom_even_within_two_pixels(self):
+        with World().patched() as w:
+            w.top=533;d=indexed.dragTo(535,time.monotonic()+10)
+            self.assertEqual(d.top,535);self.assertEqual(len(w.drags),1)
+    def test_three_pixel_error_still_requires_correction(self):
+        with World().patched() as w:
+            w.top=300;d=indexed.dragTo(303,time.monotonic()+10)
+            self.assertEqual(d.top,303);self.assertEqual(len(w.drags),1)
+
 if __name__=='__main__':unittest.main()

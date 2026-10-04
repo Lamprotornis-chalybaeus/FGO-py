@@ -125,7 +125,7 @@ def dragTo(target,deadline,detect=None):
     for attempt in range(3):
         _checkDeadline(deadline);safe(d);top,bottom=q._scrollbar(d.im);height=bottom-top
         target=max(99,min(575-height,float(target)));error=target-top
-        if abs(error)<=1.5 or target==99 and top<=101:return d
+        if abs(error)<=2 and (target<575-height or bottom>=574) or target==99 and top<=101:return d
         center=round((top+bottom)/2)
         motion=error/_dragGain
         endpoint=max(100,min(574,round(center+motion)))
@@ -147,7 +147,7 @@ def dragTo(target,deadline,detect=None):
             _dragSamples.append(moved/physical);del _dragSamples[:-21]
             if len(_dragSamples)>=3:_dragGain=float(median(_dragSamples))
         if abs((new[1]-new[0])-height)>2:raise ScriptStop('每日任务滚动条几何发生变化，已停止拖动')
-        if abs(new[0]-target)<=1.5 or target==99 and new[0]<=101:return d
+        if abs(new[0]-target)<=2 and (target<575-height or new[1]>=574) or target==99 and new[0]<=101:return d
     raise ScriptStop('每日任务滚动条跳转有限校正仍未达到目标，未点击')
 
 def _readPage(d,n):
@@ -244,11 +244,11 @@ def _targeted(acc,deadline,metrics,d=None,top_key=None):
         if not pending:return d
         while pending:
             first=pending.pop(0);group=[first]
-            while pending and acc.absolute[pending[0]]-acc.absolute[first]<=380:group.append(pending.pop(0))
+            while pending and acc.absolute[pending[0]]-acc.absolute[first]<=410:group.append(pending.pop(0))
             original=acc.observations_by_title[first][0]
-            target=(acc.absolute[first]-155)/acc.scroll_scale
+            target=(acc.absolute[first]-185)/acc.scroll_scale
             # Change alignment enough for independent positional evidence.
-            if abs(target-original.thumb_top)*acc.scroll_scale<30:target-=30/acc.scroll_scale
+            if abs(target-original.thumb_top)*acc.scroll_scale<30:target+=(30 if target>=original.thumb_top else -30)/acc.scroll_scale
             previous_frame=d
             d=dragTo(target,deadline,d)
             if d is previous_frame:d=capture();safe(d)
@@ -289,6 +289,7 @@ def scan():
                     if all(abs(y-prior.record(k).locator.absolute_y)<=60 for y,k in zip(predicted,keys)):
                         acc.scroll_scale=prior.scroll_scale;reused=True
                 if not reused:invalidate('fresh top anchors or geometry changed')
+                else:stable=3;stride=320
             if not _continuous(acc,entries,thumb):
                 previous=acc.frame_order[-1][0]
                 # Return toward the last verified anchor, not a full reverse pass.
