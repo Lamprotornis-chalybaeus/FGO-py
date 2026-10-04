@@ -6,7 +6,7 @@ MODULES=('fgoKernel.py','fgoBattleFlow.py','fgoEventProgress.py','fgoGuiOperatio
 # These collection loops make finite progress or deliberately implement the
 # user's unlimited plan. Their phase/input waits remain separately bounded.
 COLLECTION_LOOPS={('fgoKernel.py','ClassicTurn.dispatchSkill'),('fgoKernel.py','Turn.dispatchSkill'),
-    ('fgoKernel.py','Main.__call__'),('fgoKernel.py','Operation.__call__'),
+    ('fgoKernel.py','Main.runCycle'),('fgoKernel.py','Operation.__call__'),
     ('fgoGuiOperation.py','GuiQueueOperation._run')}
 # Notification and optional farming daemons have explicit stop flags; they
 # sleep every iteration. Farming.run takes the logical owner before input.

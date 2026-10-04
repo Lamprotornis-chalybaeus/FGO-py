@@ -7,7 +7,7 @@ from fgoFlowTrace import FlowTrace
 
 class BattleFlowState(Enum):
     UNKNOWN=auto();QUEST_READY=auto();AP_EMPTY=auto();FRIEND=auto()
-    FRIEND_EMPTY=auto();FORMATION=auto();STARTING=auto();LOADING=auto()
+    FRIEND_EMPTY=auto();FORMATION=auto();LOADING=auto()
     TURN_BEGIN=auto();BATTLE_RESULT=auto();ADD_FRIEND=auto();CONTINUE=auto()
     DEFEATED=auto();NETWORK_ERROR=auto();SPECIAL_MODAL=auto()
     SKILL_CAST_FAILED=auto();AMBIGUOUS=auto()
@@ -70,8 +70,9 @@ class BattleFlow:
         self.network=network;self.observation=None;self.detect=None;self.networkHandled=False
     def observe(self):
         self.schedule.checkStop();self.schedule.checkSuspend()
-        self.detect=self.reader()
+        capture_started=self.clock();self.detect=self.reader();capture_finished=self.clock()
         self.observation=observeBattleFlow(self.detect,clock=self.clock)
+        self.trace.formationSample(self.detect,self.observation.state,capture_started,capture_finished)
         if self.observation.state not in {BattleFlowState.NETWORK_ERROR,BattleFlowState.UNKNOWN,BattleFlowState.LOADING}:self.networkHandled=False
         self.trace.frame(getattr(self.detect,'im',None),self.observation.state)
         self.trace.record(self.observation.state,self.observation.evidence)

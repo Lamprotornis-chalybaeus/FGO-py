@@ -33,7 +33,6 @@ The common `BattleCycle.prepare` handles both entry routes. `chooseFriend` selec
 | AP_EMPTY | existing AP dialog marker; unchanged configured fruit policy |
 | FRIEND / FRIEND_EMPTY | existing CN support/no-support predicates |
 | FORMATION | existing begin-task button marker |
-| STARTING | transitional allowance, never positive proof of battle start |
 | LOADING | dark frame or injected loading predicate; authorizes waiting only |
 | TURN_BEGIN | existing attack marker; only then increment startedBattles |
 | BATTLE_RESULT | existing result marker; no item recognition |
@@ -48,6 +47,10 @@ The common `BattleCycle.prepare` handles both entry routes. `chooseFriend` selec
 Foreground priority is explicit and included in evidence: NETWORK_ERROR, CONTINUE, AP_EMPTY, ADD_FRIEND, DEFEATED, SKILL_CAST_FAILED, SPECIAL_MODAL, FRIEND_EMPTY. A positive CONTINUE cannot be swallowed by FRIEND or the historical SKILLERROR overlap. Conflicting remaining strong states stop. The region-specific CN continuous-dialog patch is retained.
 
 ## Time bounds
+
+STARTING was removed on 2026-10-04: no real producer was established. No start confirmation is assumed. The original 90-second bound and ATTACK .05 threshold remain unchanged pending real evidence. The input observer now spans preparation, battle and settlement, recording logical actions and physical inputs separately.
+
+Only verified FORMATION plus recorded start_quest opens the narrow TURN_BEGIN transition capture: first/middle/last UNKNOWN and one LOADING representative, local only. Other UNKNOWN screens remain excluded. Metadata includes acquisition monotonic times, signature, brightness, ATTACK score, state and exact/approximate frame equality. Completion or failure persists the diagnostic episode. Raw private captures are never test fixtures or CI artifacts.
 
 All state polling uses `time.monotonic`, stop/suspend checks, fresh screenshots and a 0.2-second scheduled pause. State changes/actions/errors log to the ordinary logger and GUI log, not every poll.
 

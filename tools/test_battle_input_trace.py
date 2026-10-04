@@ -20,7 +20,7 @@ class InputTraceTests(unittest.TestCase):
         self.assertEqual([r.action for r in flow.trace.records if r.action],["press 'A'",'touch (400, 500)','swipe ((400, 600), (400, 200))'])
         device.I.press.assert_called_once_with('A');device.I.touch.assert_called_once_with((400,500))
         device.I.swipe.assert_called_once_with((400,600),(400,200))
-        self.assertEqual(flow.trace.last_input,'swipe ((400, 600), (400, 200))')
+        self.assertEqual(flow.trace.last_physical_input,'swipe ((400, 600), (400, 200))')
     def test_total_deadline_refuses_next_physical_input(self):
         clock,flow,device=self.make();flow.deadline=1;clock.now=1
         token=INPUT_OBSERVER.set(flow.deviceInput)

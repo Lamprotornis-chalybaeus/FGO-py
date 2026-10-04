@@ -636,10 +636,17 @@ class Main:
             if obs.state!=S.FORMATION:
                 return flow.waitForFlowState({S.TURN_BEGIN},timeout=90,transition_name='auto formation start')
         flow.action('start_quest',lambda:self.press(' '))
-        return flow.waitForFlowState({S.TURN_BEGIN},timeout=90,transition_name='formation start',allowed_intermediate={S.FORMATION,S.STARTING,S.LOADING})
+        flow.trace.beginFormationStart()
+        observation=flow.waitForFlowState({S.TURN_BEGIN},timeout=90,transition_name='formation start',allowed_intermediate={S.FORMATION,S.LOADING})
+        flow.trace.endFormationStart()
+        return observation
     @serialize(mutex)
     def __call__(self,questIndex=0,battleTotal=None):
         self.prepare()
+        inputToken=INPUT_OBSERVER.set(self.flow.deviceInput)
+        try:return self.runCycle(questIndex,battleTotal)
+        finally:INPUT_OBSERVER.reset(inputToken)
+    def runCycle(self,questIndex=0,battleTotal=None):
         cycle=BattleCycle(self,self.flow)
         # Every iteration has bounded preparation, battle and settlement phases.
         while battleTotal is None or self.completedAttempts<battleTotal:
