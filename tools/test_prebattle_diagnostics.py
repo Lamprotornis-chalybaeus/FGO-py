@@ -48,7 +48,7 @@ class PrebattleDiagnosticsTests(unittest.TestCase):
         from test_battle_cycle import Scenario,CycleTests
         from fgoAutomation import INPUT_OBSERVER,noteDeviceInput
         scenario=Scenario();original=scenario.press
-        def press(key):noteDeviceInput('press '+repr(key));return original(key)
+        def press(key,**kwargs):noteDeviceInput('press '+repr(key));return original(key,**kwargs)
         scenario.press=press
         run,flow,error=CycleTests().runScenario(scenario)
         self.assertIsNone(error)

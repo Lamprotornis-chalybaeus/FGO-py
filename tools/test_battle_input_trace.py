@@ -31,4 +31,11 @@ class InputTraceTests(unittest.TestCase):
     def test_no_observer_preserves_existing_device_api(self):
         clock,flow,device=self.make();device.press('8')
         device.I.press.assert_called_once_with('8');self.assertEqual(len(flow.trace.records),1)
+    def test_explicit_duration_is_traced_and_forwarded_once(self):
+        clock,flow,device=self.make();token=INPUT_OBSERVER.set(flow.deviceInput)
+        try:device.press(' ',duration=.08);device.touch((650,300),duration=.08)
+        finally:INPUT_OBSERVER.reset(token)
+        device.I.press.assert_called_once_with(' ',duration=.08)
+        device.I.touch.assert_called_once_with((650,300),duration=.08)
+        self.assertEqual(flow.trace.last_physical_input,'touch (650, 300) duration=0.08')
 if __name__=='__main__':unittest.main()

@@ -63,7 +63,7 @@ class FriendWaitSafetyTests(unittest.TestCase):
             if key=='8':
                 frame.isChooseFriend=lambda:False
                 frame.isBattleFormation=lambda:True
-        with patch.object(kernel.XDetect,'region','CN'),patch.object(kernel,'Detect',side_effect=detect),patch.object(kernel.friendImg,'flush',return_value=False),patch.object(nav,'NavigationGuard',return_value=guard),patch.object(kernel.fgoDevice.device,'press',side_effect=select) as press,patch.object(kernel.fgoDevice.device,'touch',side_effect=lambda pos:select('8')) as touch,patch.object(kernel.fgoDevice.device,'perform') as perform,patch.object(nav,'publish'),patch.object(kernel.time,'monotonic',side_effect=clock or [0]*20):
+        with patch.object(kernel.XDetect,'region','CN'),patch.object(kernel,'Detect',side_effect=detect),patch.object(kernel.friendImg,'flush',return_value=False),patch.object(nav,'NavigationGuard',return_value=guard),patch.object(kernel.fgoDevice.device,'press',side_effect=select) as press,patch.object(kernel.fgoDevice.device,'touch',side_effect=lambda pos,**kwargs:select('8')) as touch,patch.object(kernel.fgoDevice.device,'perform') as perform,patch.object(nav,'publish'),patch.object(kernel.time,'monotonic',side_effect=clock or [0]*20):
             try:kernel.Main(friendPolicy='first').chooseFriend();error=None
             except kernel.ScriptStop as e:error=str(e)
         return error,press,touch,perform
@@ -77,6 +77,7 @@ class FriendWaitSafetyTests(unittest.TestCase):
         self.assertIn('连续出击确认未消失',error);press.assert_not_called();touch.assert_not_called();perform.assert_not_called()
     def test_confirmed_friend_page_keeps_existing_first_policy(self):
         f=SimpleNamespace(isBattleContinue=lambda:False,isChooseFriend=lambda:True)
-        error,press,touch,_=self.invoke(f);self.assertIsNone(error);press.assert_not_called();touch.assert_called_once_with((650,300))
+        error,press,touch,_=self.invoke(f);self.assertIsNone(error);press.assert_not_called();touch.assert_called_once_with((650,300),duration=.08)
 
 if __name__=='__main__':unittest.main()
+

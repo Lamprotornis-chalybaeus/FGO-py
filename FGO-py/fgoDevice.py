@@ -44,16 +44,17 @@ class Device:
         return Android(convert(name),*args,**kwargs)
     @property
     def available(self):return self.I.available and(self.I is self.O or self.O.available)
-    def press(self,key):
-        noteDeviceInput('press '+repr(key))
-        return self.I.press(key)
+    def press(self,key,*,duration=None):
+        noteDeviceInput('press '+repr(key)+(f' duration={duration}' if duration is not None else ''))
+        return self.I.press(key) if duration is None else self.I.press(key,duration=duration)
     def swipe(self,begin,end):
         noteDeviceInput('swipe '+repr((begin,end)))
         return self.I.swipe(begin,end)
     def perform(self,pos,wait):[(self.press(i),schedule.sleep(j*.001))for i,j in zip(pos,wait)]
-    def touch(self,pos,wait=0):
-        noteDeviceInput('touch '+repr(pos))
-        self.I.touch(pos)
+    def touch(self,pos,wait=0,*,duration=None):
+        noteDeviceInput('touch '+repr(pos)+(f' duration={duration}' if duration is not None else ''))
+        if duration is None:self.I.touch(pos)
+        else:self.I.touch(pos,duration=duration)
         schedule.sleep(wait*.001)
     enumDevices=Android.enumDevices
     def __getattr__(self,attr):return getattr(self.I,attr,getattr(self.O,attr))

@@ -24,7 +24,7 @@ class Scenario(Clock):
     def to(self,state,delay=0):
         if delay:self.state='LOADING';self.pending=(self.now+delay,state)
         else:self.state=state;self.pending=None
-    def press(self,key):
+    def press(self,key,**kwargs):
         state=self.state;self.actions.append((state,key))
         if state=='QUEST_READY' and key=='8':self.to('AP_EMPTY' if self.ap_empty else 'FRIEND',self.friend_delay)
         elif state=='CONTINUE' and key=='K':
@@ -95,12 +95,21 @@ class CycleTests(unittest.TestCase):
         # must prove departure before chooseFriend returns.
         clock=Clock();states=['FRIEND'];inputs=[]
         flow=BattleFlow(lambda:frame(states[0]),clock,clock=clock,trace=FlowTrace(clock=clock))
-        def touch(pos):
+        def touch(pos,**kwargs):
             inputs.append(pos)
             if pos==(650,300):states[0]='FORMATION'
         with patch.object(kernel,'schedule',clock),patch.object(kernel.XDetect,'region','CN'),patch.object(kernel.friendImg,'flush',return_value=False),patch.object(kernel.fgoDevice.device,'touch',side_effect=touch),patch.object(kernel.fgoDevice.device,'press') as press:
             result=kernel.Main(friendPolicy='first').chooseFriend(flow)
         self.assertTrue(result.selected);self.assertEqual(inputs,[(650,300)]);press.assert_not_called()
+    def test_cn_support_duration_reproduces_ignored_short_tap(self):
+        clock=Clock();states=['FRIEND'];inputs=[]
+        flow=BattleFlow(lambda:frame(states[0]),clock,clock=clock,trace=FlowTrace(clock=clock))
+        def touch(pos,*,duration=.01):
+            inputs.append((pos,duration))
+            if pos==(650,300) and duration>=.08:states[0]='FORMATION'
+        with patch.object(kernel,'schedule',clock),patch.object(kernel.XDetect,'region','CN'),patch.object(kernel.friendImg,'flush',return_value=False),patch.object(kernel.fgoDevice.device,'touch',side_effect=touch):
+            result=kernel.Main(friendPolicy='first').chooseFriend(flow)
+        self.assertTrue(result.selected);self.assertEqual(inputs,[((650,300),.08)])
     def test_delayed_turn_after_timeout_requires_new_positive_observation(self):
         s=Scenario(loading=91);run,flow,error=self.runScenario(s)
         self.assertIsInstance(error,FlowTimeout);self.assertCounters(run,0,0,0,0)

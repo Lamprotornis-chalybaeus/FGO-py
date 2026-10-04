@@ -614,6 +614,12 @@ class Main:
         return BattleFlow(lambda:Detect(0,0),schedule,
             trace=FlowTrace(root=paths.logRoot/'flow'),network=handleNetworkError)
     def press(self,key):return fgoDevice.device.press(key)
+    def startQuest(self):
+        # CN MAXTOUCH's short tap was ignored on a verified support card;
+        # 80ms down/up was observed to select it. This is one physical tap,
+        # not a page-transition sleep or retry; all AI inputs stay unchanged.
+        if XDetect.region=='CN':return fgoDevice.device.press(' ',duration=.08)
+        return self.press(' ')
     def verifyQuest(self):
         if XDetect.region=='CN':fgoNavigation.checkCurrentQuest()
     def checkSpecialModal(self):schedule.checkKizunaReisou()
@@ -635,7 +641,7 @@ class Main:
             if obs.state==S.TURN_BEGIN:return
             if obs.state!=S.FORMATION:
                 return flow.waitForFlowState({S.TURN_BEGIN},timeout=90,transition_name='auto formation start')
-        flow.action('start_quest',lambda:self.press(' '))
+        flow.action('start_quest',self.startQuest)
         flow.trace.beginFormationStart()
         observation=flow.waitForFlowState({S.TURN_BEGIN},timeout=90,transition_name='formation start',allowed_intermediate={S.FORMATION,S.LOADING})
         flow.trace.endFormationStart()
@@ -782,7 +788,7 @@ class Main:
         # CN's first-row header at key 8 (845,203) can ignore selection.
         # Verified 1280x720 card body avoids the portrait/details controls.
         # The caller has confirmed FRIEND, and still waits for FORMATION.
-        if XDetect.region=='CN':return fgoDevice.device.touch((650,300))
+        if XDetect.region=='CN':return fgoDevice.device.touch((650,300),duration=.08)
         return self.press('8')
     def finishFriendSelection(self,flow,template,refreshes):
         flow.waitForFlowState({BattleFlowState.FORMATION},timeout=30,

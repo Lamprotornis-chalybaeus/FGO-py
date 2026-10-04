@@ -37,8 +37,8 @@ class Android(Airtest):
         self.render=[round(i)for i in self.get_render_resolution(True,self.package)]
         self.scale,self.border=(720/self.render[3],(round(self.render[2]-self.render[3]*16/9)>>1,0))if self.render[2]*9>self.render[3]*16 else(1280/self.render[2],(0,round(self.render[3]-self.render[2]*9/16)>>1))
         self.key={c:[round(p[i]/self.scale+self.border[i]+self.render[i])for i in range(2)]for c,p in KEYMAP.items()}
-    def touch(self,pos):
-        with self.mutex:super().touch([round(pos[i]/self.scale+self.border[i]+self.render[i])for i in range(2)])
+    def touch(self,pos,*,duration=.01):
+        with self.mutex:super().touch([round(pos[i]/self.scale+self.border[i]+self.render[i])for i in range(2)],duration=duration)
     def swipe(self,begin,end):
         p1,p2=[numpy.array(self._touch_point_by_orientation([i[j]/self.scale+self.border[j]+self.render[j]for j in range(2)]))for i in(begin,end)]
         vd=p2-p1
@@ -62,8 +62,8 @@ class Android(Airtest):
             time.sleep(.35)
             self.touch_proxy.handle('u 0\nc\n')
             time.sleep(.02)
-    def press(self,key):
-        with self.mutex:super().touch(self.key[key])
+    def press(self,key,*,duration=.01):
+        with self.mutex:super().touch(self.key[key],duration=duration)
     def pinch(self):
         with self.mutex:super().pinch(percent=.2)
     def screenshot(self):return cv2.resize(super().snapshot()[self.render[1]+self.border[1]:self.render[1]+self.render[3]-self.border[1],self.render[0]+self.border[0]:self.render[0]+self.render[2]-self.border[0]],(1280,720),interpolation=cv2.INTER_CUBIC)
