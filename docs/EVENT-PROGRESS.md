@@ -36,10 +36,11 @@ party review page. These are retained historical diagnostics, not successful
 main-node gates. Each repair has synthetic regressions; private raw frames and
 trace files are not published or included in CI artifacts.
 
-The current offline suite passes 656 cases, with the original three explicitly
+The current offline suite passes 676 cases, with the original three explicitly
 local integration skips. Full event battle, three-node and ten-node acceptance
 must be reported from actual local runs. A general Mission-to-Free-Quest mapping,
-real AP-item selector validation and reward-claim live coverage remain incomplete.
+real AP-item selector validation remain incomplete. Completed non-choice Mission claims have initial live evidence,
+but their broader repeated coverage remains incomplete.
 An unsupported mission condition stops with local evidence rather than inventing
 a quest. The operator report contains exact revisions, corrected node counts,
 resources and current live outcome.
@@ -71,3 +72,23 @@ Transient UNKNOWN frames during decorated-card confirmation reset the positive
 count and permit only bounded rereading. A missing title never authorizes a
 selection. The actual story-only start confirmation uses 是否开始任务/任务开始
 and has its own joint producer, including a two-scale cancel check.
+
+
+## Observed reward and Mission UI follow-up
+
+The first story-only episode was completed through recovery, including two
+already awarded CE cards, their information pages, instructional pages and one
+completed Mission reward. The Mission counter changed from 0/100 to 1/100;
+receiving an apple is not consuming an apple. These interrupted diagnostic runs
+are not the uninterrupted story, battle, three-node or ten-node gates.
+
+Each automatic receipt, item-information close, tutorial advance and numbered
+completed Mission claim has independent structural proof, three fresh stable
+observations and one input. Embedded tutorial screenshots never authorize
+claims. The observed post-claim unlock tutorial has a separate producer from
+main-quest Mission requirements. Partial Mission-list anchors permit only
+bounded rereading: locked background rows cannot become a foreground blocker,
+and partial evidence cannot authorize a claim or return input.
+
+Raw images, original OCR logs, CE features and local ledgers remain private.
+Mission-to-Free-Quest mapping and real AP-item selection still require evidence.

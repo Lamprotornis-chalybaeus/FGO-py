@@ -231,6 +231,34 @@ def startConfirmationItems(d,items):
     if min(float(sa),float(sb))<.85 or event.normalizeText(a)!=event.normalizeText(b) or event.normalizeText(a)!='取消':return items
     return [i for i in items if not cancel or i is not cancel[0]]+[event.OcrItem('取消',rect,min(float(sa),float(sb)))]
 
+def itemReceiptItems(d,items):
+    kind=[i for i in items if i.score>=.85 and event._text(i)=='概念礼装' and 570<i.center[0]<720 and 580<i.center[1]<650]
+    health=[i for i in items if i.score>=.85 and event._text(i)=='生命值' and 700<i.center[0]<830 and 580<i.center[1]<650]
+    value=[i for i in items if i.score>=.85 and re.fullmatch(r'(?:\+\d+|0)',event._text(i)) and 450<i.center[0]<600 and 625<i.center[1]<675]
+    if len(kind)!=1 or len(health)>1 or len(value)>1:return items
+    import cv2
+    if not health:
+        rect=(745,600,805,634);crop=d._crop(rect)
+        a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
+        if min(float(sa),float(sb))<.85 or event.normalizeText(a)!=event.normalizeText(b) or event.normalizeText(a)!='生命值':return items
+        items=items+[event.OcrItem('生命值',rect,min(float(sa),float(sb)))]
+    if not value:
+        rect=(495,627,522,662);crop=d._crop(rect)
+        a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
+        if min(float(sa),float(sb))<.85 or event.normalizeText(a)!=event.normalizeText(b) or event.normalizeText(a)!='0':return items
+        items=items+[event.OcrItem('0',rect,min(float(sa),float(sb)))]
+    rect=(507,671,777,717);crop=d._crop(rect)
+    a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
+    if min(float(sa),float(sb))<.85 or event.normalizeText(a)!=event.normalizeText(b) or event.normalizeText(a)!='请点击游戏界面':return items
+    return [i for i in items if not(event._text(i)=='请点击游戏界面' and i.center[1]>670)]+[event.OcrItem('请点击游戏界面',rect,min(float(sa),float(sb)))]
+
+def itemDetailItems(d,items):
+    if not event.eventItemDetailProof(items):return items
+    import cv2
+    rect=(25,26,67,60);crop=d._crop(rect)
+    a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
+    if min(float(sa),float(sb))<.85 or event.normalizeText(a)!=event.normalizeText(b) or event.normalizeText(a)!='关闭':return items
+    return [i for i in items if not(i.center[0]<100 and i.center[1]<100)]+[event.OcrItem('关闭',rect,min(float(sa),float(sb)))]
 
 def skipConfirmationItems(d,items):
     import cv2
@@ -250,6 +278,39 @@ def storySignature(items):
     lines=sorted((i.box[1],i.box[0],event.normalizeText(i.text)) for i in items if i.score>=.85 and 570<i.center[1]<680 and i.center[0]<1100 and len(event.normalizeText(i.text))>=4)
     if not lines:return None
     return hashlib.sha256('|'.join(v[2] for v in lines).encode('utf-8')).hexdigest()
+
+def enrichedEventItems(d):
+    items=itemDetailItems(d,itemReceiptItems(d,startConfirmationItems(d,mainTitleItems(d,worldMapItems(d,skipConfirmationItems(d,storyItems(d,nav.labels(d))))))))
+    if event.eventTutorialCloseProof(items):
+        import cv2
+        rect=(1219,7,1273,61);crop=d._crop(rect)
+        a,sa=OCR.EN.ocr_single_line(crop);b,sb=OCR.EN.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
+        if min(float(sa),float(sb))>=.85 and event.normalizeText(a)==event.normalizeText(b)=='x':
+            items=items+[event.OcrItem('x',rect,min(float(sa),float(sb)))]
+        else:
+            score=tutorialCloseScore(d)
+            if score>=.75:items=items+[event.OcrItem('x',rect,score,visualProof=True)]
+    return items
+
+def tutorialCloseGlyph(d):
+    return tutorialCloseScore(d)>=.75
+
+def tutorialCloseScore(d):
+    """Actual navy X is not recognized by English OCR. Prove both strokes.
+
+    This generated geometric mask contains no captured image or identity. It
+    is used only after the independent final-tutorial structure is confirmed.
+    """
+    import cv2,numpy
+    crop=d._crop((1230,18,1263,49))
+    mask=(cv2.cvtColor(crop,cv2.COLOR_BGR2GRAY)<100).astype('uint8')
+    points=cv2.findNonZero(mask)
+    if points is None:return 0.0
+    x,y,w,h=cv2.boundingRect(points)
+    if not(20<=w<=30 and 20<=h<=30 and abs(x+w/2-16.5)<=3 and abs(y+h/2-15.5)<=3):return 0.0
+    mask=cv2.resize(mask[y:y+h,x:x+w],(32,32),interpolation=cv2.INTER_NEAREST)>0
+    yy,xx=numpy.indices((32,32));expected=(abs(xx-yy)<=3)|(abs(xx+yy-31)<=3)
+    return float((mask&expected).sum())/float((mask|expected).sum())
 
 
 class EventMain(kernel.Main):
@@ -317,22 +378,23 @@ class EventMain(kernel.Main):
 
 
 class EventRunner:
-    def __init__(self,policy,*,friendPolicy='first',friendMaxRefresh=2,storyMode='skip',ledger=None,reader=None,clock=time.monotonic):
+    def __init__(self,policy,*,friendPolicy='first',friendMaxRefresh=2,storyMode='skip',autoClaim=False,ledger=None,reader=None,clock=time.monotonic):
         if not isinstance(policy,EventResourcePolicy):raise TypeError('Explicit EventResourcePolicy required')
         self.policy=policy;self.reader=reader or (lambda:Detect(0,0));self.clock=clock
         if storyMode not in ('skip','pause'):raise ValueError('Unknown story policy')
         self.storyMode=storyMode
+        self.autoClaim=bool(autoClaim)
         self.ledger=ledger or ProgressLedger(paths.logRoot/'event'/'progress-ledger.json')
         self.main=EventMain(self,friendPolicy=friendPolicy,friendMaxRefresh=friendMaxRefresh)
         self.completed=0;self.storySegments=0;self.claimed=0;self.apples={};self.captureFailures=0;self.settledResumes=0
-        self.last=None;self.flow=None
+        self.last=None;self.flow=None;self.seenItemReceipts=[];self.seenTutorials=set()
     def read(self):
         schedule.checkStop();schedule.checkSuspend()
         try:d=self.reader()
         except (ConnectionError,StopIteration) as error:
             raise EventCaptureError('Event capture transport lost: '+type(error).__name__+'; no automatic restart or input') from error
         if d.im.shape[:2]!=(720,1280) or XDetect.region!='CN':raise ScriptStop('Event requires CN 1280x720')
-        items=startConfirmationItems(d,mainTitleItems(d,worldMapItems(d,skipConfirmationItems(d,storyItems(d,nav.labels(d))))))
+        items=enrichedEventItems(d)
         state=event.classifyEventState(items,{**event._detectFlags(d),'main_interface':d.isMainInterface()})
         self.last=(d,items,state)
         return self.last
@@ -393,7 +455,7 @@ class EventRunner:
         if state in ('formation_settings','formation_review') and self.policy.allowTemporaryAutoFormation:return d,items,state
         if state in ('formation_blocked','formation_settings','formation_review'):
             raise ScriptStop('Event special party requires configuration: '+state+'; no automatic replacement')
-        if state in ('story','story_skip_confirmation','start_confirmation','support','special_formation_offer','formation','battle','battle_result','ap_empty','reward_receipt'):
+        if state in ('story','story_skip_confirmation','start_confirmation','support','special_formation_offer','formation','battle','battle_result','ap_empty','reward_receipt','item_receipt','item_detail','event_tutorial','mission_list','mission_reward_receipt'):
             return d,items,state # Resume actual state, never ledger-driven.
         dismissed=set()
         for _ in range(8):
@@ -591,7 +653,7 @@ class EventRunner:
         departure=False;previous=None;stable=0
         while self.clock()<deadline:
             d,items,state=self.read()
-            if state in ('support','formation','battle','start_confirmation','ap_empty','reward_receipt'):return d,items,state
+            if state in ('support','formation','battle','start_confirmation','ap_empty','reward_receipt','item_receipt','item_detail','event_tutorial'):return d,items,state
             if state in ('event_map','event_world_map'):return self.wait({'event_map','event_world_map'},deadline=deadline)
             if state=='story':
                 signature=storySignature(items)
@@ -607,23 +669,111 @@ class EventRunner:
             schedule.sleep(.2)
         raise FlowTimeout('Story episode did not depart; no repeated skip input')
     def handleRewardReceipt(self,d,items):
-        position=event.findEventRewardReceipt(items)
+        position=event.findEventRewardReceipt(items) or event.findEventItemReceipt(items)
         if position is None:raise ScriptStop('Completion receipt unproven; no input')
-        def reward(labels):return tuple(event._text(i) for i in labels if i.score>=.85 and re.fullmatch(r'获得.+[×x]\d+[!！]?',event._text(i)) and 450<i.center[1]<600)
+        def reward(labels):return tuple(sorted(event._text(i) for i in labels if i.score>=.85 and (re.fullmatch(r'获得.+[×x]\d+[!！]?',event._text(i)) and 450<i.center[1]<600 or event._text(i)=='概念礼装' or re.fullmatch(r'(?:\+\d+|0)',event._text(i)) and 625<i.center[1]<675)))
         reference=reward(items);stable=1;end=self.clock()+15
         while self.clock()<end:
             d,items,state=self.read()
-            current=event.findEventRewardReceipt(items)
-            same=state=='reward_receipt' and current is not None and max(abs(a-b) for a,b in zip(current,position))<=6 and reward(items)==reference
+            current=event.findEventRewardReceipt(items) or event.findEventItemReceipt(items)
+            same=state in ('reward_receipt','item_receipt') and current is not None and max(abs(a-b) for a,b in zip(current,position))<=6 and reward(items)==reference
             stable=stable+1 if same else 0
             if stable>=3:position=current;break
-            if state not in ('unknown','reward_receipt'):raise ScriptStop('Completion receipt changed foreground; no input')
+            if state not in ('unknown','reward_receipt','item_receipt'):raise ScriptStop('Completion receipt changed foreground; no input')
             schedule.sleep(.2)
         else:raise ScriptStop('Completion receipt unstable; no input')
+        if event.findEventItemReceipt(items):
+            import cv2,numpy
+            signature=cv2.resize(d.im[150:500,500:780],(16,16)).astype('float32')
+            if any(float(numpy.abs(signature-old).mean())<8 for old in self.seenItemReceipts):
+                raise ScriptStop('Already advanced this awarded item instance; no repeated input')
+            self.seenItemReceipts.append(signature)
         self.touch(items,position,'dismiss_earned_event_reward_receipt')
-        outcome=self.wait({'event_map','event_world_map','story','mission_list','mission_gate'},timeout=30)
+        allowed={'event_map','event_world_map','story','mission_list','mission_gate'}
+        if event.findEventItemReceipt(items):allowed.add('item_detail');allowed.add('reward_receipt')
+        outcome=self.wait(allowed,timeout=30)
         self.ledger.append('reward_receipt',alreadyAwarded=True,consumed=False,nextState=outcome[2])
         return outcome
+    def closeItemDetail(self,d,items):
+        position=event.findEventItemDetailClose(items)
+        if position is None:raise ScriptStop('Item detail close unproven')
+        for _ in range(2):
+            d,items,state=self.read()
+            if state!='item_detail' or event.findEventItemDetailClose(items)!=position:raise ScriptStop('Item detail close unstable; no input')
+        self.touch(items,position,'close_awarded_item_details')
+        return self.wait({'event_map','event_world_map','story','reward_receipt','item_receipt','event_tutorial'},timeout=30)
+    def advanceTutorial(self,d,items):
+        position=event.findEventTutorialNext(items)
+        key=event.eventTutorialKey(items)
+        if position is None or key is None or key in self.seenTutorials:raise ScriptStop('Event tutorial forward unproven or already advanced')
+        for _ in range(2):
+            d,items,state=self.read()
+            if state!='event_tutorial' or event.findEventTutorialNext(items)!=position or event.eventTutorialKey(items)!=key:raise ScriptStop('Event tutorial transient; no input')
+        self.seenTutorials.add(key)
+        self.touch(items,position,'advance_event_instructions')
+        return self.wait({'event_map','event_world_map','story','event_tutorial','mission_list'},timeout=30,accept=lambda d,labels,state:state!='event_tutorial' or event.eventTutorialKey(labels)!=key)
+    def claimCompletedMission(self):
+        if not self.autoClaim:raise ScriptStop('Completed Mission claim policy disabled')
+        previous=None;stable=0;end=self.clock()+15
+        while self.clock()<end:
+            d,items,state=self.read();card=event.findCompletedMissionCard(items) if state=='mission_list' else None
+            if card is None:
+                if state not in ('unknown','mission_list'):raise ScriptStop('Mission claim foreground changed; no input')
+                stable=0;previous=None;schedule.sleep(.2);continue
+            before=event.missionCompletedCount(items);identity=(card['mission'],card['progress'],before,card['position'])
+            same=previous is not None and identity[:3]==previous[:3] and max(abs(a-b) for a,b in zip(identity[3],previous[3]))<=6
+            stable=stable+1 if same else 1;previous=identity
+            if stable>=3:break
+        else:raise ScriptStop('Completed Mission card transient; no claim')
+        self.ledger.append('mission_claim_intent',mission=card['mission'],title=card['title'],beforeCount=before)
+        self.touch(items,card['position'],'claim_completed_event_mission')
+        end=self.clock()+30;stable=0
+        while self.clock()<end:
+            d,items,state=self.read()
+            if state in ('reward_receipt','item_receipt'):
+                d,items,state=self.handleRewardReceipt(d,items)
+            elif state=='mission_reward_receipt':d,items,state=self.closeMissionRewardReceipt(d,items)
+            count=event.missionCompletedCount(items) if state=='mission_list' else None
+            stable=stable+1 if count is not None and count==before+1 else 0
+            if stable>=3:
+                self.claimed+=1;self.ledger.append('mission_claim',mission=card['mission'],title=card['title'],beforeCount=before,afterCount=count,choice=False)
+                return d,items,state
+            if state in ('unsafe_modal','battle_defeated'):raise ScriptStop('Mission claim stopped: '+state)
+            schedule.sleep(.2)
+        raise FlowTimeout('Mission claim has no proved counter increment; no repeated claim')
+    def closeMissionRewardReceipt(self,d,items,*,countResumedClaim=False):
+        proof=event.missionRewardReceipt(items)
+        if proof is None:raise ScriptStop('Earned Mission reward receipt unproven')
+        before=proof['beforeCount'];stable=1;end=self.clock()+15
+        while self.clock()<end:
+            d,items,state=self.read();current=event.missionRewardReceipt(items)
+            same=state=='mission_reward_receipt' and current is not None and current['reward']==proof['reward'] and max(abs(a-b) for a,b in zip(current['position'],proof['position']))<=6
+            stable=stable+1 if same else 0
+            if same and current['beforeCount'] is not None:before=current['beforeCount']
+            if stable>=3:proof=current;break
+            if state not in ('unknown','mission_gate','mission_reward_receipt'):raise ScriptStop('Reward receipt changed foreground; no close')
+            schedule.sleep(.2)
+        else:raise ScriptStop('Earned Mission receipt transient; no close')
+        self.touch(items,proof['position'],'close_earned_mission_reward')
+        stable=0
+        def counted(d,labels,state):
+            nonlocal stable
+            count=event.missionCompletedCount(labels)
+            stable=stable+1 if state=='mission_list' and count is not None and before is not None and count==before+1 else 0
+            return stable>=3
+        outcome=self.wait({'mission_list'},timeout=30,accept=counted)
+        if countResumedClaim:self.claimed+=1
+        self.ledger.append('mission_reward_receipt',reward=proof['reward'],consumed=False,beforeCount=before,afterCount=event.missionCompletedCount(outcome[1]),resumedClaim=countResumedClaim)
+        return outcome
+    def returnFromMissions(self,d,items):
+        if not event._missionListConfirmed(items):raise ScriptStop('Mission list unconfirmed')
+        position=event._missionReturnButton(items)
+        if position is None:raise ScriptStop('Mission return unconfirmed')
+        for _ in range(2):
+            d,items,state=self.read()
+            if state!='mission_list' or event._missionReturnButton(items)!=position:raise ScriptStop('Mission return transient; no input')
+        self.touch(items,position,'return_from_event_missions')
+        return self.wait({'event_map','event_world_map'},timeout=30)
     def restoreAp(self):
         if not self.policy.allowApples:raise ScriptStop('Apple policy disabled')
         d,items,state=self.read()
@@ -666,7 +816,7 @@ class EventRunner:
                     flow.action('decline_event_repeat',lambda:main.press('F'))
                     outcome=self.wait({'event_map','event_world_map','story'},timeout=30)
                 else:outcome=self.read()
-                if outcome[2] not in ('event_map','event_world_map','story','reward_receipt'):raise ScriptStop('Resumed result has no positive event boundary')
+                if outcome[2] not in ('event_map','event_world_map','story','reward_receipt','item_receipt','item_detail'):raise ScriptStop('Resumed result has no positive event boundary')
                 self.settledResumes+=1
                 self.ledger.append('settlement_resume',nextState=outcome[2],newBattleEntry=False)
                 return outcome
@@ -696,9 +846,9 @@ class EventRunner:
         finally:
             INPUT_OBSERVER.reset(token);self.flow=None
     def eventBoundary(self,d):
-        items=worldMapItems(d,skipConfirmationItems(d,storyItems(d,nav.labels(d))))
+        items=enrichedEventItems(d)
         state=event.classifyEventState(items,{**event._detectFlags(d),'main_interface':d.isMainInterface()})
-        return state in ('event_map','event_world_map','story','reward_receipt') and not event._unsafeEventOverlay(items)
+        return state in ('event_map','event_world_map','story','reward_receipt','item_receipt') and not event._unsafeEventOverlay(items)
     def run(self,maxNodes=1,*,mapSmoke=False):
         with automationOwner.claim():
             try:
@@ -743,11 +893,20 @@ class EventRunner:
                         d,items,state=self.configureTemporaryParty(d,items,state)
                     elif state=='formation_review':
                         d,items,state=self.confirmTemporaryParty(d,items)
-                    elif state=='reward_receipt':
+                    elif state in ('reward_receipt','item_receipt'):
                         d,items,state=self.handleRewardReceipt(d,items)
+                    elif state=='item_detail':
+                        d,items,state=self.closeItemDetail(d,items)
+                    elif state=='event_tutorial':
+                        d,items,state=self.advanceTutorial(d,items)
+                    elif state=='mission_reward_receipt':
+                        d,items,state=self.closeMissionRewardReceipt(d,items,countResumedClaim=True)
                     elif state=='ap_empty':
                         self.restoreAp();d,items,state=self.read()
-                    elif state in ('mission_gate','mission_list'):
+                    elif state=='mission_list':
+                        if event.findCompletedMissionCard(items) and self.autoClaim:d,items,state=self.claimCompletedMission()
+                        else:d,items,state=self.returnFromMissions(d,items)
+                    elif state=='mission_gate':
                         requirement=[MissionRequirement.parse(v) for v in event.findMissionGate(items)]
                         self.ledger.append('mission_gate',requirements=[vars(v) for v in requirement if v])
                         raise ScriptStop('Mission conditions need evidenced quest mapping; no random Free Quest')

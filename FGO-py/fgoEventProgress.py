@@ -16,6 +16,7 @@ class OcrItem:
     text:str
     box:tuple[int,int,int,int]
     score:float=1.0
+    visualProof:bool=False
     @property
     def center(self):return ((self.box[0]+self.box[2])//2,(self.box[1]+self.box[3])//2)
 
@@ -102,7 +103,7 @@ def findMissionGate(items):
     for item in items:
         text=str(getattr(item,'text','')).strip()
         compact=normalizeText(text)
-        if compact in ('任务完成','已完成任务'):continue # Receipt fade is not an unlock condition.
+        if compact.rstrip('，,。.!！?？') in ('任务完成','已完成任务','完成任务','达成任务','确认活动任务'):continue
         if '任务' not in compact or '任务进度' in compact or '任务进行度' in compact:continue
         if any(normalizeText(word) in compact for word in verbs):result.append(text)
     return result
@@ -179,6 +180,88 @@ def findEventRewardReceipt(items):
     footer=[i for i in positive if _text(i)=='请点击游戏界面' and 400<_center(i)[0]<900 and 600<_center(i)[1]<700]
     return _center(footer[0]) if len(headers)==len(earned)==len(amount)==len(footer)==1 else None
 
+def findEventItemReceipt(items):
+    """Observed automatically awarded CE card; no inventory/choice action."""
+    if _unsafeEventOverlay(items):return None
+    positive=[i for i in items if float(i.score)>=.85]
+    if any(_text(i) in ('强化','召唤','决定','取消','选择','装备') for i in items):return None
+    kind=[i for i in positive if _text(i)=='概念礼装' and 570<_center(i)[0]<720 and 580<_center(i)[1]<650]
+    health=[i for i in positive if _text(i)=='生命值' and 700<_center(i)[0]<830 and 580<_center(i)[1]<650]
+    value=[i for i in positive if re.fullmatch(r'(?:\+\d+|0)',_text(i)) and 450<_center(i)[0]<600 and 625<_center(i)[1]<675]
+    footer=[i for i in positive if _text(i)=='请点击游戏界面' and 450<_center(i)[0]<850 and 670<_center(i)[1]<720]
+    return _center(footer[0]) if len(kind)==len(health)==len(value)==len(footer)==1 else None
+
+def eventItemDetailProof(items):
+    if _unsafeEventOverlay(items):return False
+    positive=[i for i in items if float(i.score)>=.85]
+    kind=[i for i in positive if _text(i)=='概念礼装' and _center(i)[0]>1100 and _center(i)[1]<100]
+    ability=[i for i in positive if _text(i)=='能力' and 500<_center(i)[0]<700 and 100<_center(i)[1]<180]
+    info=[i for i in positive if _text(i)=='详细信息' and 700<_center(i)[0]<900 and 100<_center(i)[1]<180]
+    skills=[i for i in positive if _text(i)=='持有技能' and 500<_center(i)[0]<700 and 450<_center(i)[1]<520]
+    return len(kind)==len(ability)==len(info)==len(skills)==1
+
+def findEventItemDetailClose(items):
+    if not eventItemDetailProof(items):return None
+    close=[i for i in items if float(i.score)>=.85 and _text(i)=='关闭' and _center(i)[0]<100 and _center(i)[1]<100]
+    return _center(close[0]) if len(close)==1 else None
+
+def missionRewardReceipt(items):
+    if _unsafeEventOverlay(items):return None
+    strong=[i for i in items if float(i.score)>=.85]
+    obtained=[i for i in strong if _text(i)=='获得了' and 500<_center(i)[0]<800 and 350<_center(i)[1]<430]
+    amounts=[i for i in strong if re.fullmatch(r'[『「]?[^『「』」]+[×x]\d+[』」]?[。.]*',_text(i)) and 400<_center(i)[0]<900 and 400<_center(i)[1]<470]
+    close=[i for i in strong if _text(i)=='关闭' and 450<_center(i)[0]<850 and 480<_center(i)[1]<590]
+    mission=[i for i in strong if re.fullmatch(r'编号\d+',_text(i)) and _center(i)[0]>1100 and 260<_center(i)[1]<500]
+    if len(obtained)!=1 or len(amounts)!=1 or len(close)!=1 or not mission:return None
+    counts=[i for i in strong if re.fullmatch(r'\d+/\d+',_text(i)) and 900<_center(i)[0]<1050 and 35<_center(i)[1]<90]
+    before=int(_text(counts[0]).split('/')[0]) if len(counts)==1 else None
+    return {'position':_center(close[0]),'reward':_text(amounts[0]).strip('『「』」。.'),'beforeCount':before}
+
+def findEventTutorialNext(items):
+    if _unsafeEventOverlay(items):return None
+    strong=[i for i in items if float(i.score)>=.85]
+    instruction=[i for i in strong if _text(i)=='点击界面右上方的' and 250<_center(i)[0]<600 and _center(i)[1]<100]
+    reward=[i for i in strong if _text(i)=='活动报酬按钮' and 250<_center(i)[0]<600 and 65<_center(i)[1]<140]
+    ce=[i for i in strong if _text(i)=='装备活动限定概念礼装' and 250<_center(i)[0]<650 and 340<_center(i)[1]<440]
+    story=[i for i in strong if _text(i)=='推进主线剧情' and 800<_center(i)[0]<1100 and 340<_center(i)[1]<440]
+    forward=[i for i in strong if _text(i)=='前进' and 1000<_center(i)[0]<1250 and 620<_center(i)[1]<720]
+    if len(instruction)==len(reward)==len(ce)==len(story)==len(forward)==1:return _center(forward[0])
+    title=[i for i in strong if _text(i)=='任务报酬的领取方法' and 400<_center(i)[0]<900 and 40<_center(i)[1]<140]
+    click=[i for i in strong if _text(i)=='点击进度为' and 700<_center(i)[0]<1000 and 300<_center(i)[1]<400]
+    board=[i for i in strong if _text(i)=='的任务板' and 1000<_center(i)[0]<1230 and 300<_center(i)[1]<400]
+    claim=[i for i in strong if _text(i)=='领取对应报酬' and 850<_center(i)[0]<1150 and 350<_center(i)[1]<440]
+    if len(title)==len(click)==len(board)==len(claim)==len(forward)==1:return _center(forward[0])
+    close=[i for i in items if _text(i)=='x' and (float(i.score)>=.85 or getattr(i,'visualProof',False)) and _center(i)[0]>1200 and _center(i)[1]<75]
+    return _center(close[0]) if eventTutorialCloseProof(items) and len(close)==1 else None
+
+def eventTutorialCloseProof(items):
+    if eventMissionUnlockTutorialProof(items):return True
+    strong=[i for i in items if float(i.score)>=.85]
+    title=[i for i in strong if _text(i)=='任务列表的显示切换' and 400<_center(i)[0]<900 and 40<_center(i)[1]<140]
+    change=[i for i in strong if _text(i)=='列表将进行切换' and 900<_center(i)[0]<1250 and 150<_center(i)[1]<250]
+    instructions=[i for i in strong if _text(i).replace('，','').replace(',','')=='每当点击按钮列表中所显示的任务将进行切换' and 300<_center(i)[0]<1000 and 570<_center(i)[1]<650]
+    states=[name for name in ('全部','未开放','可领取','已达成') if sum(_text(i)==name and 470<_center(i)[1]<550 for i in strong)==1]
+    return len(title)==len(change)==len(instructions)==1 and len(states)==4 and not _unsafeEventOverlay(items)
+
+def eventMissionUnlockTutorialProof(items):
+    # Actual post-claim instructional page, not a main-quest requirement.
+    if _unsafeEventOverlay(items):return False
+    strong=[i for i in items if float(i.score)>=.85]
+    proofs=(('完成任务后将解锁新任务',(400,900,40,140)),
+            ('开放新任务',(900,1250,200,300)),
+            ('完成任务不仅可以获得各种奖励',(300,1000,480,570)),
+            ('还可以解锁新任务',(350,900,550,640)))
+    for text,(x1,x2,y1,y2) in proofs:
+        matches=[i for i in strong if _text(i).rstrip('，,。.!！?？')==text and x1<_center(i)[0]<x2 and y1<_center(i)[1]<y2]
+        if len(matches)!=1:return False
+    return True
+
+def eventTutorialKey(items):
+    if findEventTutorialNext(items) is None:return None
+    if eventMissionUnlockTutorialProof(items):return 'mission-unlock'
+    if eventTutorialCloseProof(items):return 'mission-display'
+    return 'mission-rewards' if any(_text(i)=='任务报酬的领取方法' for i in items) else 'overview'
+
 def eventWorldMapControls(items):
     """Independent controls on the observed event world map, not a quest row."""
     if _unsafeEventOverlay(items):return False
@@ -209,10 +292,14 @@ def classifyEventState(items,flags=None):
     if flags.get('defeated'):return 'battle_defeated'
     if flags.get('friend_request'):return 'friend_request'
     if _unsafeEventOverlay(items):return 'unsafe_modal'
+    if missionRewardReceipt(items):return 'mission_reward_receipt'
     if isEventFormationBlocked(items):return 'formation_blocked'
     if isEventAutoFormationSettings(items):return 'formation_settings'
     if findTemporaryPartyDecision(items):return 'formation_review'
     if findEventRewardReceipt(items):return 'reward_receipt'
+    if findEventItemReceipt(items):return 'item_receipt'
+    if findEventItemDetailClose(items):return 'item_detail'
+    if findEventTutorialNext(items):return 'event_tutorial'
     if findSpecialFormationDecline(items):return 'special_formation_offer'
     if flags.get('choose_friend'):return 'support'
     if flags.get('formation'):return 'formation'
@@ -224,7 +311,7 @@ def classifyEventState(items,flags=None):
     if _eventMap(items):return 'event_map'
     if _missionListConfirmed(items):return 'mission_list'
     if _eventAnchor(items):return 'home'
-    if findMissionGate(items):return 'mission_gate'
+    if findMissionGate(items) and not _missionListContext(items):return 'mission_gate'
     return 'unknown'
 
 def findSkipButton(items):
@@ -273,9 +360,64 @@ def findBattleProgressButton(items):
     candidates=[item for item in items if _text(item) in tokens and _center(item)[0]>=800 and _center(item)[1]>=470]
     return _center(candidates[0]) if len(candidates)==1 and _reliable(candidates[0]) else None
 
+def _missionListContext(items):
+    """Partial list evidence only prevents treating background locks as modal.
+
+    It never authorizes a claim or return input. Full list proof is still needed.
+    """
+    strong=[i for i in items if float(i.score)>=.85]
+    anchors=(
+        any(_text(i)=='关闭' and _center(i)[0]<220 and _center(i)[1]<100 for i in strong),
+        any(_text(i)=='任务报酬' and 650<_center(i)[0]<850 and 100<_center(i)[1]<180 for i in strong),
+        any(_text(i)=='活动道具兑换' and 1000<_center(i)[0]<1250 and 100<_center(i)[1]<180 for i in strong),
+        any(_text(i)=='任务报酬一览' and 800<_center(i)[0]<1100 and 175<_center(i)[1]<230 for i in strong),
+        any(_text(i)=='已达成的任务' and 600<_center(i)[0]<800 and 220<_center(i)[1]<270 for i in strong))
+    return sum(anchors)>=3
+
 def _missionListConfirmed(items):
     titles=[i for i in items if _text(i) in ('活动任务列表','活动任务','eventmissions') and _reliable(i) and 100<=_center(i)[0]<=1240 and 0<=_center(i)[1]<180]
-    return len(titles)==1 and not _unsafeEventOverlay(items)
+    if len(titles)==1 and not _unsafeEventOverlay(items):return True
+    if _unsafeEventOverlay(items):return False
+    if any(_text(i) in ('关闭','取消','确定','是','否') and 400<_center(i)[0]<900 and 350<_center(i)[1]<620 for i in items):return False
+    strong=[i for i in items if float(i.score)>=.85]
+    tab=[i for i in strong if _text(i)=='任务报酬' and 650<_center(i)[0]<850 and 100<_center(i)[1]<180]
+    exchange=[i for i in strong if _text(i)=='活动道具兑换' and 1000<_center(i)[0]<1250 and 100<_center(i)[1]<180]
+    heading=[i for i in strong if _text(i)=='任务报酬一览' and 800<_center(i)[0]<1100 and 175<_center(i)[1]<230]
+    completed=[i for i in strong if _text(i)=='已达成的任务' and 600<_center(i)[0]<800 and 220<_center(i)[1]<270]
+    count=missionCompletedCount(items)
+    close=[i for i in strong if _text(i)=='关闭' and _center(i)[0]<220 and _center(i)[1]<100]
+    filters=[i for i in strong if _text(i) in ('全部','未开放','进行中','可领取','已达成') and _center(i)[0]>1100 and 220<_center(i)[1]<270]
+    numbers=[i for i in strong if re.fullmatch(r'编号\d+',_text(i)) and _center(i)[0]>1100 and 260<_center(i)[1]<650]
+    progress=[i for i in strong if _text(i)=='目标进行度' and 580<_center(i)[0]<800 and _center(i)[1]>280]
+    structure=len(heading)==1 or len(filters)==1 and bool(numbers and progress)
+    return len(tab)==len(exchange)==len(completed)==len(close)==1 and structure and count is not None
+
+def missionCompletedCount(items):
+    counts=[i for i in items if float(i.score)>=.85 and re.fullmatch(r'\d+/\d+',_text(i)) and 800<_center(i)[0]<950 and 220<_center(i)[1]<270]
+    if len(counts)!=1:return None
+    completed,total=map(int,_text(counts[0]).split('/'))
+    return completed if 0<=completed<=total and total>0 else None
+
+def findCompletedMissionCard(items):
+    if not _missionListConfirmed(items):return None
+    strong=[i for i in items if float(i.score)>=.85]
+    cards=[]
+    for number in strong:
+        matched=re.fullmatch(r'编号(\d+)',_text(number))
+        if not matched or _center(number)[0]<1100 or not 260<_center(number)[1]<650:continue
+        top=_center(number)[1]-24
+        row=[i for i in strong if _center(i)[0]>580 and top<=_center(i)[1]<top+150]
+        claim=[i for i in row if _text(i)=='可领取']
+        completed=[i for i in row if _text(i)=='已完成']
+        progress=[i for i in row if re.fullmatch(r'\d+/\d+',_text(i)) and _center(i)[0]<750]
+        label=[i for i in row if _text(i)=='目标进行度']
+        if len(claim)!=1 or len(completed)!=1 or len(progress)!=1 or len(label)!=1:continue
+        done,total=map(int,_text(progress[0]).split('/'))
+        if total<=0 or done!=total:continue
+        if any(t in ' '.join(_text(i) for i in row) for t in ('未开放','选择奖励','任选')):continue
+        title=[i for i in items if _reliable(i) and 580<_center(i)[0]<1100 and top+30<_center(i)[1]<top+90 and any(t in _text(i) for t in ('通关','击败','收集','达成','完成'))]
+        cards.append({'mission':int(matched.group(1)),'title':str(title[0].text) if len(title)==1 else '', 'position':(900,top+60),'progress':(done,total)})
+    return min(cards,key=lambda v:v['position'][1]) if cards else None
 
 def _detectFlags(detect):
     return {
@@ -419,7 +561,7 @@ def progress(maxNodes=1,storyMode=EVENT_STORY_PAUSE,autoClaim=False,friendPolicy
     """Conservative CN event state machine: unknown screens stop; story pauses by default."""
     if resourcePolicy is not None:
         from fgoEventCycle import EventRunner
-        return EventRunner(resourcePolicy,friendPolicy=friendPolicy,friendMaxRefresh=friendMaxRefresh,storyMode=storyMode).run(maxNodes)
+        return EventRunner(resourcePolicy,friendPolicy=friendPolicy,friendMaxRefresh=friendMaxRefresh,storyMode=storyMode,autoClaim=autoClaim).run(maxNodes)
     if XDetect.region!='CN':return {'type':'EventProgress','state':'blocked','message':'活动推进首版仅适配简体中文服务器。'}
     maxNodes=max(1,min(EVENT_NODE_LIMIT,int(maxNodes)))
     if storyMode not in (EVENT_STORY_PAUSE,EVENT_STORY_SKIP):return {'type':'EventProgress','state':'blocked','message':'剧情策略无效，已停止。'}

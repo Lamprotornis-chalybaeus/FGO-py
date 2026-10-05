@@ -94,3 +94,12 @@ Offline validation: 456 cases, 453 executed successfully and the original three 
 **Latest candidate code HEAD `f28705f9aefac3bf318f5525ef4c07e81b0f116b` completed and passed the fresh post-hardening gate: clean1 PASS, continuous5 PASS, continuous10 PASS.** Latest sixteen battles: wins=16, defeats=0, Fused=0, FlowTimeout=0, duplicate turn=0; started/completed statistics agree and each queue ends empty. Template zero-AP smoke PASS: a real existing private template was confirmed in three fresh frames, followed by one 80ms touch reaching FORMATION, then a safe return without starting a quest. AP change was zero. Three initial entries used FORMATION and thirteen CN repeats took the direct route. This latest gate supersedes the earlier pending acceptance requirement. Repeated bond-level-up instances and the template/direct-route combination remain offline-only coverage. The operator's local report retains the exact revision and per-battle transitions; private images, templates and raw traces are not published.
 
 The battle-cycle state machine was merged into `cn-dev` by fast-forward to `5e6b212c6b28f801f9836f80b5bebb4f68a47fea`. The fix branch is retained; master remains unchanged. This follow-up changes Markdown only. Zero apples, quartz, AP recovery and revival are required. A failed stage stops later stages. Longer-term stability remains under observation.
+
+
+## Event reward / Mission diagnostics (unmerged candidate)
+
+The event feature has 676 passing offline cases (three existing local integration
+skips). Observed CE receipts/details, event tutorials and one completed non-choice
+Mission reward have dedicated producers. Interruptions and recoveries remain
+diagnostic evidence, not clean event gates. Main-quest Mission/FQ mapping and
+real AP-item selection remain open. See [EVENT-PROGRESS.md](EVENT-PROGRESS.md).

@@ -117,6 +117,165 @@ class SharedEventCycleTests(unittest.TestCase):
 
 
 class EventContractTests(unittest.TestCase):
+    def missionList(self,count=0):
+        return [item('任务报酬',699,121,w=89),item('活动道具兑换',1041,125,w=126),item('任务报酬一览',864,185,w=147),item('已达成的任务',629,225,w=158),item(f'{count}/100',828,225,w=83),item('关闭',70,25,w=80),item('可领取',847,260,w=86),item('编号1',1156,276,w=49),item('通关主线关卡第一话',608,312,w=207,score=.84),item('目标进行度',617,353,w=102),item('1/1',609,383,w=36),item('已完成',875,379,w=74)]
+    def missionReceipt(self):
+        return [item('获得了',592,376,w=95),item('『黄金果实×1』。',533,405,w=236),item('关闭',600,517,w=81,h=46),item('编号1',1156,276,w=49),item('0/100',935,45,w=85)]
+    def test_mission_award_receipt_is_not_an_ap_recovery_dialog(self):
+        labels=self.missionReceipt();self.assertEqual(event.classifyEventState(labels),'mission_reward_receipt')
+        ec.QuartzGuard.check(labels)
+        for index in range(4):self.assertIsNone(event.missionRewardReceipt(labels[:index]+labels[index+1:]))
+        self.assertIsNone(event.missionRewardReceipt(labels+[item('请选择奖励',400,300)]))
+    def test_resumed_mission_award_counts_only_after_proved_increment(self):
+        labels=self.missionReceipt();after=[i for i in self.missionList(1) if i.text!='可领取']
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock());runner.touch=Mock()
+        runner.read=Mock(return_value=(Mock(),labels,'mission_reward_receipt'));runner.wait=Mock(return_value=(Mock(),after,'mission_list'))
+        runner.closeMissionRewardReceipt(None,labels,countResumedClaim=True)
+        runner.touch.assert_called_once_with(labels,(640,540),'close_earned_mission_reward')
+        self.assertEqual(runner.claimed,1)
+    def test_mission_list_requires_its_real_geometry_not_tutorial_embedding(self):
+        labels=self.missionList()
+        self.assertEqual(event.classifyEventState(labels),'mission_list')
+        self.assertEqual(event.findCompletedMissionCard(labels)['mission'],1)
+        self.assertIsNone(event.findCompletedMissionCard([i for i in labels if i.text!='已完成']))
+        self.assertIsNone(event.findCompletedMissionCard([i for i in labels if i.text!='可领取']))
+        self.assertIsNone(event.findCompletedMissionCard([i if i.text!='1/1' else item('0/1',609,383,w=36) for i in labels]))
+        self.assertIsNone(event.findCompletedMissionCard(labels+[item('请选择奖励',400,300)]))
+        alternate=[i for i in labels if i.text!='任务报酬一览']+[item('全部',1139,227)]
+        self.assertEqual(event.classifyEventState(alternate),'mission_list')
+        self.assertFalse(event._missionListConfirmed(alternate+[item('关闭',600,517)]))
+    def test_mission_claim_defaults_disabled_and_never_inputs(self):
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock());runner.touch=Mock()
+        with self.assertRaises(ec.ScriptStop):runner.claimCompletedMission()
+        runner.touch.assert_not_called()
+    def test_mission_claim_once_requires_three_proofs_and_three_counter_increments(self):
+        labels=self.missionList();after=[i for i in self.missionList(1) if i.text!='可领取']
+        runner=ec.EventRunner(ec.EventResourcePolicy(),autoClaim=True,ledger=Mock())
+        runner.read=Mock(side_effect=[(Mock(),labels,'mission_list')]*3+[(Mock(),after,'mission_list')]*3);runner.touch=Mock()
+        self.assertEqual(runner.claimCompletedMission()[2],'mission_list')
+        self.assertEqual(runner.claimed,1);self.assertEqual(runner.read.call_count,6)
+        runner.touch.assert_called_once_with(labels,(900,324),'claim_completed_event_mission')
+    def test_mission_card_ocr_miss_resets_three_frame_confirmation_without_click(self):
+        labels=self.missionList();after=[i for i in self.missionList(1) if i.text!='可领取'];clock=Clock()
+        runner=ec.EventRunner(ec.EventResourcePolicy(),autoClaim=True,ledger=Mock(),clock=clock)
+        runner.read=Mock(side_effect=[(Mock(),labels,'mission_list'),(Mock(),[],'unknown')]+[(Mock(),labels,'mission_list')]*3+[(Mock(),after,'mission_list')]*3);runner.touch=Mock()
+        with patch.object(ec,'schedule',clock):runner.claimCompletedMission()
+        self.assertEqual(runner.read.call_count,8);self.assertEqual(runner.touch.call_count,1)
+    def test_partial_mission_list_background_locks_only_allow_rereading(self):
+        labels=[item('关闭',70,25,w=80),item('任务报酬',699,121,w=88),item('活动道具兑换',1041,125,w=126),item('完成任务No.96&通关特定关卡后开放',608,659,w=325)]
+        self.assertTrue(event._missionListContext(labels))
+        self.assertFalse(event._missionListConfirmed(labels))
+        self.assertEqual(event.classifyEventState(labels),'unknown')
+        self.assertIsNone(event.findCompletedMissionCard(labels))
+        self.assertEqual(event.classifyEventState([item('需要完成任务12才能解锁',400,300)]),'mission_gate')
+
+    def test_generated_close_glyph_requires_both_diagonal_strokes(self):
+        import cv2,numpy
+        def detector(crop):return Mock(_crop=Mock(return_value=crop))
+        crop=numpy.full((31,33,3),240,dtype='uint8')
+        cv2.line(crop,(4,3),(28,27),(30,30,30),2);cv2.line(crop,(28,3),(4,27),(30,30,30),2)
+        self.assertTrue(ec.tutorialCloseGlyph(detector(crop)))
+        for kind in ('empty','solid','single','plus'):
+            wrong=numpy.full((31,33,3),240,dtype='uint8')
+            if kind=='solid':wrong[3:28,4:29]=30
+            if kind=='single':cv2.line(wrong,(4,3),(28,27),(30,30,30),4)
+            if kind=='plus':cv2.line(wrong,(4,15),(28,15),(30,30,30),4);cv2.line(wrong,(16,3),(16,27),(30,30,30),4)
+            self.assertFalse(ec.tutorialCloseGlyph(detector(wrong)))
+    def tutorial(self):
+        return [item('点击界面右上方的',304,47,w=229),item('活动报酬按钮',301,79,w=175),item('装备活动限定概念礼装',303,368,w=254),item('推进主线剧情',867,365,w=177),item('前进',1095,651,w=83,h=50),item('完成任务，',734,362),item('达成任务',733,47)]
+    def test_event_instructions_are_not_a_mission_unlock_condition(self):
+        labels=self.tutorial()
+        self.assertEqual(event.findMissionGate(labels),[])
+        self.assertEqual(event.classifyEventState(labels),'event_tutorial')
+        for index in range(5):self.assertIsNone(event.findEventTutorialNext(labels[:index]+labels[index+1:]))
+    def test_event_instruction_forward_is_single_and_stably_proved(self):
+        labels=self.tutorial();runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock())
+        runner.read=Mock(return_value=(Mock(),labels,'event_tutorial'));runner.touch=Mock();runner.wait=Mock(return_value=(None,[],'event_map'))
+        runner.advanceTutorial(None,labels);self.assertEqual(runner.read.call_count,2)
+        runner.touch.assert_called_once_with(labels,(1136,676),'advance_event_instructions')
+        with self.assertRaises(ec.ScriptStop):runner.advanceTutorial(None,labels)
+        self.assertEqual(runner.touch.call_count,1)
+    def test_second_tutorial_page_is_an_explanation_not_a_claim_control(self):
+        labels=[item('任务报酬的领取方法',477,63,w=322),item('点击进度为',772,326,w=159),item('的任务板',1064,329,w=125),item('领取对应报酬',899,369,w=165),item('前进',1096,653,w=81,h=46)]
+        self.assertEqual(event.classifyEventState(labels),'event_tutorial')
+        self.assertEqual(event.eventTutorialKey(labels),'mission-rewards')
+        self.assertIsNone(event.findClaimableMissionReward(labels))
+        for index in range(len(labels)):self.assertIsNone(event.findEventTutorialNext(labels[:index]+labels[index+1:]))
+    def test_last_tutorial_page_requires_real_close_and_explanatory_structure(self):
+        labels=[item('任务列表的显示切换',477,63,w=322),item('列表将进行切换',945,184,w=227),item('每当点击按钮列表中所显示的任务将进行切换',363,593,w=566),item('全部',121,492),item('未开放',348,489),item('可领取',829,493),item('已达成',1073,488),item('x',1219,7,w=54,h=54)]
+        self.assertEqual(event.eventTutorialKey(labels),'mission-display')
+        self.assertEqual(event.findEventTutorialNext(labels),(1246,34))
+        self.assertIsNone(event.findClaimableMissionReward(labels))
+        for index in range(len(labels)):self.assertIsNone(event.findEventTutorialNext(labels[:index]+labels[index+1:]))
+    def test_post_claim_unlock_instructions_are_not_a_mission_gate(self):
+        labels=[item('完成任务后将解锁新任务',443,63,w=388,h=36),item('开放新任务！',985,236,w=168,h=36),item('完成任务不仅可以获得各种奖励，',356,517,w=571,h=40),item('还可以解锁新任务！',427,563,w=373,h=56),item('x',1219,7,w=54,h=54)]
+        self.assertEqual(event.classifyEventState(labels),'event_tutorial')
+        self.assertEqual(event.eventTutorialKey(labels),'mission-unlock')
+        self.assertEqual(event.findEventTutorialNext(labels),(1246,34))
+        self.assertFalse(event._missionListConfirmed(labels))
+        self.assertIsNone(event.findClaimableMissionReward(labels))
+        for index in range(len(labels)):
+            self.assertIsNone(event.findEventTutorialNext(labels[:index]+labels[index+1:]))
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock())
+        runner.read=Mock(return_value=(Mock(),labels,'event_tutorial'));runner.touch=Mock();runner.wait=Mock(return_value=(None,[],'mission_list'))
+        runner.advanceTutorial(None,labels)
+        runner.touch.assert_called_once_with(labels,(1246,34),'advance_event_instructions')
+        with self.assertRaises(ec.ScriptStop):runner.advanceTutorial(None,labels)
+        self.assertEqual(runner.touch.call_count,1)
+
+    def itemDetail(self):
+        return [item('概念礼装',1163,63,w=86),item('能力',545,116,w=80),item('详细信息',728,116,w=112),item('持有技能',508,464,w=93),item('关闭',25,26,w=42,h=34)]
+    def test_awarded_item_details_only_authorize_positive_close(self):
+        labels=self.itemDetail();self.assertEqual(event.classifyEventState(labels),'item_detail')
+        for index in range(len(labels)):
+            self.assertIsNone(event.findEventItemDetailClose(labels[:index]+labels[index+1:]))
+        d=Mock();d._crop.return_value=__import__('numpy').zeros((34,42,3),dtype='uint8')
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('关闭',.99)):
+            self.assertEqual(event.classifyEventState(ec.itemDetailItems(d,labels[:-1])),'item_detail')
+    def test_item_details_close_once_after_three_proofs_without_inventory_action(self):
+        labels=self.itemDetail();runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock())
+        runner.read=Mock(return_value=(Mock(),labels,'item_detail'));runner.touch=Mock();runner.wait=Mock(return_value=(None,[],'event_map'))
+        runner.closeItemDetail(None,labels);self.assertEqual(runner.read.call_count,2)
+        runner.touch.assert_called_once_with(labels,(46,43),'close_awarded_item_details')
+        runner.read=Mock(return_value=(Mock(),labels[:-1],'unknown'));runner.touch.reset_mock()
+        with self.assertRaises(ec.ScriptStop):runner.closeItemDetail(None,labels)
+        runner.touch.assert_not_called()
+    def itemReceipt(self):
+        return [item('概念礼装',592,600,w=93),item('生命值',749,609,w=50),item('+200',490,624,w=90),item('请点击游戏界面',507,671,w=269,h=44)]
+    def test_ce_receipt_footer_uses_two_strong_reads_without_lowering_threshold(self):
+        labels=self.itemReceipt()[:-1];d=Mock();d._crop.return_value=__import__('numpy').zeros((46,270,3),dtype='uint8')
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('请点击游戏界面',.99)):
+            self.assertEqual(event.classifyEventState(ec.itemReceiptItems(d,labels)),'item_receipt')
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[('请点击游戏界面',.99),('请点击游戏界面',.84)]):
+            self.assertIsNone(event.findEventItemReceipt(ec.itemReceiptItems(d,labels)))
+    def test_ce_receipt_omitted_health_requires_independent_two_scale_read(self):
+        labels=[self.itemReceipt()[0],self.itemReceipt()[2]];d=Mock();d._crop.return_value=__import__('numpy').zeros((46,270,3),dtype='uint8')
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[('生命值',.99)]*2+[('请点击游戏界面',.99)]*2):
+            self.assertEqual(event.classifyEventState(ec.itemReceiptItems(d,labels)),'item_receipt')
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[('生命值',.99),('生命值',.84)]):
+            self.assertEqual(ec.itemReceiptItems(d,labels),labels)
+    def test_automatically_awarded_ce_receipt_needs_all_independent_labels(self):
+        labels=self.itemReceipt()
+        self.assertEqual(event.classifyEventState(labels),'item_receipt')
+        for index in range(len(labels)):
+            self.assertIsNone(event.findEventItemReceipt(labels[:index]+labels[index+1:]))
+        for forbidden in ('强化','装备','选择','召唤','取消','请选择奖励'):
+            self.assertIsNone(event.findEventItemReceipt(labels+[item(forbidden,400,300)]))
+    def test_item_receipt_is_dismissed_once_after_three_fresh_proofs(self):
+        labels=self.itemReceipt();runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock())
+        d=Mock(im=__import__('numpy').zeros((720,1280,3),dtype='uint8'))
+        runner.read=Mock(return_value=(d,labels,'item_receipt'));runner.touch=Mock();runner.wait=Mock(return_value=(None,[],'event_map'))
+        runner.handleRewardReceipt(None,labels)
+        self.assertEqual(runner.read.call_count,2)
+        runner.touch.assert_called_once_with(labels,(641,693),'dismiss_earned_event_reward_receipt')
+        with self.assertRaises(ec.ScriptStop):runner.handleRewardReceipt(None,labels)
+        self.assertEqual(runner.touch.call_count,1)
+    def test_zero_stat_awarded_ce_is_read_from_its_own_numeric_glyph(self):
+        labels=[self.itemReceipt()[0]];d=Mock();d._crop.return_value=__import__('numpy').zeros((46,270,3),dtype='uint8')
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[('生命值',.99)]*2+[('0',.99)]*2+[('请点击游戏界面',.99)]*2):
+            self.assertEqual(event.classifyEventState(ec.itemReceiptItems(d,labels)),'item_receipt')
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[('生命值',.99)]*2+[('+2',.99)]*2):
+            self.assertIsNone(event.findEventItemReceipt(ec.itemReceiptItems(d,labels)))
     def storyStart(self):
         return [item('第一话「她是人斩」',472,115,w=328),item('该任务没有战斗',532,300,w=217),item('是否开始任务？',511,475,w=248),item('取消',405,543,w=82,score=.75),item('任务开始',764,544,w=151)]
     def test_story_start_modal_requires_all_joint_evidence(self):
