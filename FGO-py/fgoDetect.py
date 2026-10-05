@@ -257,7 +257,7 @@ class XDetectCN(XDetectBase):
                 # These exact alternate glyphs were observed by CN OCR.
                 if (label((460,85,1260,230)) in {'牵绊等级提升','牵纤等级提升'}
                     and label((630,275,1100,345)) in {'与从者的牵绊加深了','与从者的牵纤加深了'}):page='BOND_LEVEL_UP'
-                elif label((75,160,420,215)) in {'与从者的牵','与从者的牵绊'}:page='BOND'
+                elif label((75,160,420,215)) in {'与从者的牵','与从者的牵绊','与从者的牵纤'}:page='BOND'
                 elif (label((635,175,860,245))=='获得经验值'
                     # Observed event decoration contaminates the heading OCR.
                     # Two independent fixed body labels preserve the same gate.

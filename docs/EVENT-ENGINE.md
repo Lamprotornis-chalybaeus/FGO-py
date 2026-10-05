@@ -75,6 +75,15 @@ The first scoped LIST index and Mission experiment have live evidence: one
 AP5 win increased the blocking counter from 0/4 to 2/4. Settlement also exposed
 a Master-level-up overlay and an item presentation after the reward summary;
 both require their own positive producers and single bounded advancement.
+One AP40 experiment reached a real seven-turn victory after a 60-second
+post-card timeout during a noble animation. Its outcome is recovered; full
+elapsed time is unavailable. CN event battles can now opt into wait-only
+post-card activity diagnostics: actual noble selection plus two material fresh
+central-frame changes renews the 60-second stall timer, with an immutable
+180-second episode cap and the existing whole-battle deadline. Minor animation
+background jitter, identical captures and normal-card-only turns do not renew
+the stall timer. This is not a new battle state or permission for another input;
+live validation of this new wait policy remains pending.
 Activity completion has not been proved. LIST scrolling/index selection and
 passive fixed-uniform formation notices have real observations; three-card
 indexing does not imply every future event layout is supported. Continuous

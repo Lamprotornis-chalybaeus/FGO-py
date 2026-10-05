@@ -57,9 +57,14 @@ class RecoveredOutcomeTests(unittest.TestCase):
             runner=self.runner();runner.read.return_value[0].getBattleResultPage.return_value=page
             self.assertTrue(runner.recoverBattleOutcome().won)
         runner=self.runner();good=runner.read.return_value
-        runner.read.side_effect=[good,(Mock(),[],'unknown'),good]
+        runner.read.side_effect=[good,(Mock(),[],'unknown')]*4
         with self.assertRaises(ec.ScriptStop):runner.recoverBattleOutcome()
         self.assertEqual(runner.eventWins,0)
+    def test_transient_miss_requires_three_new_consecutive_proofs_without_input(self):
+        runner=self.runner();good=runner.read.return_value
+        runner.read.side_effect=[good,(Mock(),[],'unknown')]+[good]*3
+        self.assertTrue(runner.recoverBattleOutcome().won)
+        self.assertEqual(runner.read.call_count,5);runner.main.recordCompleted.assert_not_called()
     def test_normal_and_recovered_totals_remain_distinct(self):
         runner=self.runner(('normal','recover'))
         runner.recordEventOutcome('normal',True,'normal',evidence='fresh terminal',turns=4,battleTime=30.)

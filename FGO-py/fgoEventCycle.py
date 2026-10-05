@@ -690,14 +690,18 @@ class EventRunner:
         pending=self.pendingBattleEntries()
         if len(pending)>1:raise ScriptStop('Ambiguous unresolved event battles; no settlement input')
         if not pending:return None
-        previous=None
-        for _ in range(3):
+        previous=None;stable=0;end=self.clock()+30
+        for _ in range(8):
+            if self.clock()>=end:break
             d,items,state=self.read()
             page=d.getBattleResultPage() if state=='battle_result' and d.isBattleFinished() else None
-            if page not in {'BOND','BOND_LEVEL_UP','MASTER_EXP','REWARDS'}:raise ScriptStop('Fresh terminal result proof absent; no recovered win')
+            if page not in {'BOND','BOND_LEVEL_UP','MASTER_EXP','REWARDS'}:
+                if state not in ('unknown','battle_result'):raise ScriptStop('Fresh terminal result proof absent; no recovered win')
+                previous=None;stable=0;continue
             if previous is not None and page!=previous:raise ScriptStop('Terminal result changed during recovery proof; no input')
-            previous=page
-        return self.recordEventOutcome(pending[0]['entryId'],True,'recovered',evidence='three fresh CN result frames: '+previous)
+            previous=page;stable+=1
+            if stable>=3:return self.recordEventOutcome(pending[0]['entryId'],True,'recovered',evidence='three fresh CN result frames: '+previous)
+        raise ScriptStop('Fresh terminal result proof absent after bounded re-observation; no recovered win')
     def read(self):
         schedule.checkStop();schedule.checkSuspend()
         try:d=self.reader()
@@ -1359,6 +1363,9 @@ class EventRunner:
             main.startedBattles+=1;main.battleCount=main.startedBattles
             flow.trace.battle_sequence=main.startedBattles
             battle=main.battleClass();battle.flow=flow;main.battleProc=battle
+            # Real event triple-noble animation outlasted the 60s stall timer.
+            # Only measured fresh activity may renew waiting; no extra input.
+            battle.allowAnimationProgress=True
             try:won=battle()
             except ScriptStop:
                 if battle.defeated:

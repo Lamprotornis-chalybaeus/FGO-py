@@ -6,6 +6,13 @@ from fgoDetect import XDetectCN,OCR
 from fgoBattleFlow import observeBattleFlow,BattleFlowState as S
 
 class CNResultPageTests(unittest.TestCase):
+    def test_observed_bond_glyph_variant_still_requires_header_footer(self):
+        labels={(490,20,775,110):('战斗结果',.99),(480,625,815,690):('请点击游戏界面',.99),(75,160,420,215):('与从者的牵纤',.92)}
+        with patch.object(OCR.ZHS,'ocr_single_line',side_effect=self.read):
+            d=self.detect(labels);self.assertEqual(d.getBattleResultPage(),'BOND')
+        for missing in ((490,20,775,110),(480,625,815,690)):
+            d=self.detect({k:v for k,v in labels.items() if k!=missing})
+            with patch.object(OCR.ZHS,'ocr_single_line',side_effect=self.read):self.assertIsNone(d.getBattleResultPage())
     def detect(self,labels):
         d=XDetectCN.__new__(XDetectCN)
         d._crop=lambda rect:rect

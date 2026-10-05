@@ -31,6 +31,39 @@ class FriendSelectionResult:
 class FlowTimeout(ScriptStop):pass
 class AmbiguousState(ScriptStop):pass
 
+class PostCardAnimationProgress:
+    """Wait-only evidence after actual noble-card inputs; no UI state/input.
+
+    Large central-frame changes can renew the stall timer, never the fixed
+    episode hard deadline. Static/old frames and minor background jitter do
+    not renew it. Pixels are sampled only in memory.
+    """
+    def __init__(self,enabled=False):self.enabled=enabled;self.begin()
+    def begin(self):
+        self.selecting=False;self.cards=[];self.finished=None;self.previous=None;self.sequence=None;self.changes=0
+    def input(self,action):
+        if action.startswith("press ' '"):
+            self.selecting=True;self.cards=[]
+        elif self.selecting and len(self.cards)<3:
+            import re
+            match=re.match(r"press '([1-8])'(?: duration=|$)",action)
+            if match:self.cards.append(match[1])
+    def finish(self,now):self.finished=now
+    @property
+    def eligible(self):return self.enabled and self.finished is not None and any(c in '678' for c in self.cards)
+    def activity(self,image,sequence):
+        if not self.eligible or sequence is None or sequence==self.sequence:return False
+        import cv2,numpy
+        if not isinstance(image,numpy.ndarray) or image.shape!=(720,1280,3):return False
+        sample=cv2.resize(cv2.cvtColor(image[90:610,160:1120],cv2.COLOR_BGR2GRAY),(64,32)).astype('int16')
+        changed=False
+        if self.previous is not None and self.sequence is not None and sequence==self.sequence+1:
+            delta=numpy.abs(sample-self.previous)
+            changed=float(delta.mean())>8 and float((delta>16).mean())>.35
+        self.changes=self.changes+1 if changed else 0
+        self.previous=sample;self.sequence=sequence
+        return self.changes>=2
+
 class BondResultEpisode:
     """Only CN bond overlays may repeat by a stable, local instance signature."""
     def __init__(self):

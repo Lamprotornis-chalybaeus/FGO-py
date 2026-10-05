@@ -33,7 +33,7 @@ from fgoDetect import Detect,XDetect,OCR
 from fgoFuse import fuse
 from fgoImageListener import ImageListener
 from fgoFriendTemplates import FriendTemplateStore
-from fgoBattleFlow import BattleCycle,BattleFlow,BattleFlowState,FriendSelectionResult,FlowTimeout
+from fgoBattleFlow import BattleCycle,BattleFlow,BattleFlowState,FriendSelectionResult,FlowTimeout,PostCardAnimationProgress
 from fgoFlowTrace import FlowTrace
 from fgoProgress import BattleCompleted
 from fgoPaths import paths
@@ -551,6 +551,8 @@ class Battle:
         self.turnProc=turnClass()
     totalTimeout=30*60
     unknownTimeout=60
+    allowAnimationProgress=False
+    animationHardTimeout=180
     def __call__(self):
         self.start=time.time();self.defeated=False
         self.flow=getattr(self,'flow',None) or BattleFlow(lambda:Detect(0,0),schedule,
@@ -559,7 +561,10 @@ class Battle:
         deadline=flow.clock()+self.totalTimeout;progress=flow.clock()
         previousDeadline=flow.deadline;flow.deadline=deadline
         token=_activeBattleFlow.set(flow)
-        inputToken=INPUT_OBSERVER.set(flow.deviceInput)
+        animation=PostCardAnimationProgress(self.allowAnimationProgress)
+        def physicalInput(action):
+            flow.deviceInput(action);animation.input(action)
+        inputToken=INPUT_OBSERVER.set(physicalInput)
         lastProgressState=flow.trace.state
         # Only outer observations after the complete skill/card phase may
         # rearm. Nested skill animations cannot create another AI turn.
@@ -581,6 +586,7 @@ class Battle:
                     turnArmed=False
                     unknownDeparture=0;departureCapture=None
                     self.turn+=1;progress=flow.clock();lastProgressState=state.name
+                    animation.begin()
                     try:self.turnProc(self.turn)
                     except BattlePhaseEnded as ended:state=ended.state
                     else:
@@ -588,12 +594,19 @@ class Battle:
                         # unchanged 60s unknown wait begins after those inputs,
                         # while the whole-battle deadline never moves.
                         progress=flow.clock()
+                        animation.finish(progress)
                         logger.info('[FLOW][PROGRESS] turn inputs complete; waiting for next positive battle state')
                 if state==S.BATTLE_RESULT:
                     logger.info('Battle Finished');return True
                 if state==S.DEFEATED:
                     self.defeated=True;logger.warning('Battle Defeated')
                     schedule.checkDefeated();return False
+                if state in {S.UNKNOWN,S.LOADING} and animation.eligible:
+                    if flow.clock()-animation.finished>=self.animationHardTimeout:
+                        flow.fail(FlowTimeout,'TIMEOUT post-card animation hard',{S.TURN_BEGIN,S.BATTLE_RESULT,S.DEFEATED},flow.clock()-animation.finished)
+                    if animation.activity(getattr(flow.detect,'im',None),observation.capture_sequence):
+                        progress=flow.clock()
+                        logger.info('[FLOW][ANIMATION_WAIT] fresh central activity; episode age=%.2fs; hard=%.2fs',progress-animation.finished,self.animationHardTimeout)
                 if state==S.SPECIAL_MODAL:
                     schedule.checkKizunaReisou()
                     flow.action('close_special_battle_modal',lambda:fgoDevice.device.press('\x1B'))
