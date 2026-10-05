@@ -326,3 +326,10 @@ class ZoomedWorldMapTests(unittest.TestCase):
         frame._crop.side_effect=crop
         with patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('',float('nan'))):self.assertEqual(ec.worldMapItems(frame,labels),labels)
         self.assertGreater(frame._crop.call_count,0)
+    def test_lower_zoomed_plaque_short_text_band_excludes_arrow_contamination(self):
+        labels=self.labels()[:3]+[item('NEW新选组屯所',360,447,w=143,h=22)]
+        frame=Mock();frame.isMainInterface.return_value=True;frame._crop.return_value=__import__('numpy').zeros((32,114,3),dtype='uint8')
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[('',float('nan'))]*16+[('下一个',.975),('下一个',.970)]):
+            verified=ec.worldMapItems(frame,labels)
+        self.assertEqual(event.findNextEventArea(verified)['title'],'NEW新选组屯所')
+        frame._crop.assert_called_with((376,295,490,327))

@@ -216,8 +216,9 @@ def worldMapItems(d,items):
         if area.score<.85 or not 200<y<560 or not 200<x<1080 or not 2<=len(event._text(area))<=12:continue
         # The yellow marker bounces vertically. These bounded text bands
         # cover its observed range; every candidate still needs two reads.
-        for offset in (233,243,223,253,213,193,183,173):
-            rect=(x-55,y-offset,x+59,y-offset+46)
+        bands=[(offset,46) for offset in (233,243,223,253,213,193,183,173)]+[(163,32)]
+        for offset,height in bands:
+            rect=(x-55,y-offset,x+59,y-offset+height)
             if rect[0]<0 or rect[1]<0 or rect[2]>1280 or rect[3]>720:continue
             crop=d._crop(rect)
             a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
