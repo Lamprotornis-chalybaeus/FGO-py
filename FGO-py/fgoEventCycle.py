@@ -261,7 +261,14 @@ def earnedReceiptItems(d,items):
     import cv2
     i=amount[0];rect=(i.box[0]+1,i.box[1]+2,i.box[2]-1,i.box[3]-6)
     crop=d._crop(rect);a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
-    if min(float(sa),float(sb))<.85 or event.normalizeText(a)!=event.normalizeText(b) or event.normalizeText(a)!=event._text(i):return items
+    if event.normalizeText(a)!=event.normalizeText(b) or event.normalizeText(a)!=event._text(i):return items
+    if min(float(sa),float(sb))<.85:
+        # Real awarded uniform lettering loses confidence in the tight crop.
+        # One padded text read, still requiring unchanged complete name/amount
+        # on both scales. This is not a lower threshold or a click retry.
+        rect=(max(0,i.box[0]-16),max(0,i.box[1]-11),min(1280,i.box[2]+16),min(720,i.box[3]+8))
+        crop=d._crop(rect);a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
+        if min(float(sa),float(sb))<.85 or event.normalizeText(a)!=event.normalizeText(b) or event.normalizeText(a)!=event._text(i):return items
     return [j for j in items if j is not i]+[event.OcrItem(a,rect,min(float(sa),float(sb)))]
 
 

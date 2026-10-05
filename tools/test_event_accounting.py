@@ -269,3 +269,17 @@ class ConstrainedPartyReviewTests(unittest.TestCase):
             with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=readings):self.assertEqual(ec.partyReviewItems(frame,labels),labels)
         with patch.object(ec.OCR.ZHS,'ocr_single_line') as ocr:
             self.assertEqual(ec.partyReviewItems(frame,labels[1:]),labels[1:]);ocr.assert_not_called()
+
+class UniformAwardReceiptTests(unittest.TestCase):
+    def labels(self):
+        return [item('任务完成',199,73,w=384,h=115),item('获得报酬',713,76,w=386,h=111),item('获得浅葱的队服×1！',361,496,w=563,h=61,score=.828),item('请点击游戏界面',505,627,w=271,h=44)]
+    def test_one_padded_read_keeps_real_name_amount_and_threshold(self):
+        frame=Mock();frame._crop.return_value=__import__('numpy').zeros((61,563,3),dtype='uint8')
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[('获得浅葱的队服×1！',.839),('获得浅葱的队服×1！',.838),('获得浅葱的队服×1！',.869),('获得浅葱的队服×1！',.874)]) as ocr:
+            labels=ec.earnedReceiptItems(frame,self.labels())
+        self.assertEqual(ocr.call_count,4);self.assertIsNotNone(event.findEventRewardReceipt(labels))
+        frame._crop.assert_called_with((345,485,940,565))
+    def test_padded_name_amount_disagreement_still_blocks(self):
+        frame=Mock();frame._crop.return_value=__import__('numpy').zeros((61,563,3),dtype='uint8')
+        for second in ([('获得浅葱的队服×2！',.99)]*2,[('获得浅葱的队服×1！',.99),('获得浅葱的队服×1！',.84)]):
+            with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[('获得浅葱的队服×1！',.839)]*2+second):self.assertIsNone(event.findEventRewardReceipt(ec.earnedReceiptItems(frame,self.labels())))

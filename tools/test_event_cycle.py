@@ -1031,7 +1031,7 @@ class EarnedReceiptGlowTests(unittest.TestCase):
     def test_missing_header_disagreement_or_wrong_amount_still_block(self):
         import numpy
         labels=self.labels();d=Mock(_crop=Mock(return_value=numpy.zeros((62,507,3),dtype='uint8')))
-        for output in ([('获得白银果实×1！',.99),('获得白银果实×2！',.99)],[('获得白银果实×2！',.99),('获得白银果实×2！',.99)],[('获得白银果实×1！',.99),('获得白银果实×1！',.84)]):
+        for output in ([('获得白银果实×1！',.99),('获得白银果实×2！',.99)],[('获得白银果实×2！',.99),('获得白银果实×2！',.99)],[('获得白银果实×1！',.99),('获得白银果实×1！',.84)]*2):
             with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=output):self.assertIsNone(event.findEventRewardReceipt(ec.earnedReceiptItems(d,labels)))
         d._crop.reset_mock();self.assertEqual(ec.earnedReceiptItems(d,labels[1:]),labels[1:]);d._crop.assert_not_called()
 
