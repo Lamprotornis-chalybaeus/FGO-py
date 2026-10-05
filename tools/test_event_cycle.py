@@ -962,3 +962,113 @@ class QuestCloseCropTests(unittest.TestCase):
         d._crop.assert_called_once_with((275,647,373,687))
         with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[('关闭',.992),('关闭',.84)]):
             self.assertIsNone(event.findEventQuestInfoClose(ec.questInfoItems(d,labels)))
+
+
+class DroppedCeOutlinedZeroTests(unittest.TestCase):
+    def labels(self):return [item('概念礼装',589,596,w=98,h=30),item('生命值',745,600,w=60,h=34),item('请点击游戏界面',508,672,w=267,h=40)]
+    def test_strong_matching_digit_fallback_recognizes_already_awarded_card(self):
+        import numpy
+        d=Mock(_crop=Mock(return_value=numpy.zeros((40,100,3),dtype='uint8')))
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[('0',.728),('0',.595),('请点击游戏界面',.997),('请点击游戏界面',.998)]),patch.object(ec.OCR.EN,'ocr_single_line',side_effect=[('0',.972),('0',.963)]):
+            self.assertEqual(event.classifyEventState(ec.itemReceiptItems(d,self.labels())),'item_receipt')
+    def test_digit_disagreement_or_low_score_does_not_create_receipt(self):
+        import numpy
+        for output in ([('0',.97),('8',.99)],[('0',.97),('0',.84)]):
+            d=Mock(_crop=Mock(return_value=numpy.zeros((40,100,3),dtype='uint8')))
+            with patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('0',.7)),patch.object(ec.OCR.EN,'ocr_single_line',side_effect=output):
+                self.assertIsNone(event.findEventItemReceipt(ec.itemReceiptItems(d,self.labels())))
+
+
+class EventReceiptSettlementResumeTests(unittest.TestCase):
+    def test_positive_continue_flag_has_producer(self):
+        self.assertEqual(event.classifyEventState([],{'battle_continue':True}),'continue')
+    def test_friend_request_or_continue_resumes_shared_settlement_without_entry(self):
+        from test_battle_cycle import Scenario
+        for initial in ('ADD_FRIEND','CONTINUE'):
+            scenario=Scenario();scenario.state=initial
+            runner=ec.EventRunner(ec.EventResourcePolicy(allowApples=False),ledger=Mock());runner.clock=scenario
+            flow=BattleFlow(scenario.read,scenario,clock=scenario,trace=FlowTrace(clock=scenario))
+            runner.main.makeFlow=Mock(return_value=flow);runner.main.battleClass=Mock()
+            def read():
+                d=scenario.read();d.getAp=lambda:184
+                return d,[],{'ADD_FRIEND':'friend_request','CONTINUE':'continue','QUEST_READY':'event_map'}.get(scenario.state,'unknown')
+            runner.read=read
+            with patch.object(ec,'schedule',scenario),patch.object(ec.fgoDevice.device,'press',side_effect=scenario.press):
+                self.assertEqual(runner.runBattle()[2],'event_map')
+            runner.main.battleClass.assert_not_called()
+            self.assertEqual((runner.main.startedBattles,runner.main.completedAttempts,runner.settledResumes),(0,0,1))
+            self.assertEqual(scenario.actions,[('ADD_FRIEND','X'),('CONTINUE','F')] if initial=='ADD_FRIEND' else [('CONTINUE','F')])
+
+
+class EventFirstClearLoadingTests(unittest.TestCase):
+    def scenario(self,limit=None,arrive=25):
+        clock=Clock();pressed=[]
+        def read():return frame('ADD_FRIEND' if not pressed else 'LOADING' if clock.now<arrive else 'UNKNOWN')
+        flow=BattleFlow(read,clock,clock=clock,trace=FlowTrace(clock=clock))
+        cycle=BattleCycle(Mock(press=lambda k:pressed.append(k)),flow)
+        kwargs={} if limit is None else {'friendCloseTimeout':limit}
+        try:result=cycle.settleBattleResult(boundary=lambda d:bool(pressed and clock.now>=arrive),**kwargs);error=None
+        except ec.ScriptStop as e:result=None;error=e
+        return clock,pressed,result,error
+    def test_event_uses_remaining_hard_budget_for_proven_first_clear_loading(self):
+        clock,inputs,result,error=self.scenario(60)
+        self.assertIsNone(error);self.assertEqual(inputs,['X']);self.assertEqual(result.state,ec.S.UNKNOWN);self.assertGreaterEqual(clock.now,25)
+    def test_default_stays_twenty_and_extension_never_exceeds_sixty_hard_limit(self):
+        clock,inputs,result,error=self.scenario()
+        self.assertIsInstance(error,ec.FlowTimeout);self.assertLess(clock.now,21);self.assertEqual(inputs,['X'])
+        clock,inputs,result,error=self.scenario(180,arrive=80)
+        self.assertIsInstance(error,ec.FlowTimeout);self.assertLess(clock.now,61);self.assertEqual(inputs,['X'])
+
+
+class EarnedReceiptGlowTests(unittest.TestCase):
+    def labels(self):return [item('任务完成',200,76,w=381,h=111),item('获得报酬',717,76,w=382,h=111),item('获得白银果实×1！',387,491,w=509,h=70,score=.844),item('请点击游戏界面',505,627,w=271,h=44)]
+    def test_local_matching_amount_restores_receipt_never_ap_recovery(self):
+        import numpy
+        d=Mock(_crop=Mock(return_value=numpy.zeros((62,507,3),dtype='uint8')))
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[('获得白银果实×1！',.916),('获得白银果实×1！',.915)]):
+            labels=ec.earnedReceiptItems(d,self.labels());self.assertEqual(event.classifyEventState(labels),'reward_receipt');ec.QuartzGuard.check(labels)
+        d._crop.assert_called_once_with((388,493,895,555))
+    def test_missing_header_disagreement_or_wrong_amount_still_block(self):
+        import numpy
+        labels=self.labels();d=Mock(_crop=Mock(return_value=numpy.zeros((62,507,3),dtype='uint8')))
+        for output in ([('获得白银果实×1！',.99),('获得白银果实×2！',.99)],[('获得白银果实×2！',.99),('获得白银果实×2！',.99)],[('获得白银果实×1！',.99),('获得白银果实×1！',.84)]):
+            with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=output):self.assertIsNone(event.findEventRewardReceipt(ec.earnedReceiptItems(d,labels)))
+        d._crop.reset_mock();self.assertEqual(ec.earnedReceiptItems(d,labels[1:]),labels[1:]);d._crop.assert_not_called()
+
+
+class MissionBottomAlignmentTests(unittest.TestCase):
+    def test_visible_target_at_bottom_is_aligned_before_numeric_seek_budget(self):
+        labels=MissionLookupTests().labels();bottom=[i for i in labels if i.text not in ('编号11','击败20个敌人','目标进行度','0/20')]+[item('编号11',1145,549,w=65)]
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock());runner.read=Mock(side_effect=[(Mock(),bottom,'mission_list')]*3+[(Mock(),labels,'mission_list')]*3);runner.wait=Mock(return_value=(Mock(),labels,'mission_list'))
+        with patch.object(ec.daily,'_menuSwipe') as swipe:result=runner.seekMission(11)
+        swipe.assert_called_once_with((1000,550),(1000,400));self.assertEqual(result[3]['mission'],11)
+    def test_bottom_identity_changes_no_scroll(self):
+        labels=MissionLookupTests().labels();bottom=[i for i in labels if i.text!='编号11']+[item('编号11',1145,549,w=65)]
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock());runner.read=Mock(side_effect=[(Mock(),bottom,'mission_list'),(Mock(),[],'unknown')])
+        with patch.object(ec.daily,'_menuSwipe') as swipe,self.assertRaises(ec.ScriptStop):runner.seekMission(11)
+        swipe.assert_not_called()
+
+class MissionLostSlashCropTests(unittest.TestCase):
+    def test_digit_blob_must_be_reread_with_real_slash_not_split_by_guess(self):
+        import numpy
+        labels=[i if i.text!='0/20' else item('720',605,400,w=70,score=.89) for i in MissionLookupTests().labels()]
+        d=Mock(_crop=Mock(return_value=numpy.zeros((30,70,3),dtype='uint8')))
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('7/20',.97)):
+            self.assertEqual(event.findMissionCard(ec.missionProgressItems(d,labels),11)['progress'],'7/20')
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('720',.99)):
+            self.assertIsNone(event.findMissionCard(ec.missionProgressItems(d,labels),11))
+
+
+class MissionProgressLabelCropTests(unittest.TestCase):
+    def test_label_requires_two_matching_strong_reads(self):
+        import numpy
+        labels=[i if i.text!='目标进行度' else item('目标进行度',617,364,w=105,score=.846) for i in MissionLookupTests().labels()]
+        d=Mock(_crop=Mock(return_value=numpy.zeros((26,105,3),dtype='uint8')))
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[('目标进行度',.895),('目标进行度',.896)]):
+            self.assertIsNotNone(event.findMissionCard(ec.missionProgressItems(d,labels),11))
+        for output in ([('目标进行度',.99),('自标进行度',.99)],[('目标进行度',.99),('目标进行度',.84)]):
+            with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=output):
+                self.assertIsNone(event.findMissionCard(ec.missionProgressItems(d,labels),11))
+    def test_no_proved_mission_list_no_crop(self):
+        d=Mock();labels=[item('目标进行度',617,364,w=105,score=.846)]
+        self.assertEqual(ec.missionProgressItems(d,labels),labels);d._crop.assert_not_called()

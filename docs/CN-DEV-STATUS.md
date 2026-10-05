@@ -70,7 +70,7 @@ The battle-cycle state machine was merged into `cn-dev` by fast-forward to `5e6b
 
 ## Event reward / Mission diagnostics (unmerged candidate)
 
-The event feature has 715 passing offline cases (three existing local integration
+The event feature has 728 passing offline cases (three existing local integration
 skips). Observed CE receipts/details, event tutorials and one completed non-choice
 Mission reward have dedicated producers. Interruptions and recoveries remain
 diagnostic evidence, not clean event gates. Main-quest Mission/FQ mapping and
@@ -83,3 +83,23 @@ material/quest-information producers. Unknown enemy information is not treated
 as a Mission mapping. All private snapshots, OCR output and ledgers remain
 local. A user-authorized limited Free Quest experiment is diagnostic evidence,
 not proof of a generic Mission solver or uninterrupted main-node gates.
+
+
+## 2026-10-05 bounded Free Quest diagnostics
+
+One explicitly authorized experimental Free Quest battle won in six turns.
+Its settlement required recovery after three bounded timeouts: a dropped CE
+receipt, a friend request after the CE detail, and a first-clear loading path.
+This is recovered evidence, not a clean full-node gate. Subsequent receipt and
+friend/continue producers preserve single-input rules. Event friend-request
+closure may use the remainder of the existing 60-second settlement hard budget;
+the ordinary default remains 20 seconds and the parent deadline is unchanged.
+
+A locally observed Mission counter advanced, establishing evidence for this
+specific experiment, not a generic enemy-attribute solver. The counter's slash
+can be lost by OCR; numeric blobs are never split by guess. Weak progress labels
+and counters require matching two-scale local reads at the unchanged threshold.
+A proved numbered card clipped at the bottom permits one stable alignment
+scroll, then complete condition/progress proof is still required. Private raw
+frames, labels, receipts and ledger stay local. Further live trial results are
+pending; clean story/battle/three-node/ten-node event gates are not certified.

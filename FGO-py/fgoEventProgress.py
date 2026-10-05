@@ -340,6 +340,7 @@ def classifyEventState(items,flags=None):
     if flags.get('ap_empty'):return 'ap_empty'
     if flags.get('defeated'):return 'battle_defeated'
     if flags.get('friend_request'):return 'friend_request'
+    if flags.get('battle_continue'):return 'continue'
     if _unsafeEventOverlay(items):return 'unsafe_modal'
     if missionRewardReceipt(items):return 'mission_reward_receipt'
     if findMissionItemInfoClose(items):return 'item_information'
@@ -536,6 +537,7 @@ def _detectFlags(detect):
         'ap_empty':getattr(detect,'isApEmpty',lambda:False)(),
         'defeated':getattr(detect,'isBattleDefeated',lambda:False)(),
         'friend_request':getattr(detect,'isAddFriend',lambda:False)(),
+        'battle_continue':getattr(detect,'isBattleContinue',lambda:False)(),
     }
 
 def _readScreen(detect):return ocrScreen(detect.im)

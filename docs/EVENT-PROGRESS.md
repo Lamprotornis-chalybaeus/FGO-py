@@ -36,7 +36,7 @@ party review page. These are retained historical diagnostics, not successful
 main-node gates. Each repair has synthetic regressions; private raw frames and
 trace files are not published or included in CI artifacts.
 
-The current offline suite passes 715 cases, with the original three explicitly
+The current offline suite passes 728 cases, with the original three explicitly
 local integration skips. Full event battle, three-node and ten-node acceptance
 must be reported from actual local runs. A general Mission-to-Free-Quest mapping,
 real AP-item selector validation remain incomplete. Completed non-choice Mission claims have initial live evidence,
@@ -137,3 +137,23 @@ The actual Mission condition and unknown enemy inventory are private evidence.
 A generic Mission-to-quest mapping is still not established. An explicitly
 authorized bounded live battle experiment is kept separate from an automatically
 selected, positively mapped Mission route; it cannot certify a generic solver.
+
+
+## 2026-10-05 bounded Free Quest diagnostics
+
+One explicitly authorized experimental Free Quest battle won in six turns.
+Its settlement required recovery after three bounded timeouts: a dropped CE
+receipt, a friend request after the CE detail, and a first-clear loading path.
+This is recovered evidence, not a clean full-node gate. Subsequent receipt and
+friend/continue producers preserve single-input rules. Event friend-request
+closure may use the remainder of the existing 60-second settlement hard budget;
+the ordinary default remains 20 seconds and the parent deadline is unchanged.
+
+A locally observed Mission counter advanced, establishing evidence for this
+specific experiment, not a generic enemy-attribute solver. The counter's slash
+can be lost by OCR; numeric blobs are never split by guess. Weak progress labels
+and counters require matching two-scale local reads at the unchanged threshold.
+A proved numbered card clipped at the bottom permits one stable alignment
+scroll, then complete condition/progress proof is still required. Private raw
+frames, labels, receipts and ledger stay local. Further live trial results are
+pending; clean story/battle/three-node/ten-node event gates are not certified.
