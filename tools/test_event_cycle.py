@@ -357,7 +357,7 @@ class EventContractTests(unittest.TestCase):
         d._crop.return_value=__import__('numpy').zeros((46,114,3),dtype='uint8')
         with patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('下一个',.99)):
             self.assertIsNotNone(event.findNextEventArea(ec.worldMapItems(d,labels)))
-        with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[('下一个',.99),('下一个',.84)]*5):
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[('下一个',.99),('下一个',.84)]*8):
             self.assertIsNone(event.findNextEventArea(ec.worldMapItems(d,labels)))
     def test_world_map_area_requires_three_proofs_then_one_safe_area_touch(self):
         labels=self.worldMap();runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock())

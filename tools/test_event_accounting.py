@@ -299,3 +299,21 @@ class AwardedUniformNoticeTests(unittest.TestCase):
         runner.touch.assert_called_once_with(labels,(640,562),'advance_event_instructions')
         with self.assertRaises(ec.ScriptStop):runner.advanceTutorial(None,labels)
         self.assertEqual(runner.touch.call_count,1)
+
+class ZoomedWorldMapTests(unittest.TestCase):
+    def labels(self):
+        return [item('管理室',70,25,w=80),item('活动报酬',1125,13,w=120),item('菜单',1148,633,w=77),item('京都城区',757,260,w=84,h=27)]
+    def test_shorter_actual_marker_plaque_separation_still_needs_two_strong_reads(self):
+        frame=Mock();frame.isMainInterface.return_value=True;frame._crop.return_value=__import__('numpy').zeros((46,114,3),dtype='uint8')
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[('',float('nan'))]*10+[('下一个',.983),('下一个',.978)]):
+            labels=ec.worldMapItems(frame,self.labels())
+        self.assertEqual(event.findNextEventArea(labels)['title'],'京都城区')
+        self.assertEqual(event.classifyEventState(labels,{'main_interface':True}),'event_world_map')
+        self.assertIsNone(event.findNextEventArea(self.labels()))
+    def test_marker_alone_duplicate_plaque_or_low_score_does_not_authorize_area(self):
+        marker=item('下一个',744,80,w=114,h=46)
+        labels=self.labels()+[marker]
+        self.assertIsNotNone(event.findNextEventArea(labels))
+        self.assertIsNone(event.findNextEventArea(labels+[item('别的区域',758,275,w=82)]))
+        self.assertIsNone(event.findNextEventArea([marker]))
+        self.assertIsNone(event.findNextEventArea(self.labels()+[item('下一个',744,80,w=114,h=46,score=.84)]))

@@ -360,7 +360,7 @@ def eventWorldMapControls(items):
 
 def findNextEventArea(items):
     if not eventWorldMapControls(items):return None
-    markers=[i for i in items if float(i.score)>=.85 and _text(i)=='下一个' and 150<_center(i)[1]<450]
+    markers=[i for i in items if float(i.score)>=.85 and _text(i)=='下一个' and 70<_center(i)[1]<450]
     if len(markers)!=1:return None
     x,y=_center(markers[0])
     areas=[i for i in items if float(i.score)>=.85 and 2<=len(_text(i))<=12 and abs(_center(i)[0]-x)<45 and 120<_center(i)[1]-y<300]
