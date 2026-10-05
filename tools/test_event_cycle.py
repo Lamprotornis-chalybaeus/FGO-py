@@ -170,7 +170,7 @@ class EventContractTests(unittest.TestCase):
         runner.read=Mock(side_effect=[(Mock(),labels,'mission_list')]*3+[(Mock(),after,'mission_list')]*3);runner.touch=Mock()
         self.assertEqual(runner.claimCompletedMission()[2],'mission_list')
         self.assertEqual(runner.claimed,1);self.assertEqual(runner.read.call_count,6)
-        runner.touch.assert_called_once_with(labels,(900,324),'claim_completed_event_mission')
+        runner.touch.assert_called_once_with(labels,(890,272),'claim_completed_event_mission')
     def test_mission_card_ocr_miss_resets_three_frame_confirmation_without_click(self):
         labels=self.missionList();after=[i for i in self.missionList(1) if i.text!='可领取'];clock=Clock()
         runner=ec.EventRunner(ec.EventResourcePolicy(),autoClaim=True,ledger=Mock(),clock=clock)

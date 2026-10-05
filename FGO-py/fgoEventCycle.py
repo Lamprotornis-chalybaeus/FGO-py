@@ -5,7 +5,7 @@ explicitly supply EventResourcePolicy to enable this development runner.
 """
 from dataclasses import dataclass
 from pathlib import Path
-import hashlib,json,re,time
+import hashlib,json,re,time,uuid
 
 import fgoDevice
 import fgoEventProgress as event
@@ -24,11 +24,22 @@ class EventCaptureError(ScriptStop):
 
 @dataclass(frozen=True)
 class EventResourcePolicy:
-    allowApples:bool=True
+    allowApples:bool=False
     allowQuartz:bool=False
     allowTemporaryAutoFormation:bool=False
     def __post_init__(self):
         if self.allowQuartz:raise ValueError('Event QuartzGuard cannot be disabled')
+
+
+@dataclass(frozen=True)
+class RecoveredBattleOutcome:
+    won:bool
+    evidence:str
+    turns:int|None=None
+    battleTime:float|None=None
+    newEntry:bool=False
+    def __post_init__(self):
+        if self.newEntry:raise ValueError('Recovered outcome cannot create an entry')
 
 
 class QuartzGuard:
@@ -48,7 +59,7 @@ class QuartzGuard:
                 raise ScriptStop('Unverified informational close')
             return
         text=cls.text(items)
-        if any(v in text for v in ('请选择奖励','奖励选择','选择奖励','二选一','任选')):
+        if any(v in text for v in ('请选择奖励','奖励选择','选择奖励','二选一','任选','兑换选择')):
             raise ScriptStop('Event reward choice: no automatic selection')
         if not cls.resourceContext(items):return
         if appleOption is not None:
@@ -451,6 +462,11 @@ class EventMain(kernel.Main):
         super().__init__(appleTotal=0,appleKind=0,**kwargs)
         self.runner=runner
         self.teamIndex=0;self.autoFormation=False
+    def startQuest(self):
+        self.runner.ledger.append('battle_start_intent',entryId=self.runner.activeEntryId)
+        result=super().startQuest()
+        self.runner.recordEntryStart('start_input_sent',questKind=self.runner.activeQuestKind)
+        return result
     def eatApple(self):
         # Shared preparation must never enter the legacy coordinate resource
         # sequence, even if an AP modal unexpectedly interrupts preparation.
@@ -531,6 +547,56 @@ class EventRunner:
         self.main=EventMain(self,friendPolicy=friendPolicy,friendMaxRefresh=friendMaxRefresh)
         self.completed=0;self.storySegments=0;self.claimed=0;self.apples={};self.captureFailures=0;self.settledResumes=0
         self.last=None;self.flow=None;self.seenItemReceipts=[];self.seenTutorials=set()
+        self.activeEntryId=None;self.activeQuestKind='main'
+        self.cleanNodes=0;self.recoveredNodes=0;self.storyNodes=0;self.battleNodes=0;self.MissionGates=0
+        self._entryIds={r['entryId'] for r in self.records() if r.get('kind')=='battle_started' and r.get('entryId')}
+        outcomes=[r for r in self.records() if r.get('kind')=='battle_outcome' and r.get('entryId')]
+        ids=[r['entryId'] for r in outcomes]
+        if len(ids)!=len(set(ids)):raise ValueError('Duplicate event battle outcome in ledger')
+        if any(r['entryId'] not in self._entryIds or r.get('mode') not in ('normal','recovered') or not isinstance(r.get('won'),bool) for r in outcomes):raise ValueError('Orphan or invalid event battle outcome in ledger')
+        self._outcomeIds=set(ids)
+        self.newBattleEntries=len(self._entryIds)
+        self.normalCompletedBattles=sum(r.get('mode')=='normal' for r in outcomes)
+        self.recoveredCompletedBattles=sum(r.get('mode')=='recovered' for r in outcomes)
+        self.eventWins=sum(r.get('won') is True for r in outcomes)
+        self.eventDefeats=sum(r.get('won') is False for r in outcomes)
+        self.FreeQuestBattles=sum(r.get('questKind')=='free' for r in self.records() if r.get('kind')=='battle_started')
+    def records(self):
+        data=getattr(self.ledger,'data',None)
+        return data['records'] if isinstance(data,dict) and isinstance(data.get('records'),list) else []
+    def pendingBattleEntries(self):
+        starts={r['entryId']:r for r in self.records() if r.get('kind')=='battle_started' and r.get('entryId')}
+        return [row for key,row in starts.items() if key not in self._outcomeIds]
+    def recordEntryStart(self,evidence,*,questKind='main'):
+        if not self.activeEntryId:raise ScriptStop('Battle start has no durable intent')
+        if self.activeEntryId in self._entryIds:return
+        self.ledger.append('battle_started',entryId=self.activeEntryId,evidence=evidence,questKind=questKind)
+        self._entryIds.add(self.activeEntryId);self.newBattleEntries+=1
+        if questKind=='free':self.FreeQuestBattles+=1
+    def recordEventOutcome(self,entryId,won,mode,*,evidence,turns=None,battleTime=None):
+        if mode not in ('normal','recovered') or not isinstance(won,bool):raise ValueError('Invalid event outcome mode/result')
+        if entryId in self._outcomeIds:return None
+        if entryId not in self._entryIds:raise ScriptStop('Outcome has no unique started entry')
+        outcome=RecoveredBattleOutcome(won,evidence,turns,battleTime) if mode=='recovered' else None
+        self.ledger.append('battle_outcome',entryId=entryId,mode=mode,won=won,evidence=evidence,turns=turns,battleTime=battleTime,newEntry=False)
+        self._outcomeIds.add(entryId)
+        if mode=='recovered':self.recoveredCompletedBattles+=1
+        else:self.normalCompletedBattles+=1
+        if won:self.eventWins+=1
+        else:self.eventDefeats+=1
+        return outcome
+    def recoverBattleOutcome(self):
+        pending=self.pendingBattleEntries()
+        if len(pending)>1:raise ScriptStop('Ambiguous unresolved event battles; no settlement input')
+        if not pending:return None
+        previous=None
+        for _ in range(3):
+            d,items,state=self.read()
+            page=d.getBattleResultPage() if state=='battle_result' and d.isBattleFinished() else None
+            if page not in {'BOND','BOND_LEVEL_UP','MASTER_EXP','REWARDS'}:raise ScriptStop('Fresh terminal result proof absent; no recovered win')
+            if previous is not None and page!=previous:raise ScriptStop('Terminal result changed during recovery proof; no input')
+            previous=page
+        return self.recordEventOutcome(pending[0]['entryId'],True,'recovered',evidence='three fresh CN result frames: '+previous)
     def read(self):
         schedule.checkStop();schedule.checkSuspend()
         try:d=self.reader()
@@ -858,26 +924,31 @@ class EventRunner:
         self.seenTutorials.add(key)
         self.touch(items,position,'advance_event_instructions')
         return self.wait({'event_map','event_world_map','story','event_tutorial','mission_list','item_detail'},timeout=30,deadline=deadline,accept=lambda d,labels,state:state!='event_tutorial' or event.eventTutorialKey(labels)!=key)
-    def claimCompletedMission(self):
+    def claimCompletedMission(self,number=None):
         if not self.autoClaim:raise ScriptStop('Completed Mission claim policy disabled')
         previous=None;stable=0;end=self.clock()+15
         while self.clock()<end:
-            d,items,state=self.read();card=event.findCompletedMissionCard(items) if state=='mission_list' else None
+            d,items,state=self.read();card=(event.findCompletedMissionCard(items,number) if number is not None else event.findCompletedMissionCard(items)) if state=='mission_list' else None
+            requirement=event.findMissionCard(items,number) if number is not None and state=='mission_list' else None
+            if number is not None and (card is None or card['mission']!=int(number) or requirement is None or requirement['progress']!=f"{card['progress'][0]}/{card['progress'][1]}"):
+                card=None
             if card is None:
                 if state not in ('unknown','mission_list'):raise ScriptStop('Mission claim foreground changed; no input')
                 stable=0;previous=None;schedule.sleep(.2);continue
-            before=event.missionCompletedCount(items);identity=(card['mission'],card['progress'],before,card['position'])
-            same=previous is not None and identity[:3]==previous[:3] and max(abs(a-b) for a,b in zip(identity[3],previous[3]))<=6
+            before=event.missionCompletedCount(items);identity=(card['mission'],card['progress'],before,card['position'],requirement['condition'] if requirement else None)
+            same=previous is not None and identity[:3]==previous[:3] and identity[4]==previous[4] and max(abs(a-b) for a,b in zip(identity[3],previous[3]))<=6
             stable=stable+1 if same else 1;previous=identity
             if stable>=3:break
         else:raise ScriptStop('Completed Mission card transient; no claim')
-        self.ledger.append('mission_claim_intent',mission=card['mission'],title=card['title'],beforeCount=before)
+        self.ledger.append('mission_claim_intent',mission=card['mission'],title=card['title'],beforeCount=before,progress=card['progress'],condition=requirement['condition'] if requirement else None)
         self.touch(items,card['position'],'claim_completed_event_mission')
         end=self.clock()+30;stable=0
         while self.clock()<end:
             d,items,state=self.read()
             if state in ('reward_receipt','item_receipt'):
                 d,items,state=self.handleRewardReceipt(d,items)
+            elif state=='item_information':
+                d,items,state=self.closeMissionItemInfo(d,items)
             elif state=='mission_reward_receipt':
                 proof=event.missionRewardReceipt(items)
                 if proof is None or proof['beforeCount']!=before:
@@ -886,12 +957,12 @@ class EventRunner:
                 # The receipt handler already proved three incremented frames.
                 if state!='mission_list' or event.missionCompletedCount(items)!=before+1:
                     raise ScriptStop('Mission receipt returned without proved increment')
-                self.claimed+=1;self.ledger.append('mission_claim',mission=card['mission'],title=card['title'],beforeCount=before,afterCount=before+1,choice=False)
+                self.claimed+=1;self.ledger.append('mission_claim',mission=card['mission'],title=card['title'],beforeCount=before,afterCount=before+1,choice=False,beforeProgress=card['progress'],claimed=True,reward=proof['reward'])
                 return d,items,state
             count=event.missionCompletedCount(items) if state=='mission_list' else None
             stable=stable+1 if count is not None and count==before+1 else 0
             if stable>=3:
-                self.claimed+=1;self.ledger.append('mission_claim',mission=card['mission'],title=card['title'],beforeCount=before,afterCount=count,choice=False)
+                self.claimed+=1;self.ledger.append('mission_claim',mission=card['mission'],title=card['title'],beforeCount=before,afterCount=count,choice=False,beforeProgress=card['progress'],claimed=True)
                 return d,items,state
             if state in ('unsafe_modal','battle_defeated'):raise ScriptStop('Mission claim stopped: '+state)
             schedule.sleep(.2)
@@ -1095,12 +1166,15 @@ class EventRunner:
                 self.ledger.append('apple',item=name,beforeAP=before,afterAP=self.ap(after));return
             schedule.sleep(.2)
         raise ScriptStop('Apple confirmation unproven')
-    def runBattle(self):
+    def runBattle(self,*,questKind='main'):
+        if questKind not in ('main','free'):raise ValueError('Unknown event quest kind')
         main=self.main;flow=main.makeFlow();self.flow=flow;cycle=BattleCycle(main,flow)
         token=INPUT_OBSERVER.set(flow.deviceInput)
         try:
             d,items,state=self.read();QuartzGuard.check(items)
             if state in ('battle_result','friend_request','continue'):
+                if state=='battle_result':self.recoverBattleOutcome()
+                elif len(self.pendingBattleEntries())>1:raise ScriptStop('Ambiguous unresolved event battles; no settlement input')
                 cycle.settleBattleResult(boundary=self.eventBoundary,friendCloseTimeout=60)
                 if flow.observation.state==S.CONTINUE:
                     flow.action('decline_event_repeat',lambda:main.press('F'))
@@ -1111,20 +1185,31 @@ class EventRunner:
                 self.ledger.append('settlement_resume',nextState=outcome[2],newBattleEntry=False)
                 return outcome
             if state not in ('support','formation','battle'):raise ScriptStop('Unverified event battle entry')
+            self.activeQuestKind=questKind
+            pending=self.pendingBattleEntries()
+            if len(pending)>1:raise ScriptStop('Ambiguous unresolved event battles; no new entry')
+            resumed=state=='battle' and len(pending)==1
+            if pending and not resumed:raise ScriptStop('Unresolved prior battle; no new entry')
+            self.activeEntryId=pending[0]['entryId'] if resumed else uuid.uuid4().hex
+            if not resumed:self.ledger.append('battle_intent',entryId=self.activeEntryId,questKind=questKind)
             if not cycle.prepare():raise ScriptStop('Event preparation stopped')
+            self.recordEntryStart('fresh TURN_BEGIN',questKind=questKind)
             main.startedBattles+=1;main.battleCount=main.startedBattles
             flow.trace.battle_sequence=main.startedBattles
             battle=main.battleClass();battle.flow=flow;main.battleProc=battle
             try:won=battle()
             except ScriptStop:
                 if battle.defeated:
-                    main.recordCompleted(False,battle.result);main.emitCompleted(False,battle.result)
+                    if not resumed:main.recordCompleted(False,battle.result);main.emitCompleted(False,battle.result)
+                    self.recordEventOutcome(self.activeEntryId,False,'recovered' if resumed else 'normal',evidence='fresh DEFEATED',turns=None if resumed else battle.result['turn'],battleTime=None if resumed else battle.result['time'])
                 raise
-            main.recordCompleted(won,battle.result)
-            self.ledger.append('battle',won=won,result=battle.result,stats=main.result)
+            if not resumed:main.recordCompleted(won,battle.result)
+            self.recordEventOutcome(self.activeEntryId,won,'recovered' if resumed else 'normal',evidence='fresh battle terminal',turns=None if resumed else battle.result['turn'],battleTime=None if resumed else battle.result['time'])
+            self.ledger.append('battle',entryId=self.activeEntryId,won=won,result=battle.result,stats=main.result,partialResume=resumed)
             if not won:raise ScriptStop('Battle defeated; no revival')
             try:cycle.settleBattleResult(boundary=self.eventBoundary,friendCloseTimeout=60)
-            finally:main.emitCompleted(won,battle.result)
+            finally:
+                if not resumed:main.emitCompleted(won,battle.result)
             if flow.observation.state==S.CONTINUE:
                 flow.action('decline_event_repeat',lambda:main.press('F'))
                 return self.wait({'event_map','event_world_map','story','mission_gate'},timeout=30,accept=lambda d,i,s:s!='mission_gate' or event.findLockedEventMission(i) is not None)
@@ -1155,22 +1240,35 @@ class EventRunner:
                 if state in ('story','story_skip_confirmation','start_confirmation','support','special_formation_offer','formation_settings','formation_review','formation','battle','battle_result'):
                     # Actual in-progress UI proves a resumable entry. A saved
                     # ledger may annotate it, but never causes another tap.
-                    pending={'title':'resumed actual event node','battlesBefore':self.main.completedAttempts,'storyBefore':self.storySegments,'settlementsBefore':self.settledResumes}
+                    pending={'title':'resumed actual event node','battlesBefore':self.normalCompletedBattles+self.recoveredCompletedBattles,'storyBefore':self.storySegments,'settlementsBefore':self.settledResumes,'resumed':True}
                 while self.completed<int(maxNodes):
                     steps+=1
                     if steps>1000 or self.clock()-entryStart>3600:raise ScriptStop('Event bounded node progress exhausted')
-                    if state in ('event_map','event_world_map'):
+                    if state in ('event_map','event_world_map') or state=='mission_gate' and event.findLockedEventMission(items) is not None:
                         if pending:
-                            d,items,state=self.wait({'event_map','event_world_map'},timeout=30)
-                            if self.main.completedAttempts<=pending['battlesBefore'] and self.storySegments<=pending['storyBefore'] and self.settledResumes<=pending['settlementsBefore']:
+                            d,items,state=self.wait({'event_map','event_world_map','mission_gate'},timeout=30,accept=lambda d,i,s:s!='mission_gate' or event.findLockedEventMission(i) is not None)
+                            if self.normalCompletedBattles+self.recoveredCompletedBattles<=pending['battlesBefore'] and self.storySegments<=pending['storyBefore'] and self.settledResumes<=pending['settlementsBefore']:
                                 raise ScriptStop('Event map return has no completed story/battle evidence; node not counted')
                             self.completed+=1
-                            self.ledger.append('node',title=pending['title'],type='battle' if self.main.completedAttempts>pending['battlesBefore'] or self.settledResumes>pending['settlementsBefore'] else 'story',beforeAP=before,afterAP=self.ap(d),apples=dict(self.apples),stats=self.main.result,nextState=state,resumedSettlements=self.settledResumes-pending['settlementsBefore'])
+                            battleNode=self.normalCompletedBattles+self.recoveredCompletedBattles>pending['battlesBefore'] or self.settledResumes>pending['settlementsBefore']
+                            clean=not pending['resumed']
+                            if clean:self.cleanNodes+=1
+                            else:self.recoveredNodes+=1
+                            if battleNode:self.battleNodes+=1
+                            else:self.storyNodes+=1
+                            self.ledger.append('node',title=pending['title'],type='battle' if battleNode else 'story',clean=clean,recovered=not clean,beforeAP=before,afterAP=self.ap(d),apples=dict(self.apples),stats=self.main.result,nextState=state,resumedSettlements=self.settledResumes-pending['settlementsBefore'])
                             pending=None;entryStart=self.clock()
                             if self.completed>=int(maxNodes):break
+                        if state=='mission_gate':
+                            self.MissionGates+=1
+                            proof=event.findLockedEventMission(items)
+                            d,items,state=self.openMissionRequirements(d,items)
+                            d,items,state,card=self.seekMission(proof['mission'])
+                            self.ledger.append('mission_requirement',mission=card['mission'],condition=card['condition'],progress=card['progress'],source='three fresh complete numbered Mission card frames')
+                            return self.report('mission_gate',requirement=card,message='No positively evidenced mapping for the current requirement; no random Free Quest',AP=self.ap(d))
                         if state=='event_world_map':d,items,state=self.openNextArea()
                         d,items,node=self.stableNode();before=self.ap(d)
-                        pending={**node,'battlesBefore':self.main.completedAttempts,'storyBefore':self.storySegments,'settlementsBefore':self.settledResumes}
+                        pending={**node,'battlesBefore':self.normalCompletedBattles+self.recoveredCompletedBattles,'storyBefore':self.storySegments,'settlementsBefore':self.settledResumes,'resumed':False}
                         self.ledger.append('node_intent',title=node['title'],beforeAP=before,restrictions=node['restrictions'])
                         self.touch(items,node['position'],'select_main_node')
                         d,items,state=self.wait({'start_confirmation','story','support','formation','battle','ap_empty'},timeout=30)
@@ -1205,6 +1303,7 @@ class EventRunner:
                         else:d,items,state=self.returnFromMissions(d,items)
                     elif state=='mission_gate':
                         requirement=[MissionRequirement.parse(v) for v in event.findMissionGate(items)]
+                        self.MissionGates+=1
                         self.ledger.append('mission_gate',requirements=[vars(v) for v in requirement if v])
                         raise ScriptStop('Mission conditions need evidenced quest mapping; no random Free Quest')
                     else:raise ScriptStop('Event unexpected state '+state)
@@ -1214,4 +1313,4 @@ class EventRunner:
                 self.evidence(error)
                 return self.report('blocked',message=str(error),errorType=type(error).__name__)
     def report(self,state,**fields):
-        return {'type':'EventProgress','state':state,'nodes':self.completed,'storySegments':self.storySegments,'claimed':self.claimed,'apples':self.apples,'quartz':0,'quartzRevive':0,'captureFailures':self.captureFailures,'stats':self.main.result,**fields}
+        return {'type':'EventProgress','state':state,'nodes':self.completed,'storySegments':self.storySegments,'claimed':self.claimed,'apples':self.apples,'quartz':0,'quartzRevive':0,'captureFailures':self.captureFailures,'stats':self.main.result,'newBattleEntries':self.newBattleEntries,'normalCompletedBattles':self.normalCompletedBattles,'recoveredCompletedBattles':self.recoveredCompletedBattles,'eventWins':self.eventWins,'eventDefeats':self.eventDefeats,'cleanNodes':self.cleanNodes,'recoveredNodes':self.recoveredNodes,'storyNodes':self.storyNodes,'battleNodes':self.battleNodes,'MissionGates':self.MissionGates,'MissionClaims':self.claimed,'FreeQuestBattles':self.FreeQuestBattles,'counterScope':'linked ledger entries; historical unlinked diagnostics excluded',**fields}

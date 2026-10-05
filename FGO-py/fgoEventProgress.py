@@ -507,13 +507,14 @@ def missionCompletedCount(items):
     completed,total=map(int,_text(counts[0]).split('/'))
     return completed if 0<=completed<=total and total>0 else None
 
-def findCompletedMissionCard(items):
+def findCompletedMissionCard(items,target=None):
     if not _missionListConfirmed(items):return None
     strong=[i for i in items if float(i.score)>=.85]
     cards=[]
     for number in strong:
         matched=re.fullmatch(r'编号(\d+)',_text(number))
         if not matched or _center(number)[0]<1100 or not 260<_center(number)[1]<650:continue
+        if target is not None and int(matched.group(1))!=int(target):continue
         top=_center(number)[1]-24
         row=[i for i in strong if _center(i)[0]>580 and top<=_center(i)[1]<top+150]
         claim=[i for i in row if _text(i)=='可领取']
@@ -525,7 +526,7 @@ def findCompletedMissionCard(items):
         if total<=0 or done!=total:continue
         if any(t in ' '.join(_text(i) for i in row) for t in ('未开放','选择奖励','任选')):continue
         title=[i for i in items if _reliable(i) and 580<_center(i)[0]<1100 and top+30<_center(i)[1]<top+90 and any(t in _text(i) for t in ('通关','击败','收集','达成','完成'))]
-        cards.append({'mission':int(matched.group(1)),'title':str(title[0].text) if len(title)==1 else '', 'position':(900,top+60),'progress':(done,total)})
+        cards.append({'mission':int(matched.group(1)),'title':str(title[0].text) if len(title)==1 else '', 'position':_center(claim[0]),'progress':(done,total)})
     return min(cards,key=lambda v:v['position'][1]) if cards else None
 
 def _detectFlags(detect):

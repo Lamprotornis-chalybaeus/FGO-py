@@ -185,3 +185,48 @@ No restoration or revival was used. There were five experimental FlowTimeouts
 including recovery attempts; historical failures remain in the local report.
 Clean event story/battle/three-node/ten-node gates are still pending. The event
 candidate remains unmerged, and generic Mission-to-quest mapping stays open.
+
+
+## Resource defaults and entry-linked outcomes (2026-10-05 review)
+
+Public EventResourcePolicy defaults to apples=false, quartz=false and temporary
+party replacement=false. A local, explicitly authorized experiment may opt into
+apples and isolated temporary automatic formation; no GUI mode inherits it.
+QuartzGuard cannot be disabled. Apples are tested live only upon natural AP
+exhaustion, never consumed to manufacture a test.
+
+Durable entry identities link start intent, sent start/fresh TURN_BEGIN and a
+single normal or recovered outcome. A sent start is counted conservatively
+before its loading transition; TURN confirmation does not create a second entry.
+No input is replayed after a failed ledger write. Three fresh BOND,
+BOND_LEVEL_UP, MASTER_EXP or REWARDS observations plus a unique unresolved start
+allow a recovered win. Two unresolved starts stop before settlement input; no
+unresolved start permits settlement-only resume without inventing a win.
+Recovered outcomes never call ordinary recordCompleted, never add an entry, and
+leave full-battle turns/time null unless separately proved. Worker-local Main
+stats stay separate. Old unlinked diagnostic records are retained, not guessed
+into new identities. Event battle counters persist over linked ledger records;
+clean/recovered node counters describe this run. An interrupted run cannot pass
+clean acceptance merely because a later worker completes its settlement.
+
+## Event settlement transition matrix
+
+| Positive origin | Allowed next boundary | Owner / single-input rule |
+| --- | --- | --- |
+| BOND / distinct BOND_LEVEL_UP | MASTER_EXP / next distinct overlay | Shared BattleCycle; one input per proven instance |
+| MASTER_EXP | REWARDS | Shared BattleCycle; body/footer proof retained |
+| REWARDS | dropped CE receipt / ADD_FRIEND / CONTINUE / event receipt/map | Shared cycle, positive event boundary callback |
+| earned dropped CE | CE information / event receipt / ADD_FRIEND / CONTINUE | Event receipt handler; three stable proofs, one dismiss |
+| CE information | ADD_FRIEND / CONTINUE / earned receipt / event map | Event detail close only, no equipment/enhancement action |
+| ADD_FRIEND | CONTINUE / positive loading / first-clear receipt or map | Shared cycle; one rejection; event uses existing 60s hard budget |
+| CONTINUE | positive event map / story / locked map | Shared cycle, one no-repeat input; no automatic new Free Quest |
+| already awarded first-clear receipt | event map / story / further receipt | Event handler, independent earned amount/footer proof |
+| Mission toast over result heading | same concrete result body/footer | CN result detector; two fixed toast labels alone never suffice |
+| partial UNKNOWN after verified input | bounded read-only observation | No blind clicks, no timeout renewal from unknown animation |
+
+Exact numbered Mission claims additionally require the full condition and
+completed fraction in all three stable proofs. The real unique claim label's
+position is used, not an inferred card-body coordinate. Reward choices stop.
+Fresh main title/AP structure and absence of its numbered lock must be proved
+before starting the next main node. A natural numbered Mission gate can end a
+positively completed node, but never authorizes selecting its locked quest.
