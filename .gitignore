@@ -67,3 +67,7 @@ fgoImage/**/local/
 
 # Advisory daily position cache is local runtime data
 **/daily-index.json*
+**/event-quest-index.json*
+**/event-mission-evidence.json*
+**/event-profile.json*
+**/event-campaign-ledger.json*
