@@ -36,7 +36,7 @@ party review page. These are retained historical diagnostics, not successful
 main-node gates. Each repair has synthetic regressions; private raw frames and
 trace files are not published or included in CI artifacts.
 
-The current offline suite passes 676 cases, with the original three explicitly
+The current offline suite passes 681 cases, with the original three explicitly
 local integration skips. Full event battle, three-node and ten-node acceptance
 must be reported from actual local runs. A general Mission-to-Free-Quest mapping,
 real AP-item selector validation remain incomplete. Completed non-choice Mission claims have initial live evidence,
@@ -92,3 +92,12 @@ and partial evidence cannot authorize a claim or return input.
 
 Raw images, original OCR logs, CE features and local ledgers remain private.
 Mission-to-Free-Quest mapping and real AP-item selection still require evidence.
+
+
+A real ledger destination lock interrupted one development selection. Only the
+atomic file replacement now has five bounded PermissionError attempts (under a
+second total); persistent failure retains the previous ledger and pending file.
+Game inputs are never replayed by this retry. Input intent is persisted before
+the single physical touch, preventing a failed pre-input log write from touching
+the device. Short observed dialogue in the lower text panel is recognized with
+independent skip/auto proof; upper captions cannot substitute for dialogue.

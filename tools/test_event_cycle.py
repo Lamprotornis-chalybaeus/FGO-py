@@ -627,3 +627,43 @@ class EventContractTests(unittest.TestCase):
 
 
 if __name__=='__main__':unittest.main()
+
+
+class LedgerIoTests(unittest.TestCase):
+    def test_transient_destination_lock_retries_only_file_replace(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'ledger.json';ledger=ec.ProgressLedger(path)
+            original=Path.replace;calls=[]
+            def replace(p,target):
+                calls.append(target)
+                if len(calls)<3:raise PermissionError('synthetic destination lock')
+                return original(p,target)
+            with patch.object(Path,'replace',replace),patch.object(ec.time,'sleep') as sleep:
+                ledger.append('node',title='synthetic')
+            self.assertEqual(len(calls),3);self.assertEqual(sleep.call_count,2)
+            self.assertEqual(len(ec.ProgressLedger(path).data['records']),1)
+    def test_persistent_destination_lock_stops_with_previous_ledger_intact(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'ledger.json';ledger=ec.ProgressLedger(path);ledger.append('node',title='old')
+            old=path.read_bytes()
+            with patch.object(Path,'replace',side_effect=PermissionError('synthetic lock')) as replace,patch.object(ec.time,'sleep'):
+                with self.assertRaises(PermissionError):ledger.append('node',title='new')
+            self.assertEqual(replace.call_count,5);self.assertEqual(path.read_bytes(),old)
+            self.assertTrue(path.with_suffix('.tmp').exists())
+    def test_input_ledger_failure_prevents_physical_touch(self):
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock())
+        runner.ledger.append.side_effect=PermissionError('synthetic lock')
+        with patch.object(ec.fgoDevice,'device',Mock()) as device,patch.object(ec.schedule,'checkStop'):
+            with self.assertRaises(PermissionError):runner.touch([], (100,100),'synthetic')
+        device.touch.assert_not_called()
+
+
+class ShortStoryTests(unittest.TestCase):
+    def test_short_real_dialogue_with_verified_skip_is_story(self):
+        labels=[item('跳过',1160,20,w=65),item('皇都神剑组？',89,580,w=278,h=43)]
+        self.assertEqual(event.classifyEventState(labels),'story')
+        self.assertIsNotNone(ec.storySignature(labels))
+    def test_upper_caption_does_not_supply_dialogue_proof(self):
+        labels=[item('跳过',1160,20,w=65),item('皇都神剑组？',89,450,w=278,h=43)]
+        self.assertEqual(event.classifyEventState(labels),'unknown')
+        self.assertIsNone(ec.storySignature(labels))

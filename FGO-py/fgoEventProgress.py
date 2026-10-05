@@ -114,7 +114,7 @@ def _isStory(items,flags=None):
     allText=' '.join(_text(i) for i in items)
     if any(token in allText for token in ('活动举办时间','ap5','ap10','推荐职阶')):return False
     controls=[i for i in items if _text(i) in ('menu','菜单','skip','跳过') and _center(i)[1]<180]
-    dialogue=[i for i in items if _center(i)[1]>=470 and len(_text(i))>=7]
+    dialogue=[i for i in items if 570<_center(i)[1]<650 and _center(i)[0]<1100 and len(_text(i))>=4]
     return bool(controls and dialogue)
 
 def _isStartQuestConfirmation(items):

@@ -93,7 +93,15 @@ class ProgressLedger:
         self.path.parent.mkdir(parents=True,exist_ok=True)
         tmp=self.path.with_suffix('.tmp')
         tmp.write_text(json.dumps(self.data,ensure_ascii=False,indent=2),encoding='utf-8')
-        tmp.replace(self.path)
+        # Windows scanners can briefly hold the destination after a write.
+        # Retry only the atomic file operation; never replay a game input.
+        for attempt in range(5):
+            try:
+                tmp.replace(self.path)
+                break
+            except PermissionError:
+                if attempt==4:raise
+                time.sleep(.05*(2**attempt))
         return row
 
 
@@ -170,7 +178,7 @@ def storyItems(d,items):
     import cv2
     weak=[i for i in items if '跳过' in event._text(i) and 1100<i.center[0]<1280 and i.center[1]<100]
     auto=[i for i in items if i.score>=.85 and event._text(i)=='自动' and i.center[0]>1180 and i.center[1]>600]
-    dialogue=[i for i in items if i.score>=.85 and 470<i.center[1]<650 and len(event._text(i))>=7]
+    dialogue=[i for i in items if i.score>=.85 and 570<i.center[1]<650 and i.center[0]<1100 and len(event._text(i))>=4]
     # Full-screen OCR may omit the arrow-contaminated label altogether. The
     # two fixed text reads plus independent dialogue/auto controls produce it.
     if len(weak)>1 or len(auto)>1 or not dialogue:return items
@@ -424,6 +432,7 @@ class EventRunner:
         QuartzGuard.check(items,**guard)
         schedule.checkStop()
         if self.flow:self.flow.trace.record('EVENT_'+self.last[2].upper(),(),action)
+        self.ledger.append('input_intent',action=action)
         fgoDevice.device.touch(pos,duration=.08)
         self.ledger.append('input',action=action)
     def ap(self,d):
