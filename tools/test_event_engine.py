@@ -17,6 +17,19 @@ def card(n=23,cur=0,total=4,condition='击败4个指定敌人（召唤的除外�
     return {'mission':n,'condition':condition,'progress':f'{cur}/{total}'}
 
 class ModelTests(unittest.TestCase):
+    def test_completed_scan_excludes_stale_cards_but_preserves_history(self):
+        index=engine.EventQuestIndex('event');old=entry();other=entry(title='still visible')
+        index.add(old);index.add(other);index.add(entry(area='another'))
+        index.completeScan('area',{other.key})
+        self.assertEqual(index.available('area'),[other]);self.assertIn(old.key,index.entries)
+        self.assertEqual(len(index.available('another')),1)
+        index.add(old);self.assertIn(old,index.available('area'))
+    def test_unobserved_availability_survives_private_round_trip(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'event-quest-index.json';index=engine.EventQuestIndex('event',path)
+            index.add(entry());index.completeScan('area',set());index.save()
+            loaded=engine.EventQuestIndex('event',path)
+            self.assertFalse(loaded.available());self.assertIn(entry().key,loaded.entries)
     def test_scope_title_ap_make_distinct_keys(self):
         base=entry()
         for other in (entry(AP=40),entry(eventKey='another'),entry(area='else'),entry(title='别的关卡')):self.assertNotEqual(base.key,other.key)

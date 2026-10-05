@@ -8,7 +8,7 @@ from fgoAutomation import automationOwner
 from fgoSchedule import ScriptStop,schedule
 import fgoEventProgress as event
 from fgoEventEngine import CampaignState,EventFarmTask,EventProfile,missionValue
-from fgoEventQuest import EventQuestLocator
+from fgoEventQuest import EventQuestLocator,QuestNotObserved
 
 def completeProof(items):
     if event._unsafeEventOverlay(items):return None
@@ -132,8 +132,17 @@ class EventCampaignRunner:
             quests=self.locator.scan(complete=not bool(self.index.available()))
             choices=self.evidence.rank(quests,card)
             if not choices:raise ScriptStop('No untried or positively mapped available candidate; experiment budget stops')
-            self.runner.ledger.append('mission_experiment_intent',quest=choices[0].key,mission=mission,before=before,startedEntryIds=sorted(self.runner._entryIds))
-            quest,entry,outcome=self.battleQuest(choices[0])
+            for _ in range(3):
+                self.runner.ledger.append('mission_experiment_intent',quest=choices[0].key,mission=mission,before=before,startedEntryIds=sorted(self.runner._entryIds))
+                try:
+                    quest,entry,outcome=self.battleQuest(choices[0]);break
+                except QuestNotObserved:
+                    # No quest touch/entry occurred. Preserve the positive
+                    # mapping; only current availability has been superseded.
+                    self.runner.ledger.append('mission_candidate_unobserved',quest=choices[0].key,mission=mission)
+                    choices=self.evidence.rank(self.index.available(),card)
+                    if not choices:raise ScriptStop('No fresh available candidate after catalog changed')
+            else:raise ScriptStop('Mission unavailable-candidate correction budget exhausted')
             self.missionMenu();after,origin,nextCard=self.observeMissions(mission,fromTop=False)
             row=self.evidence.record(quest,entry,before,after,won=True,source='one actual won Free Quest; independent before/after readable Mission snapshots')
             self.experiments+=1

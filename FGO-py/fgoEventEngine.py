@@ -51,11 +51,12 @@ class EventQuestEntry:
 
 class EventQuestIndex:
     def __init__(self,eventKey,path=None):
-        self.eventKey=eventKey;self.path=Path(path) if path else None;self.entries={};self.completeAreas=set();self.titleProofs=[]
+        self.eventKey=eventKey;self.path=Path(path) if path else None;self.entries={};self.completeAreas=set();self.titleProofs=[];self.unobserved=set()
         if self.path and self.path.exists():
             data=json.loads(self.path.read_text(encoding='utf-8'))
             if data.get('version')!=1 or data.get('eventKey')!=eventKey:raise ValueError('Event index scope mismatch')
             self.completeAreas=set(data.get('completeAreas',[]))
+            self.unobserved=set(data.get('unobserved',[]))
             self.titleProofs=data.get('titleProofs',[])
             for raw in data.get('entries',[]):
                 raw['screenPosition']=tuple(raw['screenPosition']);raw['missionTargetFingerprints']=tuple(raw.get('missionTargetFingerprints',[]))
@@ -69,9 +70,15 @@ class EventQuestIndex:
             raw=asdict(entry);raw['firstSeen']=old.firstSeen;raw['observedMissionEffects']=old.observedMissionEffects
             entry=EventQuestEntry(**raw)
         self.entries[entry.key]=entry
+        self.unobserved.discard(entry.key)
+    def completeScan(self,areaKey,seen):
+        # Preserve historical identity/effects, but do not offer stale entries
+        # absent from a completed fresh area scan as currently selectable.
+        self.unobserved.update(e.key for e in self.entries.values() if e.areaKey==areaKey and e.key not in seen)
+        self.completeAreas.add(areaKey)
     def save(self):
-        if self.path:saveLocal(self.path,{'version':1,'eventKey':self.eventKey,'completeAreas':sorted(self.completeAreas),'titleProofs':self.titleProofs,'entries':[asdict(e) for e in self.entries.values()]})
-    def available(self,areaKey=None):return [e for e in self.entries.values() if e.available and (areaKey is None or e.areaKey==areaKey)]
+        if self.path:saveLocal(self.path,{'version':1,'eventKey':self.eventKey,'completeAreas':sorted(self.completeAreas),'unobserved':sorted(self.unobserved),'titleProofs':self.titleProofs,'entries':[asdict(e) for e in self.entries.values()]})
+    def available(self,areaKey=None):return [e for e in self.entries.values() if e.available and e.key not in self.unobserved and (areaKey is None or e.areaKey==areaKey)]
 
 @dataclass(frozen=True)
 class EventFarmTask:

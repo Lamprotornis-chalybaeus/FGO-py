@@ -14,6 +14,9 @@ from fgoSchedule import ScriptStop,schedule
 import fgoQuickQuest as daily
 
 TRACK=(95,590)
+
+class QuestNotObserved(ScriptStop):
+    """Completed bounded area scan did not re-prove a cached quest."""
 def scrollbar(image):
     if image.shape[:2]!=(720,1280):return None
     strip=image[TRACK[0]:TRACK[1],1255:1267]
@@ -165,7 +168,7 @@ class EventQuestLocator:
             seen.update(e.key for e in entries)
             if not complete or thumb is None:return self.index.available(area)
             if thumb[1]>=TRACK[1]-12:
-                self.index.completeAreas.add(area);self.index.save();return self.index.available(area)
+                self.index.completeScan(area,seen);self.index.save();return self.index.available(area)
             if lastThumb is not None and thumb[0]<=lastThumb+1:raise ScriptStop('Event list scrollbar stalled; partial index retained')
             lastThumb=thumb[0]
             # Positive list + real scrollbar authorizes a viewport scroll only.
@@ -200,6 +203,7 @@ class EventQuestLocator:
                 # One complete bounded scan, then fresh re-location of its
                 # newly observed locator; no endless recursive fallback.
                 self.scan()
+                if entry.key in self.index.unobserved:raise QuestNotObserved('Cached quest absent from completed fresh area scan; no quest input')
                 fresh=self.index.entries.get(entry.key)
                 if fresh is None:raise ScriptStop('Indexed quest absent from fresh scan')
                 d,items,area,entries=self.stable(entry.areaKey)
