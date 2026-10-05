@@ -413,6 +413,18 @@ def missionConditionItems(d,items):
     headers=[i for i in items if i.score>=.85 and re.fullmatch(r'编号\d+',event._text(i)) and i.center[0]>1100 and 270<i.center[1]<540]
     for header in headers:
         y=header.center[1]
+        wrapped=[i for i in items if i.score>=.85 and 590<i.center[0]<1080 and y+5<i.center[1]<y+50 and event._text(i).endswith('除') and '(' not in event._text(i) and re.search(r'(击败|收集|通关)',event._text(i))]
+        if len(wrapped)==1:
+            openingLine=wrapped[0];crop=d._crop(openingLine.box)
+            a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
+            text=event.normalizeText(a)
+            # Restore only actually reread punctuation, never change the
+            # condition words/count or fabricate the wrapped exclusion.
+            words=lambda v:''.join(re.findall(r'[\w]',event.normalizeText(v)))
+            if min(float(sa),float(sb))>=.85 and text==event.normalizeText(b) and words(text)==words(openingLine.text) and '(' in text and ')' not in text:
+                replacement=event.OcrItem(a,openingLine.box,min(float(sa),float(sb)))
+                result.remove(openingLine);result.append(replacement)
+                items=[replacement if i is openingLine else i for i in items]
         opening=[i for i in items if i.score>=.85 and 590<i.center[0]<1080 and y+5<i.center[1]<y+50 and '(' in event._text(i) and ')' not in event._text(i) and re.search(r'(击败|收集|通关)',event._text(i))]
         if len(opening)!=1:continue
         tails=[i for i in items if i.score<.85 and 590<i.center[0]<1080 and opening[0].center[1]<i.center[1]<y+70 and ')' in event._text(i)]
@@ -1143,7 +1155,7 @@ class EventRunner:
         raise ScriptStop('Mission top correction budget exhausted; no more scroll input')
 
     def seekMission(self,number):
-        previous=None;stable=0;lastThumb=None;end=self.clock()+90;drags=0;edgeAligned=False
+        previous=None;stable=0;lastThumb=None;end=self.clock()+90;drags=0;edgeAligned=False;incompleteReads=0
         while self.clock()<end:
             d,items,state=self.read()
             if state not in ('unknown','mission_list'):raise ScriptStop('Mission lookup foreground changed; no input')
@@ -1173,7 +1185,10 @@ class EventRunner:
                 continue
             numbers=[int(re.search(r'\d+',event._text(i))[0]) for i in items if i.score>=.85 and re.fullmatch(r'编号\d+',event._text(i)) and i.center[0]>1100 and 270<i.center[1]<540]
             if not numbers:raise ScriptStop('No positive Mission anchors; no scroll')
-            if int(number) in numbers:raise ScriptStop('Target Mission text incomplete; no inferred condition')
+            if int(number) in numbers:
+                incompleteReads+=1
+                if incompleteReads>=3:raise ScriptStop('Target Mission text incomplete after bounded fresh reads; no inferred condition')
+                schedule.sleep(.2);continue
             thumb=missionScrollThumb(d.im)
             if lastThumb is not None and max(abs(a-b) for a,b in zip(thumb,lastThumb))<=2:raise ScriptStop('Mission lookup scrollbar stalled; no repeated input')
             if drags>=4:raise ScriptStop('Mission lookup correction budget exhausted')

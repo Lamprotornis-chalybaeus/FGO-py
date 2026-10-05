@@ -555,6 +555,7 @@ def findMissionCard(items,number):
     compact=normalizeText(condition)
     if not re.search(r'(?:击败|收集|通关|完成|达到|获得|使用|装备|编入|进行)',compact):return None
     if compact.count('(')!=compact.count(')'):return None
+    if compact.endswith('除'):return None # Wrapped exclusion cannot be silently truncated when OCR loses its opening parenthesis.
     return {'mission':int(number),'condition':condition,'progress':_text(count[0]),'position':_center(headers[0])}
 
 def missionCompletedCount(items):

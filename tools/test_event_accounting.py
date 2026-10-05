@@ -393,3 +393,30 @@ class LockedAreaBoundaryTests(unittest.TestCase):
         self.assertEqual(result['state'],'mission_gate');self.assertEqual(result['requirement'],card)
         self.assertEqual(result['nodes'],0);self.assertEqual(result['newBattleEntries'],0)
         runner.seekMission.assert_called_once_with(23);runner.stableNode.assert_not_called();runner.touch.assert_not_called()
+
+class WrappedMissionFreshReadTests(unittest.TestCase):
+    def labels(self):
+        labels=cycleTests.MissionConditionCropTests().labels()
+        return [item('击败20个敌人召唤出来的敌人除',607,310,w=400) if i.text.startswith('击败20') else i for i in labels]
+    def test_missing_parenthesis_read_from_pixels_without_changing_condition(self):
+        import numpy
+        labels=self.labels();d=Mock(_crop=Mock(return_value=numpy.zeros((20,400,3),dtype='uint8')))
+        self.assertIsNone(event.findMissionCard(labels,11))
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[('击败20个敌人（召唤出来的敌人除',.91)]*2+[('外)',.91)]*2):
+            card=event.findMissionCard(ec.missionConditionItems(d,labels),11)
+        self.assertIn('召唤出来的敌人除 外',card['condition'])
+    def test_changed_words_weak_or_disagreed_punctuation_not_promoted(self):
+        import numpy
+        d=Mock(_crop=Mock(return_value=numpy.zeros((20,400,3),dtype='uint8')))
+        for output in ([('击败21个敌人（召唤出来的敌人除',.99)]*2,[('击败20个敌人（召唤出来的敌人除',.84)]*2,[('击败20个敌人（召唤出来的敌人除',.99),('击败20个敌人召唤出来的敌人除',.99)]):
+            with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=output):self.assertIsNone(event.findMissionCard(ec.missionConditionItems(d,self.labels()),11))
+    def test_one_incomplete_frame_followed_by_three_complete_has_no_scroll(self):
+        labels=cycleTests.MissionConditionCropTests().labels();complete=[item(i.text,*i.box[:2],w=i.box[2]-i.box[0],h=i.box[3]-i.box[1]) if i.text=='外)' else i for i in labels]
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger());runner.read=Mock(side_effect=[(Mock(),labels,'mission_list')]+[(Mock(),complete,'mission_list')]*3)
+        with patch.object(ec.daily,'_menuSwipe') as swipe:
+            card=runner.seekMission(11)[3];swipe.assert_not_called()
+        self.assertEqual(card['mission'],11);self.assertEqual(runner.read.call_count,4)
+    def test_three_incomplete_frames_stop_without_scroll(self):
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger());runner.read=Mock(return_value=(Mock(),self.labels(),'mission_list'))
+        with patch.object(ec.daily,'_menuSwipe') as swipe,self.assertRaises(ec.ScriptStop):runner.seekMission(11)
+        self.assertEqual(runner.read.call_count,3);swipe.assert_not_called()
