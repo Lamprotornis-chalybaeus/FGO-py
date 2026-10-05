@@ -101,6 +101,76 @@ class SharedEventCycleTests(unittest.TestCase):
 
 
 class EventContractTests(unittest.TestCase):
+    def autoSettings(self):
+        return [item('受限',605,25,w=75),item('自动编成',565,115),item('基于职阶相性考虑的基础上，优先',395,185),item('自动编成攻击力高的从者。',445,220),item('编队方法',250,440),item('取消',315,543),item('详细设定',570,543),item('自动编成',860,544)]
+    def test_temporary_auto_party_permission_defaults_off_and_never_inputs(self):
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock())
+        self.assertFalse(runner.policy.allowTemporaryAutoFormation)
+        with patch.object(ec.fgoDevice.device,'touch') as touch:
+            with self.assertRaises(ec.ScriptStop):runner.configureTemporaryParty(None,self.autoSettings(),'formation_settings')
+            touch.assert_not_called()
+    def test_allowed_temporary_auto_requires_restricted_settings_and_touches_once(self):
+        labels=self.autoSettings();runner=ec.EventRunner(ec.EventResourcePolicy(allowTemporaryAutoFormation=True),ledger=Mock())
+        runner.read=Mock(return_value=(Mock(),labels,'formation_settings'));runner.touch=Mock()
+        runner.wait=Mock(return_value=(Mock(),[labels[0]],'formation'))
+        self.assertEqual(runner.configureTemporaryParty(None,labels,'formation_settings')[2],'formation')
+        runner.touch.assert_called_once_with(labels,(930,556),'auto_form_isolated_event_party')
+        with self.assertRaises(ec.ScriptStop):runner.configureTemporaryParty(None,labels[1:],'formation_settings')
+        self.assertEqual(runner.touch.call_count,1)
+    def test_temporary_auto_settings_instability_does_not_input(self):
+        labels=self.autoSettings();runner=ec.EventRunner(ec.EventResourcePolicy(allowTemporaryAutoFormation=True),ledger=Mock())
+        runner.read=Mock(return_value=(Mock(),labels[1:],'formation_settings'));runner.touch=Mock()
+        with self.assertRaises(ec.ScriptStop):runner.configureTemporaryParty(None,labels,'formation_settings')
+        runner.touch.assert_not_called()
+    def test_allowed_special_offer_uses_isolated_party_proof_and_single_game_auto(self):
+        labels=self.specialOffer();runner=ec.EventRunner(ec.EventResourcePolicy(allowTemporaryAutoFormation=True),ledger=Mock())
+        runner.read=Mock(return_value=(Mock(),labels,'special_formation_offer'));runner.touch=Mock();runner.wait=Mock()
+        runner.configureSpecialFormation(None,labels)
+        runner.touch.assert_called_once_with(labels,(940,602),'auto_form_isolated_event_party')
+    def test_auto_formation_settings_cannot_expose_background_start(self):
+        labels=[item('自动编成',565,115),item('基于职阶相性考虑的基础上，优先',395,185),item('自动编成攻击力高的从者。',445,220),item('编队方法',250,440),item('战斗开始',1110,650)]
+        self.assertEqual(event.classifyEventState(labels,{'formation':True}),'formation_settings')
+        self.assertIsNone(event.findEventBattleStart(labels))
+        self.assertFalse(event.isEventAutoFormationSettings(labels[1:]))
+    def test_empty_restricted_starting_slots_do_not_authorize_start(self):
+        labels=[item('受限',604,25,w=75),item('选择',303,288,w=61),item('选择',503,288,w=61),item('战斗开始',1110,650)]
+        self.assertTrue(event.isEventIncompleteFormation(labels))
+        self.assertIsNone(event.findEventBattleStart(labels))
+        self.assertIsNotNone(event.findEventBattleStart([labels[0],labels[-1]]))
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock())
+        with patch.object(ec.nav,'labels',return_value=labels),patch.object(ec.fgoDevice.device,'press') as press:
+            with self.assertRaises(ec.ScriptStop):runner.main.prepareFormation(Mock())
+            press.assert_not_called()
+    def test_actual_formation_refusal_overrides_background_start_and_formation(self):
+        labels=[item('先发成员不足',530,80),item('先发成员需要凑足3人',460,215),item('才可开始执行任务。',470,255),item('战斗开始',1110,650)]
+        self.assertEqual(event.classifyEventState(labels,{'formation':True}),'formation_blocked')
+        self.assertFalse(event.isEventFormationBlocked(labels[1:]))
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock())
+        with patch.object(ec.nav,'labels',return_value=labels),patch.object(ec.fgoDevice.device,'press') as press:
+            with self.assertRaises(ec.ScriptStop):runner.main.prepareFormation(Mock())
+            press.assert_not_called()
+    def test_failed_skip_departure_is_not_a_completed_story_segment(self):
+        labels=[item('是否跳过该段剧情？',450,300,w=350),item('否',430,540,w=45),item('是',805,540,w=45)]
+        runner=object.__new__(ec.EventRunner);runner.touch=Mock();runner.waitAfterSkip=Mock(side_effect=FlowTimeout('persistent story'));runner.storySegments=0;runner.ledger=Mock(data={'records':[]})
+        with self.assertRaises(FlowTimeout):runner.handleTransition(None,labels,'story_skip_confirmation')
+        self.assertEqual(runner.storySegments,0)
+        runner.ledger.append.assert_not_called()
+    def test_legacy_prebattle_story_pause_never_skips(self):
+        runner=object.__new__(ec.EventRunner);runner.storyMode='pause';runner.touch=Mock()
+        with self.assertRaises(ec.ScriptStop):runner.handleTransition(None,[],'story_skip_confirmation')
+        runner.touch.assert_not_called()
+    def specialOffer(self):
+        return [item('自动编成执行确认',500,70),item('该关卡为不使用通常编队设置',430,145),item('的特殊关卡。',510,175),item('是否进行自动编队？',490,310),item('不进行自动编成',250,590),item('详细设定',580,590),item('自动编成',870,590)]
+    def test_special_event_offer_proves_nonstandard_party_and_only_negative_route(self):
+        labels=self.specialOffer()
+        self.assertEqual(event.classifyEventState(labels,{'formation':True}),'special_formation_offer')
+        self.assertEqual(event.findSpecialFormationDecline(labels),(320,602))
+        self.assertIsNone(event.findSpecialFormationDecline(labels[1:]))
+    def test_special_event_decline_never_automatically_replaces_party(self):
+        labels=self.specialOffer();runner=object.__new__(ec.EventRunner)
+        runner.read=Mock(return_value=(Mock(),labels,'special_formation_offer'));runner.touch=Mock();runner.wait=Mock()
+        runner.declineSpecialFormation(None,labels)
+        runner.touch.assert_called_once_with(labels,(320,602),'decline_special_auto_formation')
     def test_actual_story_skip_yes_no_producer_requires_phrase_and_both_controls(self):
         labels=[item('是否跳过该段剧情？',450,300,w=350),item('否',430,540,w=45),item('是',805,540,w=45,score=.66)]
         d=Mock();d._crop.return_value=__import__('numpy').zeros((57,54,3),dtype='uint8')
@@ -113,10 +183,26 @@ class EventContractTests(unittest.TestCase):
             self.assertIsNone(event.findSkipConfirmation(ec.skipConfirmationItems(d,labels)))
     def test_resuming_skip_confirmation_does_not_touch_skip_again(self):
         labels=[item('是否跳过该段剧情？',450,300,w=350),item('否',430,540,w=45),item('是',805,540,w=45)]
-        runner=object.__new__(ec.EventRunner);runner.touch=Mock();runner.wait=Mock();runner.storySegments=0
+        runner=object.__new__(ec.EventRunner);runner.touch=Mock();runner.waitAfterSkip=Mock(return_value=(None,[],'support'));runner.storySegments=0;runner.ledger=Mock(data={'records':[]})
         runner.handleTransition(None,labels,'story_skip_confirmation')
         self.assertEqual(runner.touch.call_count,1)
         self.assertEqual(runner.touch.call_args.args[2],'confirm_story_skip')
+    def storyWait(self,lines,reference):
+        clock=Clock();runner=object.__new__(ec.EventRunner);runner.clock=clock
+        d=Mock();d.im=__import__('numpy').ones((720,1280,3),dtype='uint8')*80
+        iterator=iter(lines);last=lines[-1]
+        def read():return d,[item(next(iterator,last),300,580,w=300)],'story'
+        runner.read=read
+        with patch.object(ec,'schedule',clock):return runner.waitAfterSkip(reference,deadline=1)
+    def test_same_story_after_confirmation_does_not_rearm_skip(self):
+        a=ec.storySignature([item('synthetic old dialogue',300,580,w=300)])
+        with self.assertRaises(FlowTimeout):self.storyWait(['synthetic old dialogue'],a)
+    def test_two_consecutive_story_segments_require_three_stable_new_reads(self):
+        a=ec.storySignature([item('synthetic old dialogue',300,580,w=300)])
+        self.assertEqual(self.storyWait(['synthetic old dialogue','synthetic new dialogue','synthetic new dialogue','synthetic new dialogue'],a)[2],'story')
+    def test_story_signature_one_frame_flicker_does_not_create_episode(self):
+        a=ec.storySignature([item('synthetic old dialogue',300,580,w=300)])
+        with self.assertRaises(FlowTimeout):self.storyWait(['synthetic new dialogue','synthetic old dialogue'],a)
     def test_unknown_story_control_miss_recovers_by_reading_only(self):
         clock=Clock();runner=object.__new__(ec.EventRunner);runner.clock=clock;runner.read=Mock(side_effect=[(Mock(),[],'unknown'),(Mock(),[],'story')])
         with patch.object(ec,'schedule',clock),patch.object(ec,'startupInfoClose',return_value=None),patch.object(ec.nav,'safeMenuPageCN',return_value='UNKNOWN'),patch.object(ec.nav,'normalizeToTerminalCN') as normalize,patch.object(ec.fgoDevice.device,'touch') as touch:

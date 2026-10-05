@@ -120,6 +120,34 @@ def _isStartQuestConfirmation(items):
     text=' '.join(_text(item) for item in positive)
     return '是否开始关卡' in text and sum(1 for item in positive if _text(item)=='开始')==1 and sum(1 for item in positive if _text(item)=='取消')==1
 
+def findSpecialFormationDecline(items):
+    positive=[i for i in items if float(i.score)>=.85]
+    text=' '.join(_text(i) for i in positive)
+    if not all(t in text for t in ('自动编成执行确认','不使用通常编队设置','的特殊关卡','是否进行自动编队')):return None
+    buttons={name:[i for i in positive if _text(i)==name and 540<_center(i)[1]<640] for name in ('不进行自动编成','详细设定','自动编成')}
+    return _center(buttons['不进行自动编成'][0]) if all(len(v)==1 for v in buttons.values()) else None
+
+def isEventFormationBlocked(items):
+    """Observed start refusal; background start button does not make it ready."""
+    positive=[i for i in items if float(i.score)>=.85]
+    header=[i for i in positive if _text(i)=='先发成员不足' and 50<_center(i)[1]<150]
+    requirement=[i for i in positive if _text(i)=='先发成员需要凑足3人' and 180<_center(i)[1]<270]
+    explanation=[i for i in positive if _text(i).rstrip('。.')=='才可开始执行任务' and 240<_center(i)[1]<320]
+    return len(header)==len(requirement)==len(explanation)==1
+
+def isEventAutoFormationSettings(items):
+    positive=[i for i in items if float(i.score)>=.85]
+    title=[i for i in positive if _text(i)=='自动编成' and 100<_center(i)[1]<180]
+    text=' '.join(_text(i) for i in positive)
+    return len(title)==1 and '基于职阶相性考虑的基础上' in text and '自动编成攻击力高的从者' in text and '编队方法' in text
+
+def isEventIncompleteFormation(items):
+    # Actual special-party layout: slots 2/3 must not be empty when three
+    # starting members are required. This never chooses replacement servants.
+    restricted=[i for i in items if float(i.score)>=.85 and _text(i)=='受限' and _center(i)[1]<100]
+    empty=[i for i in items if float(i.score)>=.85 and _text(i)=='选择' and 250<_center(i)[0]<630 and 260<_center(i)[1]<340]
+    return len(restricted)==1 and bool(empty)
+
 def classifyEventState(items,flags=None):
     flags=flags or {}
     # Confirmations can cover a still-recognizable support/formation background.
@@ -129,6 +157,9 @@ def classifyEventState(items,flags=None):
     if flags.get('defeated'):return 'battle_defeated'
     if flags.get('friend_request'):return 'friend_request'
     if _unsafeEventOverlay(items):return 'unsafe_modal'
+    if isEventFormationBlocked(items):return 'formation_blocked'
+    if isEventAutoFormationSettings(items):return 'formation_settings'
+    if findSpecialFormationDecline(items):return 'special_formation_offer'
     if flags.get('choose_friend'):return 'support'
     if flags.get('formation'):return 'formation'
     if flags.get('battle'):return 'battle'
@@ -177,7 +208,8 @@ def _missionReturnButton(items):
     return _center(candidates[0]) if len(candidates)==1 and _reliable(candidates[0]) else None
 
 def findEventBattleStart(items):
-    tokens=('开始任务','开始战斗','出击')
+    if isEventFormationBlocked(items) or isEventAutoFormationSettings(items) or isEventIncompleteFormation(items):return None
+    tokens=('开始任务','开始战斗','战斗开始','出击')
     candidates=[item for item in items if _text(item) in tokens and _center(item)[0]>=800 and _center(item)[1]>=470]
     return _center(candidates[0]) if len(candidates)==1 and _reliable(candidates[0]) else None
 
@@ -311,7 +343,7 @@ def _claimMissionRewards(detect,items):
 def _runEventBattle(detect,items,state,friendPolicy,friendMaxRefresh):
     """Shared preparation/Battle/settlement; no second OCR result loop."""
     from fgoEventCycle import EventResourcePolicy,EventRunner
-    runner=EventRunner(EventResourcePolicy(allowApples=False),friendPolicy=friendPolicy,friendMaxRefresh=friendMaxRefresh)
+    runner=EventRunner(EventResourcePolicy(allowApples=False),friendPolicy=friendPolicy,friendMaxRefresh=friendMaxRefresh,storyMode=EVENT_STORY_PAUSE)
     try:
         detect,items,state=runner.runBattle()
         return detect,items,{'state':state,'battles':runner.main.completedAttempts,'battle':getattr(getattr(runner.main,'battleProc',None),'result',None),'message':'Shared BattleCycle completed.'}
@@ -324,7 +356,7 @@ def progress(maxNodes=1,storyMode=EVENT_STORY_PAUSE,autoClaim=False,friendPolicy
     """Conservative CN event state machine: unknown screens stop; story pauses by default."""
     if resourcePolicy is not None:
         from fgoEventCycle import EventRunner
-        return EventRunner(resourcePolicy,friendPolicy=friendPolicy,friendMaxRefresh=friendMaxRefresh).run(maxNodes)
+        return EventRunner(resourcePolicy,friendPolicy=friendPolicy,friendMaxRefresh=friendMaxRefresh,storyMode=storyMode).run(maxNodes)
     if XDetect.region!='CN':return {'type':'EventProgress','state':'blocked','message':'活动推进首版仅适配简体中文服务器。'}
     maxNodes=max(1,min(EVENT_NODE_LIMIT,int(maxNodes)))
     if storyMode not in (EVENT_STORY_PAUSE,EVENT_STORY_SKIP):return {'type':'EventProgress','state':'blocked','message':'剧情策略无效，已停止。'}

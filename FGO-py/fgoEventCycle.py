@@ -5,7 +5,7 @@ explicitly supply EventResourcePolicy to enable this development runner.
 """
 from dataclasses import dataclass
 from pathlib import Path
-import json,re,time
+import hashlib,json,re,time
 
 import fgoDevice
 import fgoEventProgress as event
@@ -13,7 +13,7 @@ import fgoKernel as kernel
 import fgoNavigation as nav
 import fgoQuickQuest as daily
 from fgoAutomation import automationOwner,INPUT_OBSERVER
-from fgoBattleFlow import BattleCycle,BattleFlowState as S,FlowTimeout
+from fgoBattleFlow import BattleCycle,BattleFlowState as S,FlowTimeout,FriendSelectionResult
 from fgoDetect import Detect,XDetect,OCR
 from fgoPaths import paths
 from fgoSchedule import ScriptStop,schedule
@@ -23,6 +23,7 @@ from fgoSchedule import ScriptStop,schedule
 class EventResourcePolicy:
     allowApples:bool=True
     allowQuartz:bool=False
+    allowTemporaryAutoFormation:bool=False
     def __post_init__(self):
         if self.allowQuartz:raise ValueError('Event QuartzGuard cannot be disabled')
 
@@ -169,7 +170,11 @@ def storyItems(d,items):
     dialogue=[i for i in items if i.score>=.85 and 470<i.center[1]<650 and len(event._text(i))>=7]
     # Full-screen OCR may omit the arrow-contaminated label altogether. The
     # two fixed text reads plus independent dialogue/auto controls produce it.
-    if len(weak)>1 or len(auto)!=1 or not dialogue:return items
+    if len(weak)>1 or len(auto)>1 or not dialogue:return items
+    if not auto:
+        line=d._crop((1208,621,1244,647))
+        a,sa=OCR.ZHS.ocr_single_line(line);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(line,None,fx=2,fy=2))
+        if not min(float(sa),float(sb))>=.85 or event.normalizeText(a)!='自动' or event.normalizeText(b)!='自动':return items
     line=d._crop((1160,20,1225,60))
     a,sa=OCR.ZHS.ocr_single_line(line);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(line,None,fx=2,fy=2))
     if not min(float(sa),float(sb))>=.85:return items
@@ -189,6 +194,14 @@ def skipConfirmationItems(d,items):
     return [i for i in items if not yes or i is not yes[0]]+[event.OcrItem('是',rect,min(float(sa),float(sb)))]
 
 
+def storySignature(items):
+    # Dialogue only, excluding speaker identity and blinking controls. The
+    # digest stays in the private ledger; it is not a public image fixture.
+    lines=sorted((i.box[1],i.box[0],event.normalizeText(i.text)) for i in items if i.score>=.85 and 570<i.center[1]<680 and i.center[0]<1100 and len(event.normalizeText(i.text))>=4)
+    if not lines:return None
+    return hashlib.sha256('|'.join(v[2] for v in lines).encode('utf-8')).hexdigest()
+
+
 class EventMain(kernel.Main):
     def __init__(self,runner,**kwargs):
         super().__init__(appleTotal=0,appleKind=0,**kwargs)
@@ -199,9 +212,27 @@ class EventMain(kernel.Main):
         # sequence, even if an AP modal unexpectedly interrupts preparation.
         self.runner.restoreAp()
         return True
+    def finishFriendSelection(self,flow,template,refreshes,*,directBattle=False):
+        # Real special-event formation offers automatic replacement. Preserve
+        # the prepared temporary party by declining that verified offer once.
+        deadline=min(flow.deadline or float('inf'),flow.clock()+30)
+        expected={S.FORMATION}|({S.TURN_BEGIN} if directBattle else set())
+        def accept(d):
+            return flow.observation.state in expected or event.findSpecialFormationDecline(nav.labels(d)) is not None
+        observation=flow.waitForFlowState(expected|{S.UNKNOWN},timeout=max(0,deadline-flow.clock()),transition_name='event friend exit',allowed_intermediate={S.FRIEND,S.LOADING},accept=accept)
+        items=nav.labels(flow.detect)
+        if event.findSpecialFormationDecline(items):
+            self.runner.configureSpecialFormation(flow.detect,items,flow=flow,deadline=deadline)
+            observation=flow.observation
+        if observation.state not in expected:raise ScriptStop('Event support did not reach a legal formation')
+        return FriendSelectionResult(True,template,refreshes,observation.state)
     def prepareFormation(self,flow):
         items=nav.labels(flow.detect)
         QuartzGuard.check(items)
+        if event.isEventFormationBlocked(items):
+            raise ScriptStop('Event formation blocked: three starting members required; party unchanged')
+        if event.isEventAutoFormationSettings(items) or event.isEventIncompleteFormation(items):
+            raise ScriptStop('Event special party requires configuration; no background start or automatic replacement')
         if not event.findEventBattleStart(items):
             raise ScriptStop('Event formation has no unique active start label; party unchanged')
         return super().prepareFormation(flow)
@@ -221,6 +252,7 @@ class EventMain(kernel.Main):
                 if state in ('story','story_skip_confirmation','start_confirmation'):
                     self.runner.handleTransition(flow.detect,items,state,deadline=deadline)
                     lastProgress=flow.clock()
+                elif state=='formation_blocked':raise ScriptStop('Event formation blocked: three starting members required; no repeated start input')
                 elif state not in ('unknown',):raise ScriptStop('Unexpected event start boundary: '+state)
             elif observation.state not in {S.FORMATION,S.LOADING}:
                 raise ScriptStop('Unexpected event formation departure: '+observation.state.name)
@@ -235,9 +267,11 @@ class EventMain(kernel.Main):
 
 
 class EventRunner:
-    def __init__(self,policy,*,friendPolicy='first',friendMaxRefresh=2,ledger=None,reader=None,clock=time.monotonic):
+    def __init__(self,policy,*,friendPolicy='first',friendMaxRefresh=2,storyMode='skip',ledger=None,reader=None,clock=time.monotonic):
         if not isinstance(policy,EventResourcePolicy):raise TypeError('Explicit EventResourcePolicy required')
-        self.policy=policy;self.reader=reader or (lambda:Detect(.2));self.clock=clock
+        self.policy=policy;self.reader=reader or (lambda:Detect(0,0));self.clock=clock
+        if storyMode not in ('skip','pause'):raise ValueError('Unknown story policy')
+        self.storyMode=storyMode
         self.ledger=ledger or ProgressLedger(paths.logRoot/'event'/'progress-ledger.json')
         self.main=EventMain(self,friendPolicy=friendPolicy,friendMaxRefresh=friendMaxRefresh)
         self.completed=0;self.storySegments=0;self.claimed=0;self.apples={}
@@ -281,14 +315,17 @@ class EventRunner:
         try:return d.getAp()
         except ScriptStop:return None
     def evidence(self,reason):
+        fresh=False
+        try:self.read();fresh=True
+        except ScriptStop:pass # Already stopping: retain prior frame, mark it.
         if self.last:
             import cv2
             d,items,state=self.last
             folder=paths.logRoot/'event'/time.strftime('%Y%m%d-%H%M%S')
             folder.mkdir(parents=True,exist_ok=True)
             cv2.imwrite(str(folder/'blocked.png'),d.im)
-            (folder/'blocked.json').write_text(json.dumps({'reason':str(reason),'state':state,'labels':[{'text':i.text,'box':i.box,'score':i.score} for i in items]},ensure_ascii=False,indent=2),encoding='utf-8')
-        self.ledger.append('blocked',reason=str(reason),stats=self.main.result)
+            (folder/'blocked.json').write_text(json.dumps({'reason':str(reason),'errorType':type(reason).__name__,'freshCapture':fresh,'state':state,'labels':[{'text':i.text,'box':i.box,'score':i.score} for i in items]},ensure_ascii=False,indent=2),encoding='utf-8')
+        self.ledger.append('blocked',reason=str(reason),errorType=type(reason).__name__,freshCapture=fresh,stats=self.main.result)
     def openMap(self):
         d,items,state=self.read()
         if state=='unknown' and not startupInfoClose(d,items) and nav.safeMenuPageCN(d,items)=='UNKNOWN':
@@ -300,7 +337,10 @@ class EventRunner:
                 if state!='unknown' or startupInfoClose(d,items) or nav.safeMenuPageCN(d,items)!='UNKNOWN':break
             else:raise ScriptStop('Unknown event entry after bounded fresh reads; no navigation input')
         if state=='event_map':return d,items,state
-        if state in ('story','story_skip_confirmation','start_confirmation','support','formation','battle','battle_result','ap_empty'):
+        if state=='formation_settings' and self.policy.allowTemporaryAutoFormation:return d,items,state
+        if state in ('formation_blocked','formation_settings'):
+            raise ScriptStop('Event special party requires configuration: '+state+'; no automatic replacement')
+        if state in ('story','story_skip_confirmation','start_confirmation','support','special_formation_offer','formation','battle','battle_result','ap_empty'):
             return d,items,state # Resume actual state, never ledger-driven.
         dismissed=set()
         for _ in range(8):
@@ -348,30 +388,128 @@ class EventRunner:
             if count>=3:return d,items,node
         raise ScriptStop('Main node transient; no selection')
     def handleTransition(self,d,items,state,*,deadline=None):
+        if state in ('story','story_skip_confirmation') and getattr(self,'storyMode','skip')!='skip':
+            raise ScriptStop('Event story pause policy; no skip input')
         if state=='story_skip_confirmation':
             position=event.findSkipConfirmation(items)
             if not position:raise ScriptStop('Unverified story skip confirmation')
-            self.touch(items,position,'confirm_story_skip');self.storySegments+=1
-            return self.wait({'event_map','support','formation','battle','story','start_confirmation','ap_empty'},timeout=45,exclude=('story',),deadline=deadline)
+            intents=[r for r in self.ledger.data['records'] if r['kind']=='story_skip_intent']
+            reference=intents[-1]['signature'] if intents else None
+            self.touch(items,position,'confirm_story_skip')
+            outcome=self.waitAfterSkip(reference,deadline=deadline)
+            self.storySegments+=1;self.ledger.append('story_skip_complete',nextState=outcome[2])
+            return outcome
         if state=='start_confirmation':
             if not event._isStartQuestConfirmation(items):raise ScriptStop('Unverified start confirmation')
             target=next(i for i in items if event._reliable(i) and event._text(i)=='开始')
             self.touch(items,event._center(target),'confirm_event_start')
             return self.wait({'story','support','formation','battle','ap_empty'},deadline=deadline)
         if state=='story':
+            d,items,reference=self.stableStory()
             position=event.findSkipButton(items)
             if not position:raise ScriptStop('Story has no unique positive SKIP; no dialogue blind click')
+            self.ledger.append('story_skip_intent',signature=reference)
             self.touch(items,position,'story_skip')
             end=min(self.clock()+15,deadline or float('inf'))
             while self.clock()<end:
                 d,items,_=self.read()
                 position=event.findSkipConfirmation(items)
                 if position:
-                    self.touch(items,position,'confirm_story_skip');self.storySegments+=1
-                    return self.wait({'event_map','support','formation','battle','story','start_confirmation','ap_empty'},timeout=45,exclude=('story',),deadline=deadline)
+                    self.touch(items,position,'confirm_story_skip')
+                    outcome=self.waitAfterSkip(reference,deadline=deadline)
+                    self.storySegments+=1;self.ledger.append('story_skip_complete',nextState=outcome[2])
+                    return outcome
                 schedule.sleep(.2)
             raise ScriptStop('SKIP confirmation not positively proven')
         raise ScriptStop('No handler for '+state)
+    def stableStory(self):
+        deadline=self.clock()+15;previous=None;count=0
+        while self.clock()<deadline:
+            d,items,state=self.read()
+            if state=='unknown':
+                count=0;previous=None;schedule.sleep(.2);continue
+            if state!='story':raise ScriptStop('Story episode lost before skip; no input')
+            signature=storySignature(items)
+            count=count+1 if signature is not None and signature==previous else 1
+            previous=signature
+            if signature is not None and count>=3:return d,items,signature
+            schedule.sleep(.2)
+        raise ScriptStop('Dialogue signature not stable; no skip input')
+    def declineSpecialFormation(self,d,items,*,flow=None,deadline=None):
+        position=event.findSpecialFormationDecline(items)
+        if position is None:raise ScriptStop('Special formation offer unconfirmed')
+        fresh,labels,state=self.read()
+        if state!='special_formation_offer' or event.findSpecialFormationDecline(labels)!=position:
+            raise ScriptStop('Special formation decline unstable; no input')
+        callback=lambda:self.touch(labels,position,'decline_special_auto_formation')
+        if flow:
+            flow.action('decline_special_auto_formation',callback)
+            return flow.waitForFlowState({S.FORMATION},timeout=max(0,(deadline or flow.clock()+30)-flow.clock()),transition_name='special formation offer exit',allowed_intermediate={S.UNKNOWN})
+        callback()
+        return self.wait({'formation'},timeout=30,deadline=deadline)
+    def configureSpecialFormation(self,d,items,*,flow=None,deadline=None):
+        if not self.policy.allowTemporaryAutoFormation:
+            return self.declineSpecialFormation(d,items,flow=flow,deadline=deadline)
+        # The offer itself explicitly isolates this party from normal settings.
+        if event.findSpecialFormationDecline(items) is None:
+            raise ScriptStop('Temporary party isolation unproven; no automatic formation')
+        fresh,labels,state=self.read()
+        if state!='special_formation_offer' or event.findSpecialFormationDecline(labels) is None:
+            raise ScriptStop('Special formation offer unstable; no input')
+        target=[i for i in labels if i.score>=.85 and event._text(i)=='自动编成' and 540<i.center[1]<640]
+        if len(target)!=1:raise ScriptStop('Special auto formation button ambiguous')
+        callback=lambda:self.touch(labels,target[0].center,'auto_form_isolated_event_party')
+        if flow:
+            flow.action('auto_form_isolated_event_party',callback)
+            return flow.waitForFlowState({S.FORMATION},timeout=max(0,(deadline or flow.clock()+30)-flow.clock()),transition_name='special auto formation exit',allowed_intermediate={S.UNKNOWN})
+        callback()
+        return self.wait({'formation'},timeout=30,deadline=deadline)
+    def configureTemporaryParty(self,d,items,state):
+        if not self.policy.allowTemporaryAutoFormation:
+            raise ScriptStop('Temporary auto formation permission disabled')
+        def restricted(labels):return sum(i.score>=.85 and event._text(i)=='受限' and i.center[1]<100 for i in labels)==1
+        if not restricted(items):raise ScriptStop('Not a positively restricted event party; no changes')
+        if state=='formation':
+            if not event.isEventIncompleteFormation(items):raise ScriptStop('No evidenced missing starting member')
+            auto=[i for i in items if i.score>=.85 and event._text(i)=='自动' and 260<i.center[0]<330 and 640<i.center[1]<685]
+            party=[i for i in items if i.score>=.85 and event._text(i)=='编队' and 260<i.center[0]<330 and 675<i.center[1]<715]
+            if len(auto)!=len(party) or len(auto)!=1:raise ScriptStop('Temporary auto settings entry ambiguous')
+            fresh,labels,current=self.read()
+            if current!='formation' or not restricted(labels) or not event.isEventIncompleteFormation(labels):
+                raise ScriptStop('Temporary party changed before settings; no input')
+            self.touch(labels,auto[0].center,'open_temporary_auto_settings')
+            d,items,state=self.wait({'formation_settings'},timeout=15)
+        if state!='formation_settings' or not restricted(items) or not event.isEventAutoFormationSettings(items):
+            raise ScriptStop('Temporary auto formation settings not confirmed')
+        fresh,labels,current=self.read()
+        target=[i for i in labels if i.score>=.85 and event._text(i)=='自动编成' and 800<i.center[0]<1050 and 500<i.center[1]<620]
+        if current!='formation_settings' or not restricted(labels) or not event.isEventAutoFormationSettings(labels) or len(target)!=1:
+            raise ScriptStop('Temporary auto formation confirmation unstable; no input')
+        self.touch(labels,target[0].center,'auto_form_isolated_event_party')
+        d,items,state=self.wait({'formation'},timeout=30)
+        if event.isEventIncompleteFormation(items):raise ScriptStop('Game automatic formation still has missing starting members; no retry')
+        self.ledger.append('temporary_party_ready',formalPartyChanged=False)
+        return d,items,state
+    def waitAfterSkip(self,reference,*,deadline=None):
+        deadline=min(self.clock()+45,deadline or float('inf'))
+        departure=False;previous=None;stable=0
+        while self.clock()<deadline:
+            d,items,state=self.read()
+            if state in ('support','formation','battle','start_confirmation','ap_empty'):return d,items,state
+            if state=='event_map':return self.wait({'event_map'},deadline=deadline)
+            if state=='story':
+                signature=storySignature(items)
+                changed=signature is not None and (signature!=reference if reference is not None else departure)
+                stable=stable+1 if changed and signature==previous else 1 if changed else 0
+                previous=signature
+                if stable>=3:return d,items,state
+            else:
+                stable=0;previous=None
+                if state=='unknown' and (float(d.im.mean())<18 or getattr(d,'isLoading',lambda:False)()):departure=True
+                if state in ('unsafe_modal','battle_defeated','mission_gate'):
+                    raise ScriptStop('Story departure blocked: '+state)
+            schedule.sleep(.2)
+        raise FlowTimeout('Story episode did not depart; no repeated skip input')
     def restoreAp(self):
         if not self.policy.allowApples:raise ScriptStop('Apple policy disabled')
         d,items,state=self.read()
@@ -446,7 +584,7 @@ class EventRunner:
                     if not node:raise ScriptStop('Map smoke has no next main node')
                     return self.report('map_smoke_pass',nextNode=node,AP=self.ap(d))
                 pending=None;before=None;entryStart=self.clock();steps=0
-                if state in ('story','story_skip_confirmation','start_confirmation','support','formation','battle','battle_result'):
+                if state in ('story','story_skip_confirmation','start_confirmation','support','special_formation_offer','formation_settings','formation','battle','battle_result'):
                     # Actual in-progress UI proves a resumable entry. A saved
                     # ledger may annotate it, but never causes another tap.
                     pending={'title':'resumed actual event node','battlesBefore':self.main.completedAttempts,'storyBefore':self.storySegments}
@@ -470,7 +608,13 @@ class EventRunner:
                     elif state in ('start_confirmation','story','story_skip_confirmation'):
                         d,items,state=self.handleTransition(d,items,state)
                     elif state in ('support','formation','battle','battle_result'):
-                        d,items,state=self.runBattle()
+                        if state=='formation' and event.isEventIncompleteFormation(items):
+                            d,items,state=self.configureTemporaryParty(d,items,state)
+                        else:d,items,state=self.runBattle()
+                    elif state=='special_formation_offer':
+                        d,items,state=self.configureSpecialFormation(d,items)
+                    elif state=='formation_settings':
+                        d,items,state=self.configureTemporaryParty(d,items,state)
                     elif state=='ap_empty':
                         self.restoreAp();d,items,state=self.read()
                     elif state in ('mission_gate','mission_list'):
@@ -481,6 +625,6 @@ class EventRunner:
                 return self.report('limit_reached')
             except ScriptStop as error:
                 self.evidence(error)
-                return self.report('blocked',message=str(error))
+                return self.report('blocked',message=str(error),errorType=type(error).__name__)
     def report(self,state,**fields):
         return {'type':'EventProgress','state':state,'nodes':self.completed,'storySegments':self.storySegments,'claimed':self.claimed,'apples':self.apples,'quartz':0,'quartzRevive':0,'stats':self.main.result,**fields}
