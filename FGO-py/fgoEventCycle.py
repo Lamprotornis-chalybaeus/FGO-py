@@ -283,12 +283,12 @@ class EventRunner:
         items=skipConfirmationItems(d,storyItems(d,nav.labels(d)));state=event.classifyEventState(items,event._detectFlags(d))
         self.last=(d,items,state)
         return self.last
-    def wait(self,states,*,timeout=30,exclude=(),deadline=None):
+    def wait(self,states,*,timeout=30,exclude=(),deadline=None,accept=None):
         end=min(self.clock()+timeout,deadline or float('inf'))
         mapFrames=0
         while self.clock()<end:
             d,items,state=self.read()
-            if state in states and state not in exclude:
+            if state in states and state not in exclude and (accept is None or accept(d,items,state)):
                 if state=='event_map':
                     # A fading old map after start is not a completion edge.
                     # Require the menu template and HUD on three acquisitions.
@@ -337,8 +337,8 @@ class EventRunner:
                 if state!='unknown' or startupInfoClose(d,items) or nav.safeMenuPageCN(d,items)!='UNKNOWN':break
             else:raise ScriptStop('Unknown event entry after bounded fresh reads; no navigation input')
         if state=='event_map':return d,items,state
-        if state=='formation_settings' and self.policy.allowTemporaryAutoFormation:return d,items,state
-        if state in ('formation_blocked','formation_settings'):
+        if state in ('formation_settings','formation_review') and self.policy.allowTemporaryAutoFormation:return d,items,state
+        if state in ('formation_blocked','formation_settings','formation_review'):
             raise ScriptStop('Event special party requires configuration: '+state+'; no automatic replacement')
         if state in ('story','story_skip_confirmation','start_confirmation','support','special_formation_offer','formation','battle','battle_result','ap_empty'):
             return d,items,state # Resume actual state, never ledger-driven.
@@ -461,9 +461,12 @@ class EventRunner:
         callback=lambda:self.touch(labels,target[0].center,'auto_form_isolated_event_party')
         if flow:
             flow.action('auto_form_isolated_event_party',callback)
-            return flow.waitForFlowState({S.FORMATION},timeout=max(0,(deadline or flow.clock()+30)-flow.clock()),transition_name='special auto formation exit',allowed_intermediate={S.UNKNOWN})
+            d,items,state=self.wait({'formation','formation_review'},timeout=30,deadline=deadline,accept=lambda d,i,s:bool(event.findTemporaryPartyDecision(i) or event.findEventBattleStart(i)))
+            if state=='formation_review':self.confirmTemporaryParty(d,items,deadline=deadline)
+            return flow.waitForFlowState({S.FORMATION},timeout=max(0,(deadline or flow.clock()+30)-flow.clock()),transition_name='special auto formation exit',allowed_intermediate={S.UNKNOWN},accept=lambda d:event.findEventBattleStart(nav.labels(d)) is not None)
         callback()
-        return self.wait({'formation'},timeout=30,deadline=deadline)
+        d,items,state=self.wait({'formation','formation_review'},timeout=30,deadline=deadline,accept=lambda d,i,s:bool(event.findTemporaryPartyDecision(i) or event.findEventBattleStart(i)))
+        return self.confirmTemporaryParty(d,items,deadline=deadline) if state=='formation_review' else (d,items,state)
     def configureTemporaryParty(self,d,items,state):
         if not self.policy.allowTemporaryAutoFormation:
             raise ScriptStop('Temporary auto formation permission disabled')
@@ -486,8 +489,29 @@ class EventRunner:
         if current!='formation_settings' or not restricted(labels) or not event.isEventAutoFormationSettings(labels) or len(target)!=1:
             raise ScriptStop('Temporary auto formation confirmation unstable; no input')
         self.touch(labels,target[0].center,'auto_form_isolated_event_party')
-        d,items,state=self.wait({'formation'},timeout=30)
+        d,items,state=self.wait({'formation','formation_review'},timeout=30,accept=lambda d,i,s:bool(event.findTemporaryPartyDecision(i) or event.findEventBattleStart(i)))
+        if state=='formation_review':return self.confirmTemporaryParty(d,items)
         if event.isEventIncompleteFormation(items):raise ScriptStop('Game automatic formation still has missing starting members; no retry')
+        self.ledger.append('temporary_party_ready',formalPartyChanged=False)
+        return d,items,state
+    def confirmTemporaryParty(self,d,items,*,deadline=None):
+        if not self.policy.allowTemporaryAutoFormation:raise ScriptStop('Temporary party confirmation permission disabled')
+        position=event.findTemporaryPartyDecision(items)
+        if position is None:raise ScriptStop('Restricted temporary party review unproven')
+        for _ in range(2):
+            d,items,state=self.read()
+            if state!='formation_review' or event.findTemporaryPartyDecision(items)!=position:
+                raise ScriptStop('Temporary party decision unstable; no input')
+        self.touch(items,position,'confirm_temporary_event_party')
+        previous=None;stable=0
+        def ready(d,items,state):
+            nonlocal previous,stable
+            position=event.findEventBattleStart(items)
+            header=[i for i in items if i.score>=.85 and event._text(i)=='队伍确认' and i.center[0]>1000 and i.center[1]<100]
+            stable=stable+1 if position is not None and len(header)==1 and position==previous else 1 if position is not None and len(header)==1 else 0
+            previous=position
+            return stable>=3
+        d,items,state=self.wait({'formation'},timeout=30,deadline=deadline,accept=ready)
         self.ledger.append('temporary_party_ready',formalPartyChanged=False)
         return d,items,state
     def waitAfterSkip(self,reference,*,deadline=None):
@@ -584,7 +608,7 @@ class EventRunner:
                     if not node:raise ScriptStop('Map smoke has no next main node')
                     return self.report('map_smoke_pass',nextNode=node,AP=self.ap(d))
                 pending=None;before=None;entryStart=self.clock();steps=0
-                if state in ('story','story_skip_confirmation','start_confirmation','support','special_formation_offer','formation_settings','formation','battle','battle_result'):
+                if state in ('story','story_skip_confirmation','start_confirmation','support','special_formation_offer','formation_settings','formation_review','formation','battle','battle_result'):
                     # Actual in-progress UI proves a resumable entry. A saved
                     # ledger may annotate it, but never causes another tap.
                     pending={'title':'resumed actual event node','battlesBefore':self.main.completedAttempts,'storyBefore':self.storySegments}
@@ -615,6 +639,8 @@ class EventRunner:
                         d,items,state=self.configureSpecialFormation(d,items)
                     elif state=='formation_settings':
                         d,items,state=self.configureTemporaryParty(d,items,state)
+                    elif state=='formation_review':
+                        d,items,state=self.confirmTemporaryParty(d,items)
                     elif state=='ap_empty':
                         self.restoreAp();d,items,state=self.read()
                     elif state in ('mission_gate','mission_list'):

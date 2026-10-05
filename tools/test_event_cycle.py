@@ -101,6 +101,21 @@ class SharedEventCycleTests(unittest.TestCase):
 
 
 class EventContractTests(unittest.TestCase):
+    def partyReview(self):
+        return [item('队伍编制',1045,10),item('受限',605,25,w=75),item('拖动修改从者配置。',525,620),item('取消',103,660),item('决定',1130,650)]
+    def test_actual_temporary_party_review_overrides_background_formation(self):
+        labels=self.partyReview()
+        self.assertEqual(event.classifyEventState(labels,{'formation':True}),'formation_review')
+        self.assertEqual(event.findTemporaryPartyDecision(labels),(1200,662))
+        self.assertIsNone(event.findEventBattleStart(labels))
+        self.assertIsNone(event.findTemporaryPartyDecision(labels[1:]))
+    def test_temporary_party_decision_requires_three_stable_proofs_and_single_touch(self):
+        labels=self.partyReview();runner=ec.EventRunner(ec.EventResourcePolicy(allowTemporaryAutoFormation=True),ledger=Mock())
+        runner.read=Mock(return_value=(Mock(),labels,'formation_review'));runner.touch=Mock()
+        runner.wait=Mock(return_value=(Mock(),[item('战斗开始',1110,650)],'formation'))
+        runner.confirmTemporaryParty(None,labels)
+        self.assertEqual(runner.read.call_count,2)
+        runner.touch.assert_called_once_with(labels,(1200,662),'confirm_temporary_event_party')
     def autoSettings(self):
         return [item('受限',605,25,w=75),item('自动编成',565,115),item('基于职阶相性考虑的基础上，优先',395,185),item('自动编成攻击力高的从者。',445,220),item('编队方法',250,440),item('取消',315,543),item('详细设定',570,543),item('自动编成',860,544)]
     def test_temporary_auto_party_permission_defaults_off_and_never_inputs(self):
@@ -124,7 +139,7 @@ class EventContractTests(unittest.TestCase):
         runner.touch.assert_not_called()
     def test_allowed_special_offer_uses_isolated_party_proof_and_single_game_auto(self):
         labels=self.specialOffer();runner=ec.EventRunner(ec.EventResourcePolicy(allowTemporaryAutoFormation=True),ledger=Mock())
-        runner.read=Mock(return_value=(Mock(),labels,'special_formation_offer'));runner.touch=Mock();runner.wait=Mock()
+        runner.read=Mock(return_value=(Mock(),labels,'special_formation_offer'));runner.touch=Mock();runner.wait=Mock(return_value=(None,[],'formation'))
         runner.configureSpecialFormation(None,labels)
         runner.touch.assert_called_once_with(labels,(940,602),'auto_form_isolated_event_party')
     def test_auto_formation_settings_cannot_expose_background_start(self):
@@ -293,6 +308,13 @@ class EventContractTests(unittest.TestCase):
         runner.read=Mock(return_value=(d,[],'event_map'))
         with patch.object(ec,'schedule',clock):runner.wait({'event_map'},timeout=1)
         self.assertEqual(runner.read.call_count,3)
+    def test_wait_rejects_fading_formation_without_positive_start_control(self):
+        clock=Clock();runner=object.__new__(ec.EventRunner);runner.clock=clock
+        ready=[item('战斗开始',1110,650)]
+        runner.read=Mock(side_effect=[(Mock(),[],'formation'),(Mock(),ready,'formation')])
+        with patch.object(ec,'schedule',clock):
+            result=runner.wait({'formation'},timeout=1,accept=lambda d,i,s:event.findEventBattleStart(i) is not None)
+        self.assertIs(result[1],ready);self.assertEqual(runner.read.call_count,2)
     def test_plain_confirm_not_a_start_producer(self):
         labels=[item('是否购买？',400,200),item('开始',800,500),item('取消',400,500)]
         runner=object.__new__(ec.EventRunner);runner.touch=Mock()

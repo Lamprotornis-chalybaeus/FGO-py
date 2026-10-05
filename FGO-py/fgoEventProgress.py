@@ -148,6 +148,15 @@ def isEventIncompleteFormation(items):
     empty=[i for i in items if float(i.score)>=.85 and _text(i)=='选择' and 250<_center(i)[0]<630 and 260<_center(i)[1]<340]
     return len(restricted)==1 and bool(empty)
 
+def findTemporaryPartyDecision(items):
+    positive=[i for i in items if float(i.score)>=.85]
+    title=[i for i in positive if _text(i)=='队伍编制' and _center(i)[0]>1000 and _center(i)[1]<100]
+    restricted=[i for i in positive if _text(i)=='受限' and _center(i)[1]<100]
+    instruction=[i for i in positive if _text(i).rstrip('。.')=='拖动修改从者配置' and 600<_center(i)[1]<660]
+    cancel=[i for i in positive if _text(i)=='取消' and _center(i)[0]<250 and _center(i)[1]>640]
+    decision=[i for i in positive if _text(i)=='决定' and _center(i)[0]>1050 and _center(i)[1]>640]
+    return _center(decision[0]) if len(title)==len(restricted)==len(instruction)==len(cancel)==len(decision)==1 and not isEventIncompleteFormation(items) else None
+
 def classifyEventState(items,flags=None):
     flags=flags or {}
     # Confirmations can cover a still-recognizable support/formation background.
@@ -159,6 +168,7 @@ def classifyEventState(items,flags=None):
     if _unsafeEventOverlay(items):return 'unsafe_modal'
     if isEventFormationBlocked(items):return 'formation_blocked'
     if isEventAutoFormationSettings(items):return 'formation_settings'
+    if findTemporaryPartyDecision(items):return 'formation_review'
     if findSpecialFormationDecline(items):return 'special_formation_offer'
     if flags.get('choose_friend'):return 'support'
     if flags.get('formation'):return 'formation'
@@ -208,7 +218,7 @@ def _missionReturnButton(items):
     return _center(candidates[0]) if len(candidates)==1 and _reliable(candidates[0]) else None
 
 def findEventBattleStart(items):
-    if isEventFormationBlocked(items) or isEventAutoFormationSettings(items) or isEventIncompleteFormation(items):return None
+    if isEventFormationBlocked(items) or isEventAutoFormationSettings(items) or isEventIncompleteFormation(items) or findTemporaryPartyDecision(items):return None
     tokens=('开始任务','开始战斗','战斗开始','出击')
     candidates=[item for item in items if _text(item) in tokens and _center(item)[0]>=800 and _center(item)[1]>=470]
     return _center(candidates[0]) if len(candidates)==1 and _reliable(candidates[0]) else None
