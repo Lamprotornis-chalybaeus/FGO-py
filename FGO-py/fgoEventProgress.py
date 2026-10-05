@@ -105,7 +105,12 @@ def findMissionGate(items):
         text=str(getattr(item,'text','')).strip()
         compact=normalizeText(text)
         if compact.rstrip('，,。.!！?？') in ('任务完成','已完成任务','完成任务','达成任务','确认活动任务'):continue
+        if float(getattr(item,'score',0))<.85:continue
         if '任务' not in compact or '任务进度' in compact or '任务进行度' in compact:continue
+        # Completion/receipt transition text is not a prerequisite. A real
+        # generic gate must positively state that access is blocked/unlocked
+        # by its requirement, rather than merely contain 任务 and 完成.
+        if not re.search(r'(?:需要|需先|请先|尚未|未完成|未达成).*任务|完成任务.*(?:才能|后)(?:开放|解锁)',compact):continue
         if any(normalizeText(word) in compact for word in verbs):result.append(text)
     return result
 

@@ -255,7 +255,7 @@ class EventProgressTests(unittest.TestCase):
         touch.assert_not_called()
 
     def test_reward_toggle_never_claims_from_unconfirmed_screen(self):
-        gate=[item('完成任务 No.1',400,300)]
+        gate=[item('需要完成任务 No.1 才能解锁',400,300)]
         result=event._missionRewardGate(gate,True)
         self.assertEqual(result['state'],'mission_blocked')
         self.assertIn('未可靠识别为活动任务列表',result['message'])

@@ -333,3 +333,14 @@ class ZoomedWorldMapTests(unittest.TestCase):
             verified=ec.worldMapItems(frame,labels)
         self.assertEqual(event.findNextEventArea(verified)['title'],'NEW新选组屯所')
         frame._crop.assert_called_with((376,295,490,327))
+
+class MissionBlockSemanticsTests(unittest.TestCase):
+    def test_receipt_completion_fragments_are_not_navigation_requirements(self):
+        for text in ('任务完成 获得报酬','完成任务！获得概念礼装','任务已完成获得奖励'):
+            labels=[item(text,200,76,w=380)]
+            self.assertEqual(event.findMissionGate(labels),[])
+            self.assertNotEqual(event.classifyEventState(labels),'mission_gate')
+    def test_actual_access_requirement_retained_and_weak_copy_not_promoted(self):
+        for text in ('需要完成任务12才能解锁','完成任务No.12后开放','请先完成任务12'):
+            self.assertTrue(event.findMissionGate([item(text,400,300)]))
+            self.assertFalse(event.findMissionGate([item(text,400,300,score=.84)]))
