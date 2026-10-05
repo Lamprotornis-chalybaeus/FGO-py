@@ -275,6 +275,8 @@ def missionRewardReceipt(items):
 
 def findEventTutorialNext(items):
     if _unsafeEventOverlay(items):return None
+    uniform=findAwardedUniformNoticeClose(items)
+    if uniform:return uniform
     notice=findTemporaryServantNoticeClose(items)
     if notice is not None:return notice
     strong=[i for i in items if float(i.score)>=.85]
@@ -300,6 +302,17 @@ def eventTutorialCloseProof(items):
     instructions=[i for i in strong if _text(i).replace('，','').replace(',','')=='每当点击按钮列表中所显示的任务将进行切换' and 300<_center(i)[0]<1000 and 570<_center(i)[1]<650]
     states=[name for name in ('全部','未开放','可领取','已达成') if sum(_text(i)==name and 470<_center(i)[1]<550 for i in strong)==1]
     return len(title)==len(change)==len(instructions)==1 and len(states)==4 and not _unsafeEventOverlay(items)
+
+def findAwardedUniformNoticeClose(items):
+    """Dismiss actual passive awarded-outfit explanation; never equip it."""
+    if _unsafeEventOverlay(items):return None
+    strong=[i for i in items if i.score>=.85]
+    phrases=(('只要装备魔术礼装『浅葱的队服』',(250,315)),('就能获得更多魔术礼装经验值',(300,350)),('装备魔术礼装『浅葱的队服』挑战关卡吧',(375,430)))
+    for text,(lo,hi) in phrases:
+        if len([i for i in strong if _text(i).rstrip('。.!！')==text and 300<_center(i)[0]<1000 and lo<_center(i)[1]<hi])!=1:return None
+    close=[i for i in strong if _text(i)=='关闭' and 500<_center(i)[0]<800 and 520<_center(i)[1]<610]
+    actions=[i for i in items if _text(i) in ('装备','更换','决定','确认','取消') and 400<_center(i)[1]<650]
+    return _center(close[0]) if len(close)==1 and not actions else None
 
 def findTemporaryServantNoticeClose(items):
     # Observed passive explanation of an already granted temporary servant.
@@ -328,6 +341,7 @@ def eventMissionUnlockTutorialProof(items):
 
 def eventTutorialKey(items):
     if findEventTutorialNext(items) is None:return None
+    if findAwardedUniformNoticeClose(items):return 'awarded-uniform-info'
     if findTemporaryServantNoticeClose(items):return 'temporary-servant-info'
     if eventMissionUnlockTutorialProof(items):return 'mission-unlock'
     if eventTutorialCloseProof(items):return 'mission-display'

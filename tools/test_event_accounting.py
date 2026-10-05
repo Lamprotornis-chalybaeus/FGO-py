@@ -283,3 +283,19 @@ class UniformAwardReceiptTests(unittest.TestCase):
         frame=Mock();frame._crop.return_value=__import__('numpy').zeros((61,563,3),dtype='uint8')
         for second in ([('获得浅葱的队服×2！',.99)]*2,[('获得浅葱的队服×1！',.99),('获得浅葱的队服×1！',.84)]):
             with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[('获得浅葱的队服×1！',.839)]*2+second):self.assertIsNone(event.findEventRewardReceipt(ec.earnedReceiptItems(frame,self.labels())))
+
+class AwardedUniformNoticeTests(unittest.TestCase):
+    def labels(self):
+        return [item('只要装备魔术礼装『浅葱的队服』',350,270,w=540,h=32),item('就能获得更多魔术礼装经验值。',350,308,w=560,h=32),item('装备魔术礼装『浅葱的队服』挑战关卡吧！',270,382,w=720,h=32),item('关闭',600,542,w=80,h=40)]
+    def test_passive_explanation_has_its_own_producer_not_equip_action(self):
+        labels=self.labels();self.assertEqual(event.classifyEventState(labels,{'main_interface':True}),'event_tutorial')
+        self.assertEqual(event.findEventTutorialNext(labels),(640,562));self.assertEqual(event.eventTutorialKey(labels),'awarded-uniform-info')
+        for index in range(4):self.assertIsNone(event.findAwardedUniformNoticeClose(labels[:index]+labels[index+1:]))
+        self.assertIsNone(event.findAwardedUniformNoticeClose(labels+[item('装备',600,500)]))
+    def test_three_fresh_proofs_close_once_and_do_not_change_equipment(self):
+        labels=self.labels();runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger());runner.touch=Mock()
+        runner.read=Mock(return_value=(Mock(),labels,'event_tutorial'));runner.wait=Mock(return_value=(Mock(),[],'event_world_map'))
+        self.assertEqual(runner.advanceTutorial(None,labels)[2],'event_world_map')
+        runner.touch.assert_called_once_with(labels,(640,562),'advance_event_instructions')
+        with self.assertRaises(ec.ScriptStop):runner.advanceTutorial(None,labels)
+        self.assertEqual(runner.touch.call_count,1)
