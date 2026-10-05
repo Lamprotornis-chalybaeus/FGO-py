@@ -98,7 +98,7 @@ The battle-cycle state machine was merged into `cn-dev` by fast-forward to `5e6b
 
 ## Event reward / Mission diagnostics (unmerged candidate)
 
-The event feature has 728 passing offline cases (three existing local integration
+The event feature has 735 passing offline cases (three existing local integration
 skips). Observed CE receipts/details, event tutorials and one completed non-choice
 Mission reward have dedicated producers. Interruptions and recoveries remain
 diagnostic evidence, not clean event gates. Main-quest Mission/FQ mapping and
@@ -131,3 +131,31 @@ A proved numbered card clipped at the bottom permits one stable alignment
 scroll, then complete condition/progress proof is still required. Private raw
 frames, labels, receipts and ledger stay local. Further live trial results are
 pending; clean story/battle/three-node/ten-node event gates are not certified.
+
+
+## 2026-10-05 Mission-toast settlement follow-up
+
+The bounded experiment stopped new entries after its second battle. Both actual
+battles won (six and four turns), but both required recovery; neither is a clean
+full-node gate. A Mission-progress notification covered the result header during
+the second battle. The worker timed out before recording its terminal outcome.
+A fresh positively detected BOND page then proved completion; settlement-only
+recovery performed no new entry. The private ledger reconciles this separately
+from the stopped worker's unconfirmed completion counter.
+
+CN result recognition may substitute the observed toast's two fixed, strong
+labels for the occluded heading only when the existing result body and footer
+still agree. A toast alone cannot authorize input or become a Mission-list page.
+A locked battle map can use independent close/reward/AP/main-row/lock structure
+when the progress heading is misread. The lock still cannot be selected.
+
+Two-scale foreground-separated numeric OCR now verifies an actual slash; it
+rejects low scores, disagreement, non-fractions and invalid ranges. Local real
+frames verify BOND, the previous fraction and the locked map, but remain private.
+The latest whole suite passes 735 tests (732 executed, three existing integration
+skips), including AI strategy AST preservation. Compileall and diff check pass.
+Mission progress was confirmed complete after the two authorized experiments.
+No restoration or revival was used. There were five experimental FlowTimeouts
+including recovery attempts; historical failures remain in the local report.
+Clean event story/battle/three-node/ten-node gates are still pending. The event
+candidate remains unmerged, and generic Mission-to-quest mapping stays open.

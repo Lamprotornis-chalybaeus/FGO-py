@@ -342,7 +342,16 @@ def missionProgressItems(d,items):
         rect=(weak[0].box[0]-3,weak[0].box[1]-3,weak[0].box[2]+3,weak[0].box[3]+3)
         crop=d._crop(rect);a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
         text=event.normalizeText(a)
-        if min(float(sa),float(sb))<.85 or text!=event.normalizeText(b) or not re.fullmatch(r'\d+/\d+',text):continue
+        if not min(float(sa),float(sb))>=.85 or text!=event.normalizeText(b) or not re.fullmatch(r'\d+/\d+',text):
+            # Real white outlined digits over the green progress bar lose the
+            # slash in raw OCR. Separate foreground luminance locally, then
+            # require two independent scales to read an actual fraction.
+            gray=cv2.cvtColor(crop,cv2.COLOR_BGR2GRAY)
+            _,mask=cv2.threshold(gray,160,255,cv2.THRESH_BINARY)
+            mask=cv2.cvtColor(mask,cv2.COLOR_GRAY2BGR)
+            a,sa=OCR.EN.ocr_single_line(cv2.resize(mask,None,fx=2,fy=2));b,sb=OCR.EN.ocr_single_line(cv2.resize(mask,None,fx=3,fy=3))
+            text=event.normalizeText(a)
+            if not min(float(sa),float(sb))>=.85 or text!=event.normalizeText(b) or not re.fullmatch(r'\d+/\d+',text):continue
         current,total=map(int,text.split('/'))
         if not 0<=current<=total or total<=0:continue
         result.remove(weak[0]);result.append(event.OcrItem(a,rect,min(float(sa),float(sb))))

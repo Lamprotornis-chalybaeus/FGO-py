@@ -243,7 +243,14 @@ class XDetectCN(XDetectBase):
             def label(rect):
                 text,score=OCR.ZHS.ocr_single_line(self._crop(rect))
                 return re.sub(r'^[√>›»▶]+','',re.sub(r'\s+','',str(text))) if float(score)>=.85 else ''
-            if label((490,20,775,110))=='战斗结果' and label((480,625,815,690))=='请点击游戏界面':
+            header=label((490,20,775,110))=='战斗结果'
+            # A real event Mission progress toast covers the result heading.
+            # Its two fixed labels replace only that heading, not the result
+            # body/footer proof. No Mission identity or counter is inferred.
+            if not header:
+                header=(label((320,55,415,87))=='活动任务'
+                    and re.fullmatch(r'编号\d+',label((326,12,403,53))) is not None)
+            if header and label((480,625,815,690))=='请点击游戏界面':
                 # Real bond-level-up overlay occludes the ordinary BOND label.
                 # Distinguish the overlay so one dismissal can reveal BOND;
                 # a persistent overlay still cannot authorize another input.

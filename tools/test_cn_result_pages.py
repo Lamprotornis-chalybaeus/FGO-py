@@ -17,6 +17,18 @@ class CNResultPageTests(unittest.TestCase):
         d=self.detect({(490,20,775,110):('战斗结果',.994),(480,625,815,690):('请点击游戏界面',.978),(75,160,420,215):('与从者的牵',.907)})
         with patch.object(OCR.ZHS,'ocr_single_line',side_effect=self.read):
             self.assertEqual(d.getBattleResultPage(),'BOND');self.assertTrue(d.isBattleFinished())
+    def test_mission_toast_occludes_header_but_body_footer_still_prove_bond(self):
+        labels={(320,55,415,87):('活动任务',.979),(326,12,403,53):('编号 77',.881),(480,625,815,690):('请点击游戏界面',.963),(75,160,420,215):('与从者的牵',.892)}
+        d=self.detect(labels)
+        with patch.object(OCR.ZHS,'ocr_single_line',side_effect=self.read):self.assertEqual(d.getBattleResultPage(),'BOND')
+        for missing in labels:
+            d=self.detect({k:v for k,v in labels.items() if k!=missing})
+            with patch.object(OCR.ZHS,'ocr_single_line',side_effect=self.read):self.assertIsNone(d.getBattleResultPage())
+    def test_mission_toast_weak_or_wrong_fixed_label_cannot_replace_header(self):
+        base={(320,55,415,87):('活动任务',.979),(326,12,403,53):('编号 77',.881),(480,625,815,690):('请点击游戏界面',.963),(75,160,420,215):('与从者的牵',.892)}
+        for key,value in (((320,55,415,87),('活动任务',.849)),((326,12,403,53),('编号 77',.849)),((320,55,415,87),('任务奖励',.99)),((326,12,403,53),('77',.99))):
+            d=self.detect(dict(base,**{})|{key:value})
+            with patch.object(OCR.ZHS,'ocr_single_line',side_effect=self.read):self.assertIsNone(d.getBattleResultPage())
     def test_real_master_exp_page_is_distinct(self):
         d=self.detect({(490,20,775,110):('战斗结果',.994),(480,625,815,690):('请点击游戏界面',.978),(635,175,860,245):('√获得经验值',.862)})
         with patch.object(OCR.ZHS,'ocr_single_line',side_effect=self.read):self.assertEqual(d.getBattleResultPage(),'MASTER_EXP')

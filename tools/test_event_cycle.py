@@ -1072,3 +1072,41 @@ class MissionProgressLabelCropTests(unittest.TestCase):
     def test_no_proved_mission_list_no_crop(self):
         d=Mock();labels=[item('目标进行度',617,364,w=105,score=.846)]
         self.assertEqual(ec.missionProgressItems(d,labels),labels);d._crop.assert_not_called()
+
+
+class MissionOutlinedFractionTests(unittest.TestCase):
+    def test_real_slash_needs_two_strong_masked_reads(self):
+        import numpy
+        labels=[i if i.text!='0/20' else item('7112',605,400,w=70,score=.89) for i in MissionLookupTests().labels()]
+        d=Mock(_crop=Mock(return_value=numpy.zeros((30,70,3),dtype='uint8')))
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('712',.99)),patch.object(ec.OCR.EN,'ocr_single_line',side_effect=[('7/12',.898),('7/12',.911)]):
+            self.assertEqual(event.findMissionCard(ec.missionProgressItems(d,labels),11)['progress'],'7/12')
+    def test_mask_disagreement_weak_nan_or_missing_slash_never_guesses(self):
+        import numpy
+        labels=[i if i.text!='0/20' else item('7112',605,400,w=70,score=.89) for i in MissionLookupTests().labels()]
+        d=Mock(_crop=Mock(return_value=numpy.zeros((30,70,3),dtype='uint8')))
+        for output in ([('7/12',.99),('7/13',.99)],[('7/12',.99),('7/12',.84)],[('7/12',float('nan')),('7/12',.99)],[('712',.99),('712',.99)],[('13/12',.99),('13/12',.99)]):
+            with patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('712',.99)),patch.object(ec.OCR.EN,'ocr_single_line',side_effect=output):
+                self.assertIsNone(event.findMissionCard(ec.missionProgressItems(d,labels),11))
+
+
+class MissionBattleToastTests(unittest.TestCase):
+    def test_top_toast_never_proves_mission_list(self):
+        labels=[item('编号77 通关10次任意自由关卡',333,17,w=340),item('活动任务',334,64,w=65),item('2/10',424,60),item('与从者的牵绊',90,170),item('请点击游戏界面',480,635)]
+        self.assertFalse(event._missionListConfirmed(labels))
+        self.assertEqual(event.classifyEventState(labels,{'battle_result':True}),'battle_result')
+        self.assertNotEqual(event.classifyEventState(labels),'mission_list')
+
+
+class LockedBattleMapProofTests(unittest.TestCase):
+    def test_locked_battle_map_does_not_depend_on_progress_heading(self):
+        labels=[i for i in LockedQuestMissionTests().labels() if i.text!='任务进行度']
+        self.assertEqual(event.findLockedEventMission(labels)['mission'],11)
+        self.assertEqual(event.classifyEventState(labels,{'main_interface':True}),'mission_gate')
+        self.assertIsNone(event.findNextMainQuest(labels))
+    def test_independent_map_controls_and_lock_are_required(self):
+        labels=[i for i in LockedQuestMissionTests().labels() if i.text!='任务进行度']
+        for token in ('关闭','活动报酬','主线关卡 第三话','关卡举办时间剩余10日','完成任务No.11后开放'):
+            self.assertIsNone(event.findLockedEventMission([i for i in labels if i.text!=token]))
+        self.assertIsNone(event.findLockedEventMission([i for i in labels if not i.text.startswith('AP')]))
+        self.assertIsNone(event.findLockedEventMission(labels+[item('主线关卡 第四话',780,132,w=220)]))

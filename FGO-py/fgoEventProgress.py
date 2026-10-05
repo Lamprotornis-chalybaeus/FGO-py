@@ -430,7 +430,7 @@ def _missionListContext(items):
 
 def _missionListConfirmed(items):
     titles=[i for i in items if _text(i) in ('活动任务列表','活动任务','eventmissions') and _reliable(i) and 100<=_center(i)[0]<=1240 and 0<=_center(i)[1]<180]
-    if len(titles)==1 and not _unsafeEventOverlay(items):return True
+    if len(titles)==1 and _center(titles[0])[1]>=100 and not _unsafeEventOverlay(items):return True
     if _unsafeEventOverlay(items):return False
     if any(_text(i) in ('关闭','取消','确定','是','否') and 400<_center(i)[0]<900 and 350<_center(i)[1]<620 for i in items):return False
     strong=[i for i in items if float(i.score)>=.85]
@@ -583,7 +583,12 @@ def _eventMap(items):
     story=[i for i in positive if _text(i)=='无战斗' and _center(i)[0]>1100 and 100<_center(i)[1]<600]
     # This identifies the area list even when its decorated title momentarily
     # disappears from OCR. It does not authorize selecting any absent title.
-    areaList=len(close)==len(reward)==1 and bool(ap and story)
+    locked=[i for i in positive if re.fullmatch(r'完成任务no[.．]?\d+后开放',_text(i)) and 750<_center(i)[0]<1100 and 100<_center(i)[1]<250]
+    main=[i for i in positive if re.fullmatch(r'主线关卡第[一二三四五六七八九十百0-9]+话',_text(i)) and 750<_center(i)[0]<1100 and 100<_center(i)[1]<180]
+    # A locked battle row has no 'no battle' label, and the progress heading
+    # can be misread. Its unique real lock and main-row heading provide an
+    # independent area-list proof; they never authorize starting the lock.
+    areaList=len(close)==len(reward)==1 and bool(ap) and (bool(story) or len(locked)==len(main)==1)
     return bool(hasMapHeader and (hasNode or hasEventControls or areaList))
 
 def _openEventMap(detect,items):
