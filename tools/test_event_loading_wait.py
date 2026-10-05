@@ -35,4 +35,3 @@ class LoadingWaitTests(unittest.TestCase):
     def test_parent_deadline_is_never_extended_by_loading(self):
         clock,_,_,error=self.scenario('dark',arrive=45,deadline=40)
         self.assertIsNotNone(error);self.assertLess(clock.now,40.3)
-

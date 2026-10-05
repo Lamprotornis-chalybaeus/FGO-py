@@ -316,3 +316,17 @@ full-condition snapshots prove Mission23 increased from 0/4 to 2/4; this is one
 positive sample, not a claim about other quests or attributes. A game Master
 level-up automatically restored AP during settlement; no AP item or quartz was
 used. Activity completion is not yet established.
+
+
+### Mission23 completion checkpoint
+
+The three experiments are now reconciled: AP5 increased 0/4 to 2/4;
+two AP40 wins increased 2/4 to 3/4 and then 4/4. The AP5 battle completed
+normally; both AP40 wins were recovered from fresh terminal result evidence
+following noble-animation timeouts, without fabricated full battle durations.
+The ordinary reward was claimed once. Three fresh completed-counter readings
+proved 2/100 to 3/100 after the earned receipt, reconciling the interrupted claim
+without a repeated input. Earlier 0/4 and 2/4 blockers above are historical.
+Current activity main-story completion remains unproved; advancement continues.
+No AP restoration item, quartz consumption or revival was used. The observed
+Master-level-up AP refill was a game effect, not an automated item restoration.
