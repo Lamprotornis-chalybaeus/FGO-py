@@ -47,11 +47,12 @@ class EventQuestEntry:
 
 class EventQuestIndex:
     def __init__(self,eventKey,path=None):
-        self.eventKey=eventKey;self.path=Path(path) if path else None;self.entries={};self.completeAreas=set()
+        self.eventKey=eventKey;self.path=Path(path) if path else None;self.entries={};self.completeAreas=set();self.titleProofs=[]
         if self.path and self.path.exists():
             data=json.loads(self.path.read_text(encoding='utf-8'))
             if data.get('version')!=1 or data.get('eventKey')!=eventKey:raise ValueError('Event index scope mismatch')
             self.completeAreas=set(data.get('completeAreas',[]))
+            self.titleProofs=data.get('titleProofs',[])
             for raw in data.get('entries',[]):
                 raw['screenPosition']=tuple(raw['screenPosition']);raw['missionTargetFingerprints']=tuple(raw.get('missionTargetFingerprints',[]))
                 entry=EventQuestEntry(**raw)
@@ -65,7 +66,7 @@ class EventQuestIndex:
             entry=EventQuestEntry(**raw)
         self.entries[entry.key]=entry
     def save(self):
-        if self.path:saveLocal(self.path,{'version':1,'eventKey':self.eventKey,'completeAreas':sorted(self.completeAreas),'entries':[asdict(e) for e in self.entries.values()]})
+        if self.path:saveLocal(self.path,{'version':1,'eventKey':self.eventKey,'completeAreas':sorted(self.completeAreas),'titleProofs':self.titleProofs,'entries':[asdict(e) for e in self.entries.values()]})
     def available(self,areaKey=None):return [e for e in self.entries.values() if e.available and (areaKey is None or e.areaKey==areaKey)]
 
 @dataclass(frozen=True)

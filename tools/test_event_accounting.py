@@ -424,6 +424,14 @@ class WrappedMissionFreshReadTests(unittest.TestCase):
         with patch.object(ec.daily,'_menuSwipe') as swipe:
             card=runner.seekMission(11)[3];swipe.assert_not_called()
         self.assertEqual(card['mission'],11);self.assertEqual(runner.read.call_count,4)
+    def test_padded_last_crop_recovers_only_same_words_and_real_punctuation(self):
+        import numpy
+        d=Mock(_crop=Mock(return_value=numpy.zeros((20,400,3),dtype='uint8')))
+        missing='击败20个敌人召唤出来的敌人除';full='击败20个敌人（召唤出来的敌人除'
+        for final,expected in (([(full,.92)]*2,True), ([(full,.92),(missing,.92)],False), ([(full.replace('20','21'),.99)]*2,False)):
+            with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[(missing,.91)]*4+final+[('外)',.91)]*2):
+                card=event.findMissionCard(ec.missionConditionItems(d,self.labels()),11)
+            self.assertEqual(card is not None,expected)
     def test_three_incomplete_frames_stop_without_scroll(self):
         runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger());runner.read=Mock(return_value=(Mock(),self.labels(),'mission_list'))
         with patch.object(ec.daily,'_menuSwipe') as swipe,self.assertRaises(ec.ScriptStop):runner.seekMission(11)

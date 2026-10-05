@@ -428,6 +428,13 @@ def missionConditionItems(d,items):
                 # independently at both scales.
                 x1,y1,x2,y2=openingLine.box;crop=d._crop((x1+1,y1,x2,y2))
                 a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2));text=event.normalizeText(a)
+                if min(float(sa),float(sb))>=.85 and words(text)==words(openingLine.text) and (text!=event.normalizeText(b) or '(' not in text):
+                    # A real second sample showed punctuation clipped on both
+                    # horizontal and vertical edges. One final padded crop,
+                    # still bounded to the same full text line, must agree at
+                    # both scales without changing any condition words.
+                    crop=d._crop((max(0,x1-3),max(0,y1-1),min(1280,x2+3),min(720,y2+2)))
+                    a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2));text=event.normalizeText(a)
             if min(float(sa),float(sb))>=.85 and text==event.normalizeText(b) and words(text)==words(openingLine.text) and '(' in text and ')' not in text:
                 replacement=event.OcrItem(a,openingLine.box,min(float(sa),float(sb)))
                 result.remove(openingLine);result.append(replacement)

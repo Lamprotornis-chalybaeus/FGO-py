@@ -120,11 +120,36 @@ class LocatorTests(unittest.TestCase):
     def test_actual_scrollbar_and_signature(self):
         im=numpy.zeros((720,1280,3),dtype='uint8');im[96:300,1255:1267]=240
         self.assertEqual(quest.scrollbar(im),(96,300));self.assertEqual(len(quest.viewportSignature(im)),24)
+    def test_local_corrected_title_requires_same_area_ap_text_and_full_title_hash(self):
+        proof={'areaKey':'area','AP':5,'canonical':'人工确认的完整标题','ocrTexts':['实际OCR错字'],'titleHash':'0'*64,'source':'operator confirmed original full title'}
+        self.assertEqual(quest.verifiedTitle('实际OCR错字',5,'area','0'*64,[proof]),proof['canonical'])
+        for args in (('别的文本',5,'area','0'*64),('实际OCR错字',40,'area','0'*64),('实际OCR错字',5,'other','0'*64),('实际OCR错字',5,'area','f'*64)):
+            self.assertEqual(quest.verifiedTitle(*args,[proof]),args[0])
+    def test_conflicting_corrections_stop_and_do_not_click(self):
+        proof={'areaKey':'area','AP':5,'canonical':'确认标题','ocrTexts':['实际文本'],'titleHash':'0'*64,'source':'operator'}
+        with self.assertRaises(ScriptStop):quest.verifiedTitle('实际文本',5,'area','0'*64,[proof,{**proof,'canonical':'冲突标题'}])
     def test_three_fresh_stable_cards_tolerate_two_pixel_animation(self):
         runner=self.runner();locator=quest.EventQuestLocator(runner,engine.EventQuestIndex('event'))
         locator.view=Mock(side_effect=[(Mock(),[],'area',[entry()]),(Mock(),[],'area',[replace(entry(),screenPosition=(902,320))]),(Mock(),[],'area',[entry()])])
         with patch.object(quest.schedule,'sleep'):locator.stable('area')
         self.assertEqual(locator.view.call_count,3);runner.touch.assert_not_called()
+    def test_available_badge_animation_does_not_change_quest_identity(self):
+        runner=self.runner();locator=quest.EventQuestLocator(runner,engine.EventQuestIndex('event'))
+        locator.view=Mock(side_effect=[(Mock(),[],'area',[entry()]),(Mock(),[],'area',[entry(state='AVAILABLE')]),(Mock(),[],'area',[entry()])])
+        with patch.object(quest.schedule,'sleep'):locator.stable('area')
+        self.assertEqual(locator.view.call_count,3);runner.touch.assert_not_called()
+    def test_local_full_title_pixel_proof_tolerates_translation_but_not_other_pixels(self):
+        import cv2
+        image=numpy.random.default_rng(7).integers(0,255,(720,1280,3),dtype='uint8')
+        with tempfile.TemporaryDirectory() as root:
+            cv2.imwrite(str(Path(root)/'proof.png'),image[200:224,780:980])
+            self.assertTrue(quest.patchMatch(image,(778,199,982,226),'proof.png',root))
+            self.assertFalse(quest.patchMatch(image,(778,299,982,326),'proof.png',root))
+            self.assertFalse(quest.patchMatch(image,(778,199,982,226),'../proof.png',root))
+            proof={'areaKey':'area','AP':5,'canonical':'confirmed','ocrTexts':['actual'],'titleHash':'0'*64,'titlePatch':'proof.png','source':'operator'}
+            self.assertEqual(quest.verifiedTitle('actual',5,'area','f'*64,[proof],image=image,box=(778,199,982,226),proofRoot=root),'confirmed')
+            self.assertEqual(quest.verifiedTitle('another OCR substitution',5,'area','f'*64,[proof],image=image,box=(778,199,982,226),proofRoot=root),'confirmed')
+            self.assertEqual(quest.verifiedTitle('actual',5,'area','f'*64,[proof],image=image,box=(778,299,982,326),proofRoot=root),'actual')
 
 class CampaignTests(unittest.TestCase):
     def test_no_next_node_or_ledger_never_proves_completion(self):

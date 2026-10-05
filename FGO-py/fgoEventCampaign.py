@@ -127,6 +127,7 @@ class EventCampaignRunner:
             quests=self.locator.scan(complete=not bool(self.index.available()))
             choices=self.evidence.rank(quests,card)
             if not choices:raise ScriptStop('No untried or positively mapped available candidate; experiment budget stops')
+            self.runner.ledger.append('mission_experiment_intent',quest=choices[0].key,mission=mission,before=before,startedEntryIds=sorted(self.runner._entryIds))
             quest,entry,outcome=self.battleQuest(choices[0])
             self.missionMenu();after,origin,nextCard=self.observeMissions(mission)
             row=self.evidence.record(quest,entry,before,after,won=True,source='one actual won Free Quest; independent before/after readable Mission snapshots')
