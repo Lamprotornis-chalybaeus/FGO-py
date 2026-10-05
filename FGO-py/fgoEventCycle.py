@@ -184,6 +184,41 @@ def storyItems(d,items):
     if event.normalizeText(a)!='跳过' or event.normalizeText(b)!='跳过':return items
     return [i for i in items if not weak or i is not weak[0]]+[event.OcrItem('跳过',(1160,20,1225,60),min(float(sa),float(sb)))]
 
+def worldMapItems(d,items):
+    # The observed yellow arrow caused full-screen OCR to omit 下一个.
+    # Read the text above a visible area plaque at two scales, never infer a
+    # main quest from the plaque alone. Other layouts safely remain unlocated.
+    if not d.isMainInterface() or not event.eventWorldMapControls(items):return items
+    if any(event._text(i)=='下一个' for i in items):return items
+    import cv2
+    markers=[]
+    for area in items:
+        x,y=event._center(area)
+        if area.score<.85 or not 300<y<520 or not 200<x<1080 or not 2<=len(event._text(area))<=12:continue
+        # The yellow marker bounces vertically. These bounded text bands
+        # cover its observed range; every candidate still needs two reads.
+        for offset in (233,243,223,253,213):
+            rect=(x-55,y-offset,x+59,y-offset+46)
+            crop=d._crop(rect)
+            a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
+            if min(float(sa),float(sb))>=.85 and event.normalizeText(a)==event.normalizeText(b)=='下一个':
+                markers.append(event.OcrItem('下一个',rect,min(float(sa),float(sb))));break
+    return items+markers
+
+def mainTitleItems(d,items):
+    """Decorated first-area card: verify its title text without the arrow."""
+    if not any(i.score>=.85 and '关卡举办时间' in event._text(i) for i in items):return items
+    import cv2
+    result=list(items)
+    for i in items:
+        if not event._isMainTitle(i.text) or not 750<i.center[0]<1120 or not 100<i.center[1]<250:continue
+        # Observed first row text band; fixed card origin, variable text width.
+        rect=(775,i.center[1]-16,min(1080,max(1000,i.box[2]+30)),i.center[1]+16)
+        crop=d._crop(rect);a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
+        if min(float(sa),float(sb))>=.85 and event.normalizeText(a)==event.normalizeText(b) and event._isMainTitle(a):
+            result.remove(i);result.append(event.OcrItem(a,rect,min(float(sa),float(sb))))
+    return result
+
 
 def skipConfirmationItems(d,items):
     import cv2
@@ -285,7 +320,8 @@ class EventRunner:
         except (ConnectionError,StopIteration) as error:
             raise EventCaptureError('Event capture transport lost: '+type(error).__name__+'; no automatic restart or input') from error
         if d.im.shape[:2]!=(720,1280) or XDetect.region!='CN':raise ScriptStop('Event requires CN 1280x720')
-        items=skipConfirmationItems(d,storyItems(d,nav.labels(d)));state=event.classifyEventState(items,event._detectFlags(d))
+        items=mainTitleItems(d,worldMapItems(d,skipConfirmationItems(d,storyItems(d,nav.labels(d)))))
+        state=event.classifyEventState(items,{**event._detectFlags(d),'main_interface':d.isMainInterface()})
         self.last=(d,items,state)
         return self.last
     def wait(self,states,*,timeout=30,exclude=(),deadline=None,accept=None):
@@ -294,7 +330,7 @@ class EventRunner:
         while self.clock()<end:
             d,items,state=self.read()
             if state in states and state not in exclude and (accept is None or accept(d,items,state)):
-                if state=='event_map':
+                if state in ('event_map','event_world_map'):
                     # A fading old map after start is not a completion edge.
                     # Require the menu template and HUD on three acquisitions.
                     mapFrames=mapFrames+1 if d.isMainInterface() and self.ap(d) is not None else 0
@@ -341,11 +377,11 @@ class EventRunner:
                 schedule.sleep(.2);d,items,state=self.read()
                 if state!='unknown' or startupInfoClose(d,items) or nav.safeMenuPageCN(d,items)!='UNKNOWN':break
             else:raise ScriptStop('Unknown event entry after bounded fresh reads; no navigation input')
-        if state=='event_map':return d,items,state
+        if state in ('event_map','event_world_map'):return d,items,state
         if state in ('formation_settings','formation_review') and self.policy.allowTemporaryAutoFormation:return d,items,state
         if state in ('formation_blocked','formation_settings','formation_review'):
             raise ScriptStop('Event special party requires configuration: '+state+'; no automatic replacement')
-        if state in ('story','story_skip_confirmation','start_confirmation','support','special_formation_offer','formation','battle','battle_result','ap_empty'):
+        if state in ('story','story_skip_confirmation','start_confirmation','support','special_formation_offer','formation','battle','battle_result','ap_empty','reward_receipt'):
             return d,items,state # Resume actual state, never ledger-driven.
         dismissed=set()
         for _ in range(8):
@@ -378,7 +414,7 @@ class EventRunner:
             if anchor and event._center(anchor)[1]>=220:
                 self.last=(d,items,'home');x,y=event._center(anchor)
                 self.touch(items,(x,y-70),'event_banner')
-                return self.wait({'event_map'},timeout=30)
+                return self.wait({'event_map','event_world_map'},timeout=30)
             d,_=daily._swipe(d,True)
         raise ScriptStop('No complete unique event banner')
     def stableNode(self):
@@ -392,6 +428,19 @@ class EventRunner:
             count=count+1 if identity==previous else 1;previous=identity
             if count>=3:return d,items,node
         raise ScriptStop('Main node transient; no selection')
+    def openNextArea(self):
+        previous=None;count=0;end=self.clock()+15
+        while self.clock()<end:
+            d,items,state=self.read();QuartzGuard.check(items)
+            area=event.findNextEventArea(items) if state=='event_world_map' else None
+            if area is None:raise ScriptStop('No unique next event area; no world map input')
+            identity=(event.normalizeText(area['title']),area['position'])
+            count=count+1 if identity==previous else 1;previous=identity
+            if count>=3:
+                self.touch(items,area['position'],'open_next_event_area')
+                self.ledger.append('area',title=area['title'],AP=self.ap(d))
+                return self.wait({'event_map'},timeout=30)
+        raise ScriptStop('Event area marker transient; no navigation input')
     def handleTransition(self,d,items,state,*,deadline=None):
         if state in ('story','story_skip_confirmation') and getattr(self,'storyMode','skip')!='skip':
             raise ScriptStop('Event story pause policy; no skip input')
@@ -524,8 +573,8 @@ class EventRunner:
         departure=False;previous=None;stable=0
         while self.clock()<deadline:
             d,items,state=self.read()
-            if state in ('support','formation','battle','start_confirmation','ap_empty'):return d,items,state
-            if state=='event_map':return self.wait({'event_map'},deadline=deadline)
+            if state in ('support','formation','battle','start_confirmation','ap_empty','reward_receipt'):return d,items,state
+            if state in ('event_map','event_world_map'):return self.wait({'event_map','event_world_map'},deadline=deadline)
             if state=='story':
                 signature=storySignature(items)
                 changed=signature is not None and (signature!=reference if reference is not None else departure)
@@ -539,6 +588,24 @@ class EventRunner:
                     raise ScriptStop('Story departure blocked: '+state)
             schedule.sleep(.2)
         raise FlowTimeout('Story episode did not depart; no repeated skip input')
+    def handleRewardReceipt(self,d,items):
+        position=event.findEventRewardReceipt(items)
+        if position is None:raise ScriptStop('Completion receipt unproven; no input')
+        def reward(labels):return tuple(event._text(i) for i in labels if i.score>=.85 and re.fullmatch(r'获得.+[×x]\d+[!！]?',event._text(i)) and 450<i.center[1]<600)
+        reference=reward(items);stable=1;end=self.clock()+15
+        while self.clock()<end:
+            d,items,state=self.read()
+            current=event.findEventRewardReceipt(items)
+            same=state=='reward_receipt' and current is not None and max(abs(a-b) for a,b in zip(current,position))<=6 and reward(items)==reference
+            stable=stable+1 if same else 0
+            if stable>=3:position=current;break
+            if state not in ('unknown','reward_receipt'):raise ScriptStop('Completion receipt changed foreground; no input')
+            schedule.sleep(.2)
+        else:raise ScriptStop('Completion receipt unstable; no input')
+        self.touch(items,position,'dismiss_earned_event_reward_receipt')
+        outcome=self.wait({'event_map','event_world_map','story','mission_list','mission_gate'},timeout=30)
+        self.ledger.append('reward_receipt',alreadyAwarded=True,consumed=False,nextState=outcome[2])
+        return outcome
     def restoreAp(self):
         if not self.policy.allowApples:raise ScriptStop('Apple policy disabled')
         d,items,state=self.read()
@@ -579,9 +646,9 @@ class EventRunner:
                 cycle.settleBattleResult(boundary=self.eventBoundary)
                 if flow.observation.state==S.CONTINUE:
                     flow.action('decline_event_repeat',lambda:main.press('F'))
-                    outcome=self.wait({'event_map','story'},timeout=30)
+                    outcome=self.wait({'event_map','event_world_map','story'},timeout=30)
                 else:outcome=self.read()
-                if outcome[2] not in ('event_map','story'):raise ScriptStop('Resumed result has no positive event boundary')
+                if outcome[2] not in ('event_map','event_world_map','story','reward_receipt'):raise ScriptStop('Resumed result has no positive event boundary')
                 self.settledResumes+=1
                 self.ledger.append('settlement_resume',nextState=outcome[2],newBattleEntry=False)
                 return outcome
@@ -602,7 +669,7 @@ class EventRunner:
             finally:main.emitCompleted(won,battle.result)
             if flow.observation.state==S.CONTINUE:
                 flow.action('decline_event_repeat',lambda:main.press('F'))
-                return self.wait({'event_map','story'},timeout=30)
+                return self.wait({'event_map','event_world_map','story'},timeout=30)
             return self.read()
         except (ConnectionError,StopIteration) as error:
             flow.trace.failure('CAPTURE_ERROR',(),0,(type(error).__name__,))
@@ -611,9 +678,9 @@ class EventRunner:
         finally:
             INPUT_OBSERVER.reset(token);self.flow=None
     def eventBoundary(self,d):
-        items=skipConfirmationItems(d,storyItems(d,nav.labels(d)))
-        state=event.classifyEventState(items,event._detectFlags(d))
-        return state in ('event_map','story') and not event._unsafeEventOverlay(items)
+        items=worldMapItems(d,skipConfirmationItems(d,storyItems(d,nav.labels(d))))
+        state=event.classifyEventState(items,{**event._detectFlags(d),'main_interface':d.isMainInterface()})
+        return state in ('event_map','event_world_map','story','reward_receipt') and not event._unsafeEventOverlay(items)
     def run(self,maxNodes=1,*,mapSmoke=False):
         with automationOwner.claim():
             try:
@@ -631,15 +698,16 @@ class EventRunner:
                 while self.completed<int(maxNodes):
                     steps+=1
                     if steps>1000 or self.clock()-entryStart>3600:raise ScriptStop('Event bounded node progress exhausted')
-                    if state=='event_map':
+                    if state in ('event_map','event_world_map'):
                         if pending:
-                            d,items,state=self.wait({'event_map'},timeout=30)
+                            d,items,state=self.wait({'event_map','event_world_map'},timeout=30)
                             if self.main.completedAttempts<=pending['battlesBefore'] and self.storySegments<=pending['storyBefore'] and self.settledResumes<=pending['settlementsBefore']:
                                 raise ScriptStop('Event map return has no completed story/battle evidence; node not counted')
                             self.completed+=1
                             self.ledger.append('node',title=pending['title'],type='battle' if self.main.completedAttempts>pending['battlesBefore'] or self.settledResumes>pending['settlementsBefore'] else 'story',beforeAP=before,afterAP=self.ap(d),apples=dict(self.apples),stats=self.main.result,nextState=state,resumedSettlements=self.settledResumes-pending['settlementsBefore'])
                             pending=None;entryStart=self.clock()
                             if self.completed>=int(maxNodes):break
+                        if state=='event_world_map':d,items,state=self.openNextArea()
                         d,items,node=self.stableNode();before=self.ap(d)
                         pending={**node,'battlesBefore':self.main.completedAttempts,'storyBefore':self.storySegments,'settlementsBefore':self.settledResumes}
                         self.ledger.append('node_intent',title=node['title'],beforeAP=before,restrictions=node['restrictions'])
@@ -657,6 +725,8 @@ class EventRunner:
                         d,items,state=self.configureTemporaryParty(d,items,state)
                     elif state=='formation_review':
                         d,items,state=self.confirmTemporaryParty(d,items)
+                    elif state=='reward_receipt':
+                        d,items,state=self.handleRewardReceipt(d,items)
                     elif state=='ap_empty':
                         self.restoreAp();d,items,state=self.read()
                     elif state in ('mission_gate','mission_list'):

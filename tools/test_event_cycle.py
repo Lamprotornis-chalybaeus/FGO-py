@@ -117,6 +117,79 @@ class SharedEventCycleTests(unittest.TestCase):
 
 
 class EventContractTests(unittest.TestCase):
+    def test_numbered_event_episode_with_no_battle_is_a_main_node(self):
+        labels=[item('第一话「她是人斩」',777,131,w=170),item('无战斗',1139,125),item('AP0',783,204),item('关卡举办时间剩余10日',965,236,w=250)]
+        self.assertEqual(event.classifyEventState(labels),'event_map')
+        self.assertIn('第一话',event.findNextMainQuest(labels)['title'])
+        self.assertIsNone(event.findNextMainQuest(labels+[item('已完成',1050,135)]))
+    def test_decorated_episode_title_uses_matching_two_scale_text(self):
+        labels=[item('第一话「她是人新」',777,131,w=163,score=.82),item('关卡举办时间剩余10日',965,236,w=250)]
+        d=Mock();d._crop.return_value=__import__('numpy').zeros((32,225,3),dtype='uint8')
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('第一话「她是人斩」',.86)):
+            self.assertIn('人斩',event.findNextMainQuest(ec.mainTitleItems(d,labels))['title'])
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[('第一话「她是人斩」',.86),('第一话「她是人新」',.86)]):
+            self.assertEqual(ec.mainTitleItems(d,labels),labels)
+    def test_decorated_title_read_cannot_promote_a_nonmain_row(self):
+        labels=[item('无关自由关卡',777,131,w=163),item('关卡举办时间剩余10日',965,236,w=250)]
+        with patch.object(ec.OCR.ZHS,'ocr_single_line') as ocr:
+            self.assertEqual(ec.mainTitleItems(Mock(),labels),labels);ocr.assert_not_called()
+    def worldMap(self):
+        return [item('管理室',70,25,w=80),item('活动报酬',1124,10,w=120),item('已达成的任务',931,12,w=122),item('0/100',1000,45,w=84),item('菜单',1148,633,w=80),item('京都城区',589,403,w=102),item('下一个',583,184,w=114,h=46)]
+    def test_world_map_requires_independent_controls_and_main_interface(self):
+        labels=self.worldMap()
+        self.assertEqual(event.classifyEventState(labels,{'main_interface':True}),'event_world_map')
+        self.assertEqual(event.classifyEventState(labels),'unknown')
+        for index in (0,1,4):
+            self.assertFalse(event.eventWorldMapControls(labels[:index]+labels[index+1:]))
+        self.assertEqual(event.classifyEventState([i for j,i in enumerate(labels) if j not in (2,3)],{'main_interface':True}),'event_world_map')
+        self.assertEqual(event.findNextEventArea(labels),{'title':'京都城区','position':(640,415)})
+        self.assertIsNone(event.findNextMainQuest(labels))
+        self.assertIsNone(event.findNextEventArea(labels[:-1]))
+    def test_world_map_duplicate_area_or_marker_never_selects(self):
+        labels=self.worldMap()
+        self.assertIsNone(event.findNextEventArea(labels+[item('别的区域',590,400,w=100)]))
+        self.assertIsNone(event.findNextEventArea(labels+[item('下一个',600,200)]))
+    def test_world_map_local_arrow_requires_two_strong_matching_reads(self):
+        labels=self.worldMap()[:-1];d=Mock();d.isMainInterface.return_value=True
+        d._crop.return_value=__import__('numpy').zeros((46,114,3),dtype='uint8')
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('下一个',.99)):
+            self.assertIsNotNone(event.findNextEventArea(ec.worldMapItems(d,labels)))
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[('下一个',.99),('下一个',.84)]*5):
+            self.assertIsNone(event.findNextEventArea(ec.worldMapItems(d,labels)))
+    def test_world_map_area_requires_three_proofs_then_one_safe_area_touch(self):
+        labels=self.worldMap();runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock())
+        runner.read=Mock(return_value=(Mock(),labels,'event_world_map'));runner.touch=Mock();runner.wait=Mock(return_value=(None,[],'event_map'))
+        runner.openNextArea()
+        self.assertEqual(runner.read.call_count,3)
+        runner.touch.assert_called_once_with(labels,(640,415),'open_next_event_area')
+        runner.read=Mock(return_value=(Mock(),labels[:-1],'event_world_map'));runner.touch.reset_mock()
+        with self.assertRaises(ec.ScriptStop):runner.openNextArea()
+        runner.touch.assert_not_called()
+    def receipt(self):
+        return [item('任务完成',200,76,w=380),item('获得报酬',716,75,w=387),item('获得 圣晶石×1！',419,491,w=445),item('请点击游戏界面',505,627,w=271)]
+    def test_quartz_earned_receipt_is_not_a_resource_consumption_confirmation(self):
+        labels=self.receipt()
+        self.assertEqual(event.classifyEventState(labels),'reward_receipt')
+        ec.QuartzGuard.check(labels)
+        for remove in range(4):self.assertIsNone(event.findEventRewardReceipt(labels[:remove]+labels[remove+1:]))
+        self.assertIsNone(event.findEventRewardReceipt(labels+[item('请选择奖励',400,400)]))
+        with self.assertRaises(ec.ScriptStop):ec.QuartzGuard.check(labels+[item('是否消耗圣晶石恢复AP',400,300)])
+    def test_partial_completion_receipt_is_not_a_mission_gate(self):
+        self.assertEqual(event.classifyEventState([item('任务完成',200,76,w=380)]),'unknown')
+        self.assertEqual(event.classifyEventState([item('需要完成任务12才能解锁',400,300)]),'mission_gate')
+    def test_reward_receipt_only_dismisses_once_after_three_proofs(self):
+        labels=self.receipt();runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock())
+        runner.read=Mock(return_value=(Mock(),labels,'reward_receipt'));runner.touch=Mock();runner.wait=Mock(return_value=(None,[],'event_map'))
+        runner.handleRewardReceipt(None,labels)
+        self.assertEqual(runner.read.call_count,2)
+        runner.touch.assert_called_once_with(labels,(640,639),'dismiss_earned_event_reward_receipt')
+    def test_receipt_transient_ocr_miss_requires_three_new_positive_reads(self):
+        labels=self.receipt();runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock())
+        runner.read=Mock(side_effect=[(Mock(),labels[:3],'unknown')]+[(Mock(),labels,'reward_receipt')]*3)
+        runner.touch=Mock();runner.wait=Mock(return_value=(None,[],'event_map'))
+        clock=Clock();runner.clock=clock
+        with patch.object(ec,'schedule',clock):runner.handleRewardReceipt(None,labels)
+        self.assertEqual(runner.read.call_count,4);runner.touch.assert_called_once()
     def test_capture_reset_and_exhausted_stream_stop_without_any_input(self):
         for failure in (ConnectionResetError('synthetic reset'),StopIteration()):
             runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock(),reader=Mock(side_effect=failure))

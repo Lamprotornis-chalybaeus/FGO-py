@@ -71,7 +71,7 @@ def _eventAnchor(items):
 
 def _isMainTitle(text):
     compact=normalizeText(text)
-    return ('主线' in compact or '序幕' in compact or 'mainquest' in compact or 'mainstory' in compact or 'prologue' in compact or 'epilogue' in compact or bool(re.search(r'第[0-9一二三四五六七八九十]+[节幕]',compact)))
+    return ('主线' in compact or '序幕' in compact or 'mainquest' in compact or 'mainstory' in compact or 'prologue' in compact or 'epilogue' in compact or bool(re.search(r'第[0-9一二三四五六七八九十]+[节幕话章]',compact)))
 
 def findNextMainQuest(items):
     candidates=[]
@@ -86,7 +86,7 @@ def findNextMainQuest(items):
         isNew=any(token in positiveText for token in ('new','新!','新！'))
         explicitMain=any(token in positiveText for token in ('主线','mainquest','mainstory'))
         hasAp=any(re.search(r'ap\s*\d+',_text(item)) for item in positiveItems)
-        explicitEpisode=any(any(token in _text(item) for token in ('序幕','终幕','epilogue','prologue')) or bool(re.search(r'第[0-9一二三四五六七八九十]+[节幕]',_text(item))) for item in titleItems)
+        explicitEpisode=any(any(token in _text(item) for token in ('序幕','终幕','epilogue','prologue')) or bool(re.search(r'第[0-9一二三四五六七八九十]+[节幕话章]',_text(item))) for item in titleItems)
         if not (isNew or explicitMain or explicitEpisode) or not (hasAp or explicitEpisode):continue
         title=min(titleItems,key=lambda item:_center(item)[0])
         x,y=_center(title)
@@ -102,6 +102,7 @@ def findMissionGate(items):
     for item in items:
         text=str(getattr(item,'text','')).strip()
         compact=normalizeText(text)
+        if compact in ('任务完成','已完成任务'):continue # Receipt fade is not an unlock condition.
         if '任务' not in compact or '任务进度' in compact or '任务进行度' in compact:continue
         if any(normalizeText(word) in compact for word in verbs):result.append(text)
     return result
@@ -157,6 +158,37 @@ def findTemporaryPartyDecision(items):
     decision=[i for i in positive if _text(i)=='决定' and _center(i)[0]>1050 and _center(i)[1]>640]
     return _center(decision[0]) if len(title)==len(restricted)==len(instruction)==len(cancel)==len(decision)==1 and not isEventIncompleteFormation(items) else None
 
+def findEventRewardReceipt(items):
+    # Observed automatic completion receipt, not a reward selection/claim list.
+    if _unsafeEventOverlay(items):return None
+    positive=[i for i in items if float(i.score)>=.85]
+    headers=[i for i in positive if _text(i)=='任务完成' and 150<_center(i)[0]<600 and 50<_center(i)[1]<200]
+    earned=[i for i in positive if _text(i)=='获得报酬' and 650<_center(i)[0]<1150 and 50<_center(i)[1]<200]
+    amount=[i for i in positive if re.fullmatch(r'获得.+[×x]\d+[!！]?',_text(i)) and 450<_center(i)[1]<600]
+    footer=[i for i in positive if _text(i)=='请点击游戏界面' and 400<_center(i)[0]<900 and 600<_center(i)[1]<700]
+    return _center(footer[0]) if len(headers)==len(earned)==len(amount)==len(footer)==1 else None
+
+def eventWorldMapControls(items):
+    """Independent controls on the observed event world map, not a quest row."""
+    if _unsafeEventOverlay(items):return False
+    positive=[i for i in items if float(i.score)>=.85]
+    home=[i for i in positive if _text(i)=='管理室' and _center(i)[0]<220 and _center(i)[1]<100]
+    reward=[i for i in positive if _text(i)=='活动报酬' and _center(i)[0]>1100 and _center(i)[1]<100]
+    menu=[i for i in positive if _text(i)=='菜单' and _center(i)[0]>1100 and _center(i)[1]>600]
+    # The mission counter alternates with event currency, so it is not an
+    # invariant. The producer additionally requires a proved next-area pair.
+    return len(home)==len(reward)==len(menu)==1
+
+def findNextEventArea(items):
+    if not eventWorldMapControls(items):return None
+    markers=[i for i in items if float(i.score)>=.85 and _text(i)=='下一个' and 150<_center(i)[1]<450]
+    if len(markers)!=1:return None
+    x,y=_center(markers[0])
+    areas=[i for i in items if float(i.score)>=.85 and 2<=len(_text(i))<=12 and abs(_center(i)[0]-x)<45 and 120<_center(i)[1]-y<300]
+    if len(areas)!=1:return None
+    area=areas[0]
+    return {'title':str(area.text),'position':_center(area)}
+
 def classifyEventState(items,flags=None):
     flags=flags or {}
     # Confirmations can cover a still-recognizable support/formation background.
@@ -169,12 +201,14 @@ def classifyEventState(items,flags=None):
     if isEventFormationBlocked(items):return 'formation_blocked'
     if isEventAutoFormationSettings(items):return 'formation_settings'
     if findTemporaryPartyDecision(items):return 'formation_review'
+    if findEventRewardReceipt(items):return 'reward_receipt'
     if findSpecialFormationDecline(items):return 'special_formation_offer'
     if flags.get('choose_friend'):return 'support'
     if flags.get('formation'):return 'formation'
     if flags.get('battle'):return 'battle'
     if flags.get('battle_result'):return 'battle_result'
     if _isStory(items,flags):return 'story'
+    if flags.get('main_interface') and findNextEventArea(items):return 'event_world_map'
     if any(_text(item)=='每日任务' and _center(item)[0]>=900 and _center(item)[1]<95 for item in items):return 'daily_quest'
     if _eventMap(items):return 'event_map'
     if _missionListConfirmed(items):return 'mission_list'
