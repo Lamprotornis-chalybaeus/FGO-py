@@ -209,3 +209,35 @@ class MissionHeaderReadTests(unittest.TestCase):
         for labels in ([i for i in self.labels() if i.text!='活动道具兑换'],self.labels()+[item('请选择奖励',400,300)]):
             with patch.object(ec.OCR.ZHS,'ocr_single_line') as ocr:
                 self.assertEqual(ec.missionHeaderItems(Mock(),labels),labels);ocr.assert_not_called()
+
+class FormationRestrictionNoticeTests(unittest.TestCase):
+    def labels(self):
+        return [item('编制限制',564,77,w=155,h=40),item('请将河上彦斋',528,211,w=224,h=36),item('设置为首发队员。',489,251,w=282,h=42),item('关闭',601,581,w=79,h=40),item('战斗开始',1108,651,w=120,h=41)]
+    def test_actual_joint_notice_overrides_background_formation_and_start(self):
+        labels=self.labels()
+        self.assertEqual(event.classifyEventState(labels,{'formation':True}),'formation_restriction_notice')
+        self.assertIsNone(event.findEventBattleStart(labels))
+        for index in range(4):self.assertIsNone(event.findFormationRestrictionNotice(labels[:index]+labels[index+1:]))
+    def test_three_fresh_notice_proofs_allow_only_one_close(self):
+        labels=self.labels();runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger())
+        runner.read=Mock(return_value=(Mock(),labels,'formation_restriction_notice'));runner.touch=Mock()
+        runner.wait=Mock(return_value=(Mock(),[],'formation'))
+        self.assertEqual(runner.closeFormationRestrictionNotice(None,labels)[2],'formation')
+        runner.touch.assert_called_once_with(labels,(640,601),'close_formation_restriction_notice')
+        self.assertEqual(runner.newBattleEntries,0)
+    def test_transient_requirement_or_expired_parent_cannot_close(self):
+        labels=self.labels();runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger(),clock=lambda:10);runner.touch=Mock()
+        runner.read=Mock(return_value=(Mock(),[],'unknown'))
+        with self.assertRaises(ec.ScriptStop):runner.closeFormationRestrictionNotice(None,labels)
+        with self.assertRaises(ec.FlowTimeout):runner.closeFormationRestrictionNotice(None,labels,deadline=10)
+        runner.touch.assert_not_called()
+    def test_second_actual_exclusion_notice_is_distinct_instance(self):
+        first=self.labels();second=[first[0],first[3],first[4],item('在本关卡中，',528,304,w=193,h=36),item('原田左之助',545,338,w=190,h=44),item('不可编队。',542,373,w=178,h=50)]
+        self.assertEqual(event.classifyEventState(second,{'formation':True}),'formation_restriction_notice')
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger());runner.touch=Mock()
+        runner.read=Mock(side_effect=[(Mock(),first,'formation_restriction_notice')]*2+[(Mock(),second,'formation_restriction_notice')]*2)
+        runner.wait=Mock(side_effect=[(Mock(),second,'formation_restriction_notice'),(Mock(),[],'formation')])
+        runner.closeFormationRestrictionNotice(None,first);runner.closeFormationRestrictionNotice(None,second)
+        self.assertEqual(runner.touch.call_count,2)
+        with self.assertRaises(ec.ScriptStop):runner.closeFormationRestrictionNotice(None,second)
+        self.assertEqual(runner.touch.call_count,2)

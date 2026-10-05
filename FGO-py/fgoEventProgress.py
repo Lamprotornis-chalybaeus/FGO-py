@@ -142,6 +142,23 @@ def findStartQuestConfirmation(items):
     cancel=[i for i in strong if _text(i)=='取消' and 300<_center(i)[0]<600 and 530<_center(i)[1]<620]
     return _center(start[0]) if len(title)==len(message)==len(story)==len(start)==len(cancel)==1 else None
 
+def findFormationRestrictionNotice(items):
+    if _unsafeEventOverlay(items):return None
+    strong=[i for i in items if i.score>=.85]
+    heading=[i for i in strong if _text(i)=='编制限制' and 500<_center(i)[0]<800 and 60<_center(i)[1]<140]
+    required=[i for i in strong if re.fullmatch(r'请将[\u4e00-\u9fff]{2,12}',_text(i)) and 400<_center(i)[0]<900 and 180<_center(i)[1]<250]
+    instruction=[i for i in strong if _text(i).rstrip('。.')=='设置为首发队员' and 400<_center(i)[0]<900 and 250<_center(i)[1]<310]
+    close=[i for i in strong if _text(i)=='关闭' and 500<_center(i)[0]<800 and 560<_center(i)[1]<640]
+    if len(heading)!=1 or len(close)!=1:return None
+    if len(required)==len(instruction)==1:
+        return {'position':_center(close[0]),'requirement':str(required[0].text)+' '+str(instruction[0].text)}
+    context=[i for i in strong if _text(i).rstrip('，,')=='在本关卡中' and 400<_center(i)[0]<900 and 290<_center(i)[1]<345]
+    forbidden=[i for i in strong if re.fullmatch(r'[\u4e00-\u9fff]{2,12}',_text(i)) and 400<_center(i)[0]<900 and 345<_center(i)[1]<375]
+    exclusion=[i for i in strong if _text(i).rstrip('。.')=='不可编队' and 400<_center(i)[0]<900 and 380<_center(i)[1]<430]
+    if len(context)==len(forbidden)==len(exclusion)==1:
+        return {'position':_center(close[0]),'requirement':str(context[0].text)+' '+str(forbidden[0].text)+' '+str(exclusion[0].text)}
+    return None
+
 def findSpecialFormationDecline(items):
     positive=[i for i in items if float(i.score)>=.85]
     text=' '.join(_text(i) for i in positive)
@@ -346,6 +363,7 @@ def classifyEventState(items,flags=None):
     if findMissionItemInfoClose(items):return 'item_information'
     if findEventQuestInfoClose(items):return 'quest_information'
     if eventQuestInfoContext(items):return 'unknown'
+    if findFormationRestrictionNotice(items):return 'formation_restriction_notice'
     if isEventFormationBlocked(items):return 'formation_blocked'
     if isEventAutoFormationSettings(items):return 'formation_settings'
     if findTemporaryPartyDecision(items):return 'formation_review'
@@ -404,7 +422,7 @@ def _missionReturnButton(items):
     return _center(candidates[0]) if len(candidates)==1 and _reliable(candidates[0]) else None
 
 def findEventBattleStart(items):
-    if isEventFormationBlocked(items) or isEventAutoFormationSettings(items) or isEventIncompleteFormation(items) or findTemporaryPartyDecision(items):return None
+    if findFormationRestrictionNotice(items) or isEventFormationBlocked(items) or isEventAutoFormationSettings(items) or isEventIncompleteFormation(items) or findTemporaryPartyDecision(items):return None
     tokens=('开始任务','开始战斗','战斗开始','出击')
     candidates=[item for item in items if _text(item) in tokens and _center(item)[0]>=800 and _center(item)[1]>=470]
     return _center(candidates[0]) if len(candidates)==1 and _reliable(candidates[0]) else None

@@ -493,9 +493,17 @@ class EventMain(kernel.Main):
         deadline=min(flow.deadline or float('inf'),flow.clock()+30)
         expected={S.FORMATION}|({S.TURN_BEGIN} if directBattle else set())
         def accept(d):
-            return flow.observation.state in expected or event.findSpecialFormationDecline(nav.labels(d)) is not None
+            items=nav.labels(d)
+            return flow.observation.state in expected or event.findSpecialFormationDecline(items) is not None or event.findFormationRestrictionNotice(items) is not None
         observation=flow.waitForFlowState(expected|{S.UNKNOWN},timeout=max(0,deadline-flow.clock()),transition_name='event friend exit',allowed_intermediate={S.FRIEND,S.LOADING},accept=accept)
         items=nav.labels(flow.detect)
+        for _ in range(3):
+            if not event.findFormationRestrictionNotice(items):break
+            d,items,state=self.runner.closeFormationRestrictionNotice(flow.detect,items,deadline=deadline)
+            if state=='formation_restriction_notice':continue
+            observation=flow.waitForFlowState(expected,timeout=max(0,deadline-flow.clock()),transition_name='formation restriction notice exit',allowed_intermediate={S.UNKNOWN,S.LOADING})
+            items=nav.labels(flow.detect)
+        else:raise ScriptStop('Event formation restriction notice budget exhausted')
         if event.findSpecialFormationDecline(items):
             self.runner.configureSpecialFormation(flow.detect,items,flow=flow,deadline=deadline)
             observation=flow.observation
@@ -681,7 +689,7 @@ class EventRunner:
         if state in ('formation_settings','formation_review') and self.policy.allowTemporaryAutoFormation:return d,items,state
         if state in ('formation_blocked','formation_settings','formation_review'):
             raise ScriptStop('Event special party requires configuration: '+state+'; no automatic replacement')
-        if state in ('story','story_skip_confirmation','start_confirmation','support','special_formation_offer','formation','battle','battle_result','ap_empty','reward_receipt','item_receipt','item_detail','event_tutorial','mission_list','mission_reward_receipt','item_information','quest_information','friend_request','continue'):
+        if state in ('story','story_skip_confirmation','start_confirmation','support','special_formation_offer','formation_restriction_notice','formation','battle','battle_result','ap_empty','reward_receipt','item_receipt','item_detail','event_tutorial','mission_list','mission_reward_receipt','item_information','quest_information','friend_request','continue'):
             return d,items,state # Resume actual state, never ledger-driven.
         dismissed=set()
         for _ in range(8):
@@ -795,6 +803,20 @@ class EventRunner:
             if signature is not None and count>=3:return d,items,signature
             schedule.sleep(.2)
         raise ScriptStop('Dialogue signature not stable; no skip input')
+    def closeFormationRestrictionNotice(self,d,items,*,deadline=None):
+        proof=event.findFormationRestrictionNotice(items)
+        if proof is None:raise ScriptStop('Formation restriction notice unproved; no close')
+        seen=getattr(self,'closedFormationNotices',set())
+        if proof['requirement'] in seen:raise ScriptStop('Already dismissed this restriction notice instance; no repeated close')
+        for _ in range(2):
+            if deadline is not None and self.clock()>=deadline:raise FlowTimeout('Restriction notice parent deadline expired; no close')
+            d,items,state=self.read();fresh=event.findFormationRestrictionNotice(items)
+            if state!='formation_restriction_notice' or fresh is None or fresh['requirement']!=proof['requirement'] or max(abs(a-b) for a,b in zip(fresh['position'],proof['position']))>6:raise ScriptStop('Formation restriction notice transient; no close')
+            proof=fresh
+        self.ledger.append('formation_restriction_notice',requirement=proof['requirement'],partyChanged=False)
+        seen.add(proof['requirement']);self.closedFormationNotices=seen
+        self.touch(items,proof['position'],'close_formation_restriction_notice')
+        return self.wait({'formation','special_formation_offer','formation_review','formation_restriction_notice'},deadline=deadline,accept=lambda d,i,s:s!='formation_restriction_notice' or event.findFormationRestrictionNotice(i)['requirement']!=proof['requirement'])
     def declineSpecialFormation(self,d,items,*,flow=None,deadline=None):
         position=event.findSpecialFormationDecline(items)
         if position is None:raise ScriptStop('Special formation offer unconfirmed')
@@ -1299,7 +1321,7 @@ class EventRunner:
                     if not node:raise ScriptStop('Map smoke has no next main node')
                     return self.report('map_smoke_pass',nextNode=node,AP=self.ap(d))
                 pending=None;before=None;entryStart=self.clock();steps=0
-                if state in ('story','story_skip_confirmation','start_confirmation','support','special_formation_offer','formation_settings','formation_review','formation','battle','battle_result'):
+                if state in ('story','story_skip_confirmation','start_confirmation','support','special_formation_offer','formation_restriction_notice','formation_settings','formation_review','formation','battle','battle_result'):
                     # Actual in-progress UI proves a resumable entry. A saved
                     # ledger may annotate it, but never causes another tap.
                     pending={'title':'resumed actual event node','battlesBefore':self.normalCompletedBattles+self.recoveredCompletedBattles,'storyBefore':self.storySegments,'settlementsBefore':self.settledResumes,'resumed':True}
@@ -1343,6 +1365,8 @@ class EventRunner:
                         else:d,items,state=self.runBattle()
                     elif state=='special_formation_offer':
                         d,items,state=self.configureSpecialFormation(d,items)
+                    elif state=='formation_restriction_notice':
+                        d,items,state=self.closeFormationRestrictionNotice(d,items)
                     elif state=='formation_settings':
                         d,items,state=self.configureTemporaryParty(d,items,state)
                     elif state=='formation_review':

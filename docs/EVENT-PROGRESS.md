@@ -245,3 +245,12 @@ source, quest and positive measured before/after progress. Mission11's local
 two-battle 0/12 -> 7/12 -> 12/12 observation is specific to that Mission and
 quest, not a generic Heavenly-attribute solver. Unknown or conflicting mappings
 stop at the gate without randomly selecting a Free Quest.
+
+The third episode demonstrated two sequential formation restriction notices
+(required starter, forbidden member) before the existing isolated automatic
+formation offer. Each notice needs its heading, complete fixed instruction and
+unique close on three fresh frames. Distinct requirements may each advance
+once; an unchanged notice cannot be reclosed. The event support exit keeps its
+existing parent budget. Notice dismissal does not choose a servant or authorize
+the background battle-start button. This diagnostic node is recovered evidence,
+not a clean acceptance gate.
