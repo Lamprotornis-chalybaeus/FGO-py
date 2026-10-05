@@ -36,7 +36,7 @@ party review page. These are retained historical diagnostics, not successful
 main-node gates. Each repair has synthetic regressions; private raw frames and
 trace files are not published or included in CI artifacts.
 
-The current offline suite passes 638 cases, with the original three explicitly
+The current offline suite passes 641 cases, with the original three explicitly
 local integration skips. Full event battle, three-node and ten-node acceptance
 must be reported from actual local runs. A general Mission-to-Free-Quest mapping,
 real AP-item selector validation and reward-claim live coverage remain incomplete.
@@ -51,3 +51,10 @@ was interrupted while an independent probe used a different ADB server version;
 it cannot be accepted as a clean event battle gate. Subsequent local probes use
 the exact worker ADB executable. This diagnostic interference is distinct from
 a proven battle detector or AI failure.
+
+The first event victory reached BOND, then stopped because decoration in the
+Master EXP heading contaminated OCR. The existing result header/footer and two
+independent fixed body labels now prove Master EXP without lowering thresholds.
+Recovery of an already won result sequence has a separate settlement-resume
+counter; it cannot count another battle entry. That interrupted/recovered first
+node is diagnostic evidence, not a clean full-node gate.

@@ -277,7 +277,7 @@ class EventRunner:
         self.storyMode=storyMode
         self.ledger=ledger or ProgressLedger(paths.logRoot/'event'/'progress-ledger.json')
         self.main=EventMain(self,friendPolicy=friendPolicy,friendMaxRefresh=friendMaxRefresh)
-        self.completed=0;self.storySegments=0;self.claimed=0;self.apples={};self.captureFailures=0
+        self.completed=0;self.storySegments=0;self.claimed=0;self.apples={};self.captureFailures=0;self.settledResumes=0
         self.last=None;self.flow=None
     def read(self):
         schedule.checkStop();schedule.checkSuspend()
@@ -577,7 +577,14 @@ class EventRunner:
             d,items,state=self.read();QuartzGuard.check(items)
             if state=='battle_result':
                 cycle.settleBattleResult(boundary=self.eventBoundary)
-                return self.read()
+                if flow.observation.state==S.CONTINUE:
+                    flow.action('decline_event_repeat',lambda:main.press('F'))
+                    outcome=self.wait({'event_map','story'},timeout=30)
+                else:outcome=self.read()
+                if outcome[2] not in ('event_map','story'):raise ScriptStop('Resumed result has no positive event boundary')
+                self.settledResumes+=1
+                self.ledger.append('settlement_resume',nextState=outcome[2],newBattleEntry=False)
+                return outcome
             if state not in ('support','formation','battle'):raise ScriptStop('Unverified event battle entry')
             if not cycle.prepare():raise ScriptStop('Event preparation stopped')
             main.startedBattles+=1;main.battleCount=main.startedBattles
@@ -620,21 +627,21 @@ class EventRunner:
                 if state in ('story','story_skip_confirmation','start_confirmation','support','special_formation_offer','formation_settings','formation_review','formation','battle','battle_result'):
                     # Actual in-progress UI proves a resumable entry. A saved
                     # ledger may annotate it, but never causes another tap.
-                    pending={'title':'resumed actual event node','battlesBefore':self.main.completedAttempts,'storyBefore':self.storySegments}
+                    pending={'title':'resumed actual event node','battlesBefore':self.main.completedAttempts,'storyBefore':self.storySegments,'settlementsBefore':self.settledResumes}
                 while self.completed<int(maxNodes):
                     steps+=1
                     if steps>1000 or self.clock()-entryStart>3600:raise ScriptStop('Event bounded node progress exhausted')
                     if state=='event_map':
                         if pending:
                             d,items,state=self.wait({'event_map'},timeout=30)
-                            if self.main.completedAttempts<=pending['battlesBefore'] and self.storySegments<=pending['storyBefore']:
+                            if self.main.completedAttempts<=pending['battlesBefore'] and self.storySegments<=pending['storyBefore'] and self.settledResumes<=pending['settlementsBefore']:
                                 raise ScriptStop('Event map return has no completed story/battle evidence; node not counted')
                             self.completed+=1
-                            self.ledger.append('node',title=pending['title'],type='battle' if self.main.completedAttempts>pending['battlesBefore'] else 'story',beforeAP=before,afterAP=self.ap(d),apples=dict(self.apples),stats=self.main.result,nextState=state)
+                            self.ledger.append('node',title=pending['title'],type='battle' if self.main.completedAttempts>pending['battlesBefore'] or self.settledResumes>pending['settlementsBefore'] else 'story',beforeAP=before,afterAP=self.ap(d),apples=dict(self.apples),stats=self.main.result,nextState=state,resumedSettlements=self.settledResumes-pending['settlementsBefore'])
                             pending=None;entryStart=self.clock()
                             if self.completed>=int(maxNodes):break
                         d,items,node=self.stableNode();before=self.ap(d)
-                        pending={**node,'battlesBefore':self.main.completedAttempts,'storyBefore':self.storySegments}
+                        pending={**node,'battlesBefore':self.main.completedAttempts,'storyBefore':self.storySegments,'settlementsBefore':self.settledResumes}
                         self.ledger.append('node_intent',title=node['title'],beforeAP=before,restrictions=node['restrictions'])
                         self.touch(items,node['position'],'select_main_node')
                         d,items,state=self.wait({'start_confirmation','story','support','formation','battle','ap_empty'},timeout=30)

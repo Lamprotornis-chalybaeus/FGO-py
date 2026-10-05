@@ -20,6 +20,16 @@ class CNResultPageTests(unittest.TestCase):
     def test_real_master_exp_page_is_distinct(self):
         d=self.detect({(490,20,775,110):('战斗结果',.994),(480,625,815,690):('请点击游戏界面',.978),(635,175,860,245):('√获得经验值',.862)})
         with patch.object(OCR.ZHS,'ocr_single_line',side_effect=self.read):self.assertEqual(d.getBattleResultPage(),'MASTER_EXP')
+    def test_event_master_heading_decoration_requires_two_positive_body_labels(self):
+        labels={(490,20,775,110):('战斗结果',.928),(480,625,815,690):('请点击游戏界面',.973),(635,175,860,245):('少获得经验值',.842),(680,252,823,300):('御主经验',.943),(680,425,902,471):('魔术礼装经验',.982)}
+        d=self.detect(labels)
+        with patch.object(OCR.ZHS,'ocr_single_line',side_effect=self.read):self.assertEqual(d.getBattleResultPage(),'MASTER_EXP')
+        for missing in ((680,252,823,300),(680,425,902,471),(490,20,775,110),(480,625,815,690)):
+            d=self.detect({k:v for k,v in labels.items() if k!=missing})
+            with patch.object(OCR.ZHS,'ocr_single_line',side_effect=self.read):self.assertIsNone(d.getBattleResultPage())
+    def test_event_master_body_threshold_unchanged(self):
+        d=self.detect({(490,20,775,110):('战斗结果',.99),(480,625,815,690):('请点击游戏界面',.99),(680,252,823,300):('御主经验',.849),(680,425,902,471):('魔术礼装经验',.99)})
+        with patch.object(OCR.ZHS,'ocr_single_line',side_effect=self.read):self.assertIsNone(d.getBattleResultPage())
     def test_missing_footer_or_unknown_panel_never_authorizes_result_input(self):
         for footer in [('',0),('请点击游戏界面',.99)]:
             d=self.detect({(490,20,775,110):('战斗结果',.99),(480,625,815,690):footer})

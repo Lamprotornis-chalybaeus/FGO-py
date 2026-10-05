@@ -72,6 +72,22 @@ class BoundaryTests(unittest.TestCase):
 
 
 class SharedEventCycleTests(unittest.TestCase):
+    def test_resume_existing_result_settles_without_counting_another_entry(self):
+        clock=Clock();index=[0]
+        def readFrame():
+            d=frame('BATTLE_RESULT' if index[0]==0 else 'UNKNOWN')
+            d.getBattleResultPage=lambda:'REWARDS' if index[0]==0 else None
+            return d
+        flow=BattleFlow(readFrame,clock,clock=clock,trace=FlowTrace(clock=clock))
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock())
+        runner.main.makeFlow=Mock(return_value=flow)
+        runner.main.press=lambda key:index.__setitem__(0,1)
+        runner.read=lambda:(readFrame(),[],'battle_result' if index[0]==0 else 'event_map')
+        runner.eventBoundary=lambda d:not d.isBattleFinished()
+        self.assertEqual(runner.runBattle()[2],'event_map')
+        self.assertEqual(runner.settledResumes,1)
+        self.assertEqual((runner.main.startedBattles,runner.main.completedAttempts),(0,0))
+        runner.ledger.append.assert_called_once_with('settlement_resume',nextState='event_map',newBattleEntry=False)
     def runCycle(self,defeated=False):
         from test_battle_cycle import Scenario
         scenario=Scenario(defeated=defeated);scenario.state='FRIEND'
