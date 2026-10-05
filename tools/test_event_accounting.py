@@ -190,3 +190,22 @@ class EmpiricalMissionMappingTests(unittest.TestCase):
     def test_unproved_or_generic_mapping_is_not_a_solver(self):
         for change in (dict(generic=True),dict(source=''),dict(sampleBattles=0),dict(after='712'),dict(after='0/12')):
             self.assertIsNone(self.runner(**change).observedMissionMapping(self.requirement()))
+
+class MissionHeaderReadTests(unittest.TestCase):
+    def labels(self):
+        return [i for i in cycleTests.EventContractTests().missionList(2) if i.text!='已达成的任务']+[item('已达成的任务',628,224,w=159,score=.82)]
+    def test_local_two_scale_heading_recovers_actual_list_without_lower_threshold(self):
+        frame=Mock();frame._crop.return_value=__import__('numpy').zeros((34,159,3),dtype='uint8')
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('已达成的任务',.95)) as ocr:
+            labels=ec.missionHeaderItems(frame,self.labels())
+        self.assertTrue(event._missionListConfirmed(labels));self.assertEqual(ocr.call_count,2)
+        self.assertEqual(event.missionCompletedCount(labels),2)
+    def test_weak_or_disagreeing_heading_cannot_promote(self):
+        frame=Mock();frame._crop.return_value=__import__('numpy').zeros((34,159,3),dtype='uint8')
+        for scores in ([('已达成的任务',.95),('已达成的任务',.84)],[('已达成的任务',.95),('未达成的任务',.95)]):
+            with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=scores):
+                self.assertFalse(event._missionListConfirmed(ec.missionHeaderItems(frame,self.labels())))
+    def test_missing_independent_tab_or_modal_does_not_reread(self):
+        for labels in ([i for i in self.labels() if i.text!='活动道具兑换'],self.labels()+[item('请选择奖励',400,300)]):
+            with patch.object(ec.OCR.ZHS,'ocr_single_line') as ocr:
+                self.assertEqual(ec.missionHeaderItems(Mock(),labels),labels);ocr.assert_not_called()

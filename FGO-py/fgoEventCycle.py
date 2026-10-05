@@ -334,6 +334,20 @@ def storySignature(items):
     if not lines:return None
     return hashlib.sha256('|'.join(v[2] for v in lines).encode('utf-8')).hexdigest()
 
+def missionHeaderItems(d,items):
+    """Re-read the actual weak list counter heading, retaining the threshold."""
+    import cv2
+    strong=[i for i in items if i.score>=.85]
+    anchors=(('任务报酬',(650,100,850,180)),('活动道具兑换',(1000,100,1250,180)),('任务报酬一览',(800,175,1100,230)),('关闭',(0,0,220,100)))
+    for text,rect in anchors:
+        if len([i for i in strong if event._text(i)==text and rect[0]<i.center[0]<rect[2] and rect[1]<i.center[1]<rect[3]])!=1:return items
+    candidates=[i for i in items if event._text(i)=='已达成的任务' and 600<i.center[0]<800 and 220<i.center[1]<270]
+    if len(candidates)!=1 or candidates[0].score>=.85 or event._unsafeEventOverlay(items):return items
+    candidate=candidates[0];crop=d._crop(candidate.box)
+    a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
+    if min(float(sa),float(sb))<.85 or event.normalizeText(a)!=event.normalizeText(b) or event.normalizeText(a)!='已达成的任务':return items
+    return [i for i in items if i is not candidate]+[event.OcrItem(a,candidate.box,min(float(sa),float(sb)))]
+
 def missionProgressItems(d,items):
     if not event._missionListConfirmed(items):return items
     import cv2
@@ -423,6 +437,7 @@ def questInfoItems(d,items):
 
 def enrichedEventItems(d):
     items=itemDetailItems(d,itemReceiptItems(d,startConfirmationItems(d,mainTitleItems(d,worldMapItems(d,skipConfirmationItems(d,storyItems(d,nav.labels(d))))))))
+    items=missionHeaderItems(d,items)
     items=questInfoItems(d,missionInfoItems(d,missionConditionItems(d,missionProgressItems(d,items))))
     items=earnedReceiptItems(d,items)
     if event.eventTutorialCloseProof(items):
