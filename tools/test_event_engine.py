@@ -195,6 +195,18 @@ class LocatorTests(unittest.TestCase):
             self.assertEqual(quest.verifiedTitle('actual',5,'area','f'*64,[proof],image=image,box=(778,299,982,326),proofRoot=root),'actual')
 
 class CampaignTests(unittest.TestCase):
+    def test_fixed_mission_task_cannot_silently_switch_to_another_quest(self):
+        runner=Mock();runner.newBattleEntries=0;index=engine.EventQuestIndex('event');q=entry();index.add(q)
+        c=campaign.EventCampaignRunner(runner,index,engine.MissionEvidenceDB('event'),engine.EventProfile('event','heading'))
+        c.solve=Mock(return_value='done')
+        self.assertEqual(c.farm(engine.EventFarmTask(q.key,mission=23,untilComplete=True)),'done')
+        c.solve.assert_called_once_with({'mission':23},fixedQuest=q)
+    def test_unmeasured_fixed_mission_farm_stops_before_selection(self):
+        runner=Mock();runner.newBattleEntries=0
+        c=campaign.EventCampaignRunner(runner,engine.EventQuestIndex('event'),engine.MissionEvidenceDB('event'),engine.EventProfile('event','heading'))
+        c.missionMenu=Mock();c.observeMissions=Mock(return_value=({'23':card()},(Mock(),[],'mission_list'),card()));c.battleQuest=Mock()
+        with self.assertRaisesRegex(ScriptStop,'positive quest effect'):c.solve({'mission':23},fixedQuest=entry())
+        c.battleQuest.assert_not_called();runner.touch.assert_not_called()
     def test_nested_free_quest_obeys_parent_budget_before_any_selection(self):
         runner=Mock();runner.newBattleEntries=4;runner.clock=Mock(return_value=100)
         c=campaign.EventCampaignRunner(runner,engine.EventQuestIndex('event'),engine.MissionEvidenceDB('event'),engine.EventProfile('event','heading'))

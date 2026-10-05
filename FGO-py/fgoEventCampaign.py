@@ -7,7 +7,7 @@ import re,time
 from fgoAutomation import automationOwner
 from fgoSchedule import ScriptStop,schedule
 import fgoEventProgress as event
-from fgoEventEngine import CampaignState,EventFarmTask,EventProfile,MissionExperimentEngine,missionValue
+from fgoEventEngine import CampaignState,EventFarmTask,EventProfile,MissionExperimentEngine,missionValue,conditionKey
 from fgoEventQuest import EventQuestLocator,QuestNotObserved
 
 def completeProof(items):
@@ -44,7 +44,7 @@ class EventCampaignRunner:
                 for n in set(numbers):
                     card=event.findMissionCard(items,n)
                     if card:
-                        key=(n,event.normalizeText(card['condition']),card['progress'])
+                        key=(n,conditionKey(card['condition']),card['progress'])
                         counts[key]=counts.get(key,0)+1
                         if counts[key]>=2:observed[str(n)]={k:card[k] for k in ('mission','condition','progress')}
             return d,items,state
@@ -118,10 +118,13 @@ class EventCampaignRunner:
         if len(wins)!=1 or wins[0].get('won') is not True:raise ScriptStop('Experiment outcome not uniquely proved win')
         self.runner.ledger.append('event_free_complete',quest=fresh.key,entryId=entry,normal=wins[0]['mode']=='normal',AP=self.runner.ap(outcome[0]))
         return fresh,entry,outcome
-    def solve(self,requirement):
+    def solve(self,requirement,*,fixedQuest=None):
         self.phase(CampaignState.MISSION_GATE,mission=requirement['mission'])
         mission=requirement['mission']
         self.missionMenu();before,origin,card=self.observeMissions(mission,fromTop=False)
+        if fixedQuest is not None and missionValue(card)[0]!=missionValue(card)[1]:
+            effect=self.evidence.effects(mission,card['condition']).get(fixedQuest.key,{})
+            if not effect.get('positiveSamples'):raise ScriptStop('Fixed Mission farm requires measured positive quest effect')
         for attempt in range(40):
             self.checkBudget()
             done,total=missionValue(card)
@@ -138,6 +141,7 @@ class EventCampaignRunner:
             if state=='event_world_map':self.runner.openNextArea()
             quests=self.locator.scan(complete=not bool(self.index.available()))
             choices=self.evidence.rank(quests,card)
+            if fixedQuest is not None:choices=[q for q in choices if q.key==fixedQuest.key]
             if not choices:raise ScriptStop('No untried or positively mapped available candidate; experiment budget stops')
             for _ in range(3):
                 intent=self.learning.begin(choices[0],mission,before,self.runner._entryIds)
@@ -147,6 +151,7 @@ class EventCampaignRunner:
                     # No quest touch/entry occurred. Preserve the positive
                     # mapping; only current availability has been superseded.
                     self.runner.ledger.append('mission_candidate_unobserved',quest=choices[0].key,mission=mission)
+                    if fixedQuest is not None:raise ScriptStop('Fixed farm quest no longer freshly available; no substitution')
                     choices=self.evidence.rank(self.index.available(),card)
                     if not choices:raise ScriptStop('No fresh available candidate after catalog changed')
             else:raise ScriptStop('Mission unavailable-candidate correction budget exhausted')
@@ -160,12 +165,7 @@ class EventCampaignRunner:
         quest=self.index.entries.get(task.quest)
         if quest is None:raise ScriptStop('Farm quest not indexed')
         if task.untilComplete:
-            self.missionMenu();_,_,card=self.observeMissions(task.mission)
-            # Mission mode may learn/choose alternatives only through solve.
-            # An explicitly fixed quest must already have measured positive effect.
-            effect=self.evidence.effects(task.mission,card['condition']).get(quest.key,{})
-            if not effect.get('positiveSamples'):raise ScriptStop('Mission farm requires measured positive quest effect')
-            return self.solve(card)
+            return self.solve({'mission':task.mission},fixedQuest=quest)
         outcome=None
         for _ in range(task.runs):outcome=self.battleQuest(quest)[2]
         return outcome

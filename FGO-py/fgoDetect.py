@@ -216,6 +216,14 @@ class XDetectCN(XDetectBase):
         line=self._crop((236,664,323,684))
         reads=[OCR.EN.ocr_single_line(line),OCR.EN.ocr_single_line(cv2.resize(line,None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC))]
         parsed=[re.fullmatch(r'([0-9]{1,5})\s*/\s*([0-9]{1,3})',str(text).strip()) for text,_ in reads]
+        if not all(parsed) and min(float(score) for _,score in reads)>=.85 and all(re.fullmatch(r'\d+',str(text).strip()) for text,_ in reads) and str(reads[0][0]).strip()==str(reads[1][0]).strip() and isinstance(line,numpy.ndarray):
+            # Real gold 127/73 became 127173 at both raw scales. Preserve the
+            # actual slash pixels by separating the dark HUD background; do
+            # not split a concatenated number or synthesize a separator.
+            _,mask=cv2.threshold(cv2.cvtColor(line,cv2.COLOR_BGR2GRAY),100,255,cv2.THRESH_BINARY)
+            mask=cv2.cvtColor(mask,cv2.COLOR_GRAY2BGR)
+            reads=[OCR.EN.ocr_single_line(cv2.resize(mask,None,fx=s,fy=s,interpolation=cv2.INTER_CUBIC)) for s in (2,3)]
+            parsed=[re.fullmatch(r'([0-9]{1,5})\s*/\s*([0-9]{1,3})',str(text).strip()) for text,_ in reads]
         if min(float(score) for _,score in reads)<.85 or not all(parsed):raise ScriptStop('CN AP识别失败：未确认当前AP/上限，已停止')
         values=[tuple(map(int,match.groups())) for match in parsed]
         if values[0]!=values[1] or values[0][1]<=0:raise ScriptStop('CN AP识别失败：两次读数不一致或上限无效，已停止')

@@ -148,6 +148,12 @@ class DailyQuestTests(unittest.TestCase):
         self.assertEqual(queue,before)
 
 class CnApTests(unittest.TestCase):
+    def test_gold_digits_need_two_actual_masked_fraction_reads(self):
+        from fgoDetect import OCR
+        with patch.object(OCR.EN,'ocr_single_line',side_effect=[('127173',.95)]*2+[('127/73',.998),('127/73',.998)]):
+            self.assertEqual(self.detector().getAp(),127)
+        for masked in ([('127173',.99)]*2,[('127/73',.99),('127/73',.84)],[('127/73',.99),('12/73',.99)]):
+            with patch.object(OCR.EN,'ocr_single_line',side_effect=[('127173',.95)]*2+masked),self.assertRaises(fgoKernel.ScriptStop):self.detector().getAp()
     def detector(self):
         from fgoDetect import XDetectCN
         d=XDetectCN.__new__(XDetectCN);d.im=numpy.zeros((720,1280,3),numpy.uint8);return d

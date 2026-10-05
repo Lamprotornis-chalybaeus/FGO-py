@@ -279,10 +279,10 @@ def missionRewardReceipt(items):
     amounts=[i for i in strong if re.fullmatch(r'[『「]?[^『「』」]+[×x]\d+[』」]?[。.]*',_text(i)) and 400<_center(i)[0]<900 and 400<_center(i)[1]<470]
     close=[i for i in strong if _text(i)=='关闭' and 450<_center(i)[0]<850 and 480<_center(i)[1]<590]
     mission=[i for i in strong if re.fullmatch(r'编号\d+',_text(i)) and _center(i)[0]>1100 and 260<_center(i)[1]<500]
-    if len(obtained)!=1 or len(amounts)!=1 or len(close)!=1 or len(mission)!=1:return None
+    if len(obtained)!=1 or len(amounts)!=1 or len(close)!=1 or not mission:return None
     counts=[i for i in strong if re.fullmatch(r'\d+/\d+',_text(i)) and 900<_center(i)[0]<1050 and 35<_center(i)[1]<90]
     before=int(_text(counts[0]).split('/')[0]) if len(counts)==1 else None
-    return {'position':_center(close[0]),'reward':_text(amounts[0]).strip('『「』」。.'),'beforeCount':before,'mission':int(re.search(r'\d+',_text(mission[0]))[0])}
+    return {'position':_center(close[0]),'reward':_text(amounts[0]).strip('『「』」。.'),'beforeCount':before,'mission':int(re.search(r'\d+',_text(mission[0]))[0]) if len(mission)==1 else None,'visibleMissions':tuple(sorted({int(re.search(r'\d+',_text(i))[0]) for i in mission}))}
 
 def findEventTutorialNext(items):
     if _unsafeEventOverlay(items):return None

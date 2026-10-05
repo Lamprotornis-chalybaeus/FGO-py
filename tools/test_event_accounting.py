@@ -26,6 +26,12 @@ class ResourceDefaultsTests(unittest.TestCase):
         with self.assertRaises(ValueError):ec.RecoveredBattleOutcome(True,'BOND',newEntry=True)
 
 class RecoveredOutcomeTests(unittest.TestCase):
+    def test_entry_revalidation_waits_read_only_after_transient_result_miss(self):
+        runner=self.runner();good=runner.read.return_value
+        runner.read=Mock(return_value=(Mock(),[],'unknown'));runner.wait=Mock(return_value=good);runner.touch=Mock()
+        self.assertEqual(runner.battleEntryFrame(),good)
+        self.assertEqual(runner.wait.call_args.kwargs['timeout'],15)
+        self.assertIn('battle_result',runner.wait.call_args.args[0]);runner.touch.assert_not_called()
     def runner(self,entries=('one',),outcomes=()):
         ledger=Ledger([{'kind':'battle_started','entryId':i,'evidence':'fresh TURN_BEGIN','questKind':'main'} for i in entries]+list(outcomes))
         runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=ledger)
@@ -95,6 +101,20 @@ class ExactMissionClaimTests(unittest.TestCase):
         runner.claimCompletedMission(11)
         runner.touch.assert_called_once();claims=[r for r in runner.records() if r['kind']=='mission_claim']
         self.assertEqual(claims[0]['mission'],11);self.assertTrue(claims[0]['claimed']);self.assertEqual(claims[0]['beforeProgress'],(12,12))
+    def test_ornamental_quote_variants_preserve_three_frame_claim_identity(self):
+        variants=[]
+        for condition in ('击败12个持有『天』属性的敌人','击败12个持有「天」属性的敌人','击败12个持有【天】属性的敌人'):
+            variants.append([i for i in self.labels() if not i.text.startswith('击败')]+[item(condition,607,320,w=300)])
+        after=cycleTests.EventContractTests().missionList(1)
+        runner=ec.EventRunner(ec.EventResourcePolicy(),autoClaim=True,ledger=Ledger());runner.touch=Mock()
+        runner.read=Mock(side_effect=[(Mock(),labels,'mission_list') for labels in variants]+[(Mock(),after,'mission_list')]*3)
+        runner.claimCompletedMission(11);runner.touch.assert_called_once()
+    def test_claim_missing_before_counter_never_touches(self):
+        from test_battle_flow import Clock
+        clock=Clock();runner=ec.EventRunner(ec.EventResourcePolicy(),autoClaim=True,ledger=Ledger(),clock=clock)
+        runner.read=Mock(return_value=(Mock(),self.labels(),'mission_list'));runner.touch=Mock()
+        with patch.object(ec.event,'missionCompletedCount',return_value=None),patch.object(ec,'schedule',clock),self.assertRaises(ec.ScriptStop):runner.claimCompletedMission(11)
+        runner.touch.assert_not_called()
     def test_truncated_condition_cannot_claim_even_if_counter_complete(self):
         labels=[i for i in self.labels() if not i.text.startswith('击败')]+[item('击败12个天之力敌人(除外',607,320,w=250)]
         from test_battle_flow import Clock
@@ -438,6 +458,15 @@ class LockedAreaBoundaryTests(unittest.TestCase):
         runner.seekMission.assert_called_once_with(23);runner.stableNode.assert_not_called();runner.touch.assert_not_called()
 
 class WrappedMissionFreshReadTests(unittest.TestCase):
+    def test_ornamental_quotes_may_vary_but_words_count_and_exclusion_must_agree(self):
+        import numpy
+        labels=self.labels()
+        labels=[item('击败20个『恶』敌人召唤出来的敌人除',607,310,w=400) if i.text.startswith('击败20') else i for i in labels]
+        d=Mock(_crop=Mock(return_value=numpy.zeros((20,400,3),dtype='uint8')))
+        missing='击败20个『恶』敌人召唤出来的敌人除';full='击败20个『恶』敌人（召唤出来的敌人除'
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[(missing,.92),(missing.replace('』','」'),.92),(full,.92),(full.replace('』','」'),.92)]+[('外)',.91)]*2):
+            card=event.findMissionCard(ec.missionConditionItems(d,labels),11)
+        self.assertIsNotNone(card);self.assertIn('恶',card['condition']);self.assertIn('召唤出来的敌人除',card['condition'])
     def labels(self):
         labels=cycleTests.MissionConditionCropTests().labels()
         return [item('击败20个敌人召唤出来的敌人除',607,310,w=400) if i.text.startswith('击败20') else i for i in labels]
@@ -488,3 +517,56 @@ class WrappedMissionFreshReadTests(unittest.TestCase):
         runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger());runner.read=Mock(return_value=(Mock(),self.labels(),'mission_list'))
         with patch.object(ec.daily,'_menuSwipe') as swipe,self.assertRaises(ec.ScriptStop):runner.seekMission(11)
         self.assertEqual(runner.read.call_count,3);swipe.assert_not_called()
+
+class MultiCardReceiptTests(unittest.TestCase):
+    def labels(self):
+        return cycleTests.EventContractTests().missionReceipt()+[item('编号2',1144,484,w=64)]
+    def test_obtained_receipt_with_multiple_background_cards_has_no_guessed_identity(self):
+        proof=event.missionRewardReceipt(self.labels())
+        self.assertIsNone(proof['mission']);self.assertEqual(proof['visibleMissions'],(1,2))
+        self.assertEqual(event.classifyEventState(self.labels()),'mission_reward_receipt')
+    def test_unique_pending_claim_supplies_identity_and_only_closes_once(self):
+        labels=self.labels();ledger=Ledger([dict(kind='mission_claim_intent',mission=1,beforeCount=0)])
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=ledger);runner.touch=Mock()
+        runner.read=Mock(return_value=(Mock(),labels,'mission_reward_receipt'))
+        runner.waitMissionClaimIncrement=Mock(return_value=(Mock(),cycleTests.EventContractTests().missionList(1),'mission_list'))
+        runner.closeMissionRewardReceipt(None,labels,countResumedClaim=True)
+        runner.touch.assert_called_once();self.assertEqual([r['mission'] for r in runner.records() if r['kind']=='mission_claim'],[1])
+    def test_multiple_or_no_pending_context_never_closes(self):
+        for records in ([],[dict(kind='mission_claim_intent',mission=n,beforeCount=0) for n in (1,2)]):
+            runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger(records));runner.touch=Mock()
+            with self.assertRaises(ec.ScriptStop):runner.closeMissionRewardReceipt(None,self.labels(),countResumedClaim=True)
+            runner.touch.assert_not_called()
+
+class MissionReceiptLabelTests(unittest.TestCase):
+    def test_actual_two_scale_label_proof_is_required(self):
+        import numpy
+        labels=[item(i.text,*i.box[:2],w=i.box[2]-i.box[0],h=i.box[3]-i.box[1],score=.83) if i.text=='获得了' else i for i in cycleTests.EventContractTests().missionReceipt()]
+        d=Mock(_crop=Mock(return_value=numpy.zeros((37,95,3),dtype='uint8')))
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[('获得了',.99),('获得了',.99)]):
+            self.assertIsNotNone(event.missionRewardReceipt(ec.missionReceiptItems(d,labels)))
+        for output in ([('获得了',.99),('使用了',.99)],[('获得了',.84),('获得了',.99)]):
+            with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=output):self.assertIsNone(event.missionRewardReceipt(ec.missionReceiptItems(d,labels)))
+
+class PostClaimReconciliationTests(unittest.TestCase):
+    def test_unique_dismissal_and_three_incremented_counters_recover_without_input(self):
+        ledger=Ledger([dict(kind='mission_claim_intent',mission=23,beforeCount=2,progress=[4,4]),dict(kind='mission_receipt_dismiss_intent',mission=23,beforeCount=2,reward='普通道具×5')])
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=ledger);runner.touch=Mock()
+        labels=cycleTests.EventContractTests().missionList(3);runner.read=Mock(return_value=(Mock(),labels,'mission_list'))
+        runner.reconcilePendingMissionClaim(None,labels);runner.reconcilePendingMissionClaim(None,labels)
+        runner.touch.assert_not_called();self.assertEqual(runner.claimed,1);self.assertEqual(runner.read.call_count,3)
+    def test_missing_dismissal_or_wrong_counter_never_accounts_claim(self):
+        for close,count in ((False,3),(True,2),(True,4)):
+            records=[dict(kind='mission_claim_intent',mission=23,beforeCount=2)]
+            if close:records.append(dict(kind='mission_receipt_dismiss_intent',mission=23,beforeCount=2,reward='普通道具×5'))
+            runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger(records));runner.touch=Mock()
+            labels=cycleTests.EventContractTests().missionList(count);runner.read=Mock(return_value=(Mock(),labels,'mission_list'))
+            with self.assertRaises(ec.ScriptStop):runner.reconcilePendingMissionClaim(None,labels)
+            runner.touch.assert_not_called();self.assertEqual(runner.claimed,0)
+    def test_counter_local_read_requires_exact_two_scale_fraction(self):
+        import numpy
+        labels=[item(i.text,*i.box[:2],w=i.box[2]-i.box[0],h=i.box[3]-i.box[1],score=.84) if i.text=='3/100' else i for i in cycleTests.EventContractTests().missionList(3)]
+        d=Mock(_crop=Mock(return_value=numpy.zeros((32,83,3),dtype='uint8')))
+        with patch.object(ec.OCR.EN,'ocr_single_line',side_effect=[('3/100',.99)]*2):self.assertEqual(event.missionCompletedCount(ec.missionCounterItems(d,labels)),3)
+        for output in ([('3/100',.99),('4/100',.99)],[('3/100',.84)]*2):
+            with patch.object(ec.OCR.EN,'ocr_single_line',side_effect=output):self.assertIsNone(event.missionCompletedCount(ec.missionCounterItems(d,labels)))

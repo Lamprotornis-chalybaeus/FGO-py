@@ -252,6 +252,20 @@ def startConfirmationItems(d,items):
     if min(float(sa),float(sb))<.85 or event.normalizeText(a)!=event.normalizeText(b) or event.normalizeText(a)!='取消':return items
     return [i for i in items if not cancel or i is not cancel[0]]+[event.OcrItem('取消',rect,min(float(sa),float(sb)))]
 
+def missionReceiptItems(d,items):
+    """Re-read a weak observed obtained label; no background navigation authority."""
+    if event._unsafeEventOverlay(items):return items
+    weak=[i for i in items if event._text(i)=='获得了' and 500<i.center[0]<800 and 350<i.center[1]<430]
+    if len(weak)!=1 or weak[0].score>=.85:return items
+    # Require the other receipt producers before reading the actual label crop.
+    proposed=[event.OcrItem(i.text,i.box,.85) if i is weak[0] else i for i in items]
+    if event.missionRewardReceipt(proposed) is None:return items
+    import cv2
+    i=weak[0];rect=i.box;crop=d._crop(rect)
+    a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
+    if min(float(sa),float(sb))<.85 or event.normalizeText(a)!=event.normalizeText(b) or event.normalizeText(a)!='获得了':return items
+    return [j for j in items if j is not i]+[event.OcrItem(a,rect,min(float(sa),float(sb)))]
+
 def earnedReceiptItems(d,items):
     """Observed reward glow weakens whole-frame amount OCR; confirm text crop."""
     if event._unsafeEventOverlay(items):return items
@@ -368,6 +382,18 @@ def missionHeaderItems(d,items):
     if min(float(sa),float(sb))<.85 or event.normalizeText(a)!=event.normalizeText(b) or event.normalizeText(a)!='已达成的任务':return items
     return [i for i in items if i is not candidate]+[event.OcrItem(a,candidate.box,min(float(sa),float(sb)))]
 
+def missionCounterItems(d,items):
+    if event._unsafeEventOverlay(items):return items
+    strong=[i for i in items if i.score>=.85]
+    if not all(any(event._text(i)==word and lo<i.center[0]<hi and top<i.center[1]<bottom for i in strong) for word,lo,hi,top,bottom in (('任务报酬',650,850,100,180),('活动道具兑换',1000,1250,100,180),('已达成的任务',600,800,220,270),('关闭',0,220,0,100))):return items
+    weak=[i for i in items if re.fullmatch(r'\d+/\d+',event._text(i)) and 800<i.center[0]<950 and 220<i.center[1]<270]
+    if len(weak)!=1 or weak[0].score>=.85:return items
+    import cv2
+    i=weak[0];crop=d._crop(i.box)
+    a,sa=OCR.EN.ocr_single_line(crop);b,sb=OCR.EN.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
+    if min(float(sa),float(sb))<.85 or event.normalizeText(a)!=event.normalizeText(b) or event.normalizeText(a)!=event._text(i):return items
+    return [j for j in items if j is not i]+[event.OcrItem(a,i.box,min(float(sa),float(sb)))]
+
 def missionProgressItems(d,items):
     if not event._missionListConfirmed(items):return items
     import cv2
@@ -418,6 +444,7 @@ def missionConditionItems(d,items):
     """
     if not event._missionListConfirmed(items):return items
     import cv2
+    from fgoEventEngine import conditionKey
     result=list(items)
     headers=[i for i in items if i.score>=.85 and re.fullmatch(r'编号\d+',event._text(i)) and i.center[0]>1100 and 270<i.center[1]<540]
     for header in headers:
@@ -430,21 +457,21 @@ def missionConditionItems(d,items):
             # Restore only actually reread punctuation, never change the
             # condition words/count or fabricate the wrapped exclusion.
             words=lambda v:''.join(re.findall(r'[\w]',event.normalizeText(v)))
-            if min(float(sa),float(sb))>=.85 and text==event.normalizeText(b) and words(text)==words(openingLine.text) and '(' not in text:
+            if min(float(sa),float(sb))>=.85 and conditionKey(text)==conditionKey(b) and words(text)==words(openingLine.text) and '(' not in text:
                 # On the real No.23 frame a one-pixel left text boundary
                 # changes punctuation segmentation. One bounded alternate
                 # crop must still read the same words and real parenthesis
                 # independently at both scales.
                 x1,y1,x2,y2=openingLine.box;crop=d._crop((x1+1,y1,x2,y2))
                 a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2));text=event.normalizeText(a)
-                if min(float(sa),float(sb))>=.85 and words(text)==words(openingLine.text) and (text!=event.normalizeText(b) or '(' not in text):
+                if min(float(sa),float(sb))>=.85 and words(text)==words(openingLine.text) and (conditionKey(text)!=conditionKey(b) or '(' not in text):
                     # A real second sample showed punctuation clipped on both
                     # horizontal and vertical edges. One final padded crop,
                     # still bounded to the same full text line, must agree at
                     # both scales without changing any condition words.
                     crop=d._crop((max(0,x1-3),max(0,y1-1),min(1280,x2+3),min(720,y2+2)))
                     a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2));text=event.normalizeText(a)
-            if min(float(sa),float(sb))>=.85 and text==event.normalizeText(b) and words(text)==words(openingLine.text) and '(' in text and ')' not in text:
+            if min(float(sa),float(sb))>=.85 and conditionKey(text)==conditionKey(b) and words(text)==words(openingLine.text) and '(' in text and ')' not in text:
                 replacement=event.OcrItem(a,openingLine.box,min(float(sa),float(sb)))
                 result.remove(openingLine);result.append(replacement)
                 items=[replacement if i is openingLine else i for i in items]
@@ -467,7 +494,7 @@ def missionConditionItems(d,items):
             joined[2:2+crop.shape[0],first.shape[1]+3:]=crop
             a,sa=OCR.ZHS.ocr_single_line(joined);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(joined,None,fx=2,fy=2));text=event.normalizeText(a)
             words=lambda v:''.join(re.findall(r'[\w]',event.normalizeText(v)))
-            if min(float(sa),float(sb))<.85 or text!=event.normalizeText(b) or words(text)!=words(opening[0].text+tail.text) or text.count('(')!=1 or text.count(')')!=1:continue
+            if min(float(sa),float(sb))<.85 or conditionKey(text)!=conditionKey(b) or words(text)!=words(opening[0].text+tail.text) or text.count('(')!=1 or text.count(')')!=1:continue
             result.remove(opening[0]);result.remove(tail)
             result.append(event.OcrItem(a,opening[0].box,min(float(sa),float(sb))))
             continue
@@ -507,9 +534,9 @@ def questInfoItems(d,items):
 
 def enrichedEventItems(d):
     items=itemDetailItems(d,itemReceiptItems(d,startConfirmationItems(d,mainTitleItems(d,worldMapItems(d,skipConfirmationItems(d,storyItems(d,nav.labels(d))))))))
-    items=partyReviewItems(d,missionHeaderItems(d,items))
+    items=partyReviewItems(d,missionCounterItems(d,missionHeaderItems(d,items)))
     items=questInfoItems(d,missionInfoItems(d,missionConditionItems(d,missionProgressItems(d,items))))
-    items=earnedReceiptItems(d,items)
+    items=missionReceiptItems(d,earnedReceiptItems(d,items))
     if event.eventTutorialCloseProof(items):
         import cv2
         rect=(1219,7,1273,61);crop=d._crop(rect)
@@ -712,9 +739,11 @@ class EventRunner:
         state=event.classifyEventState(items,{**event._detectFlags(d),'main_interface':d.isMainInterface()})
         self.last=(d,items,state)
         return self.last
-    def wait(self,states,*,timeout=30,exclude=(),deadline=None,accept=None,blockedIntermediate=None):
-        end=min(self.clock()+timeout,deadline or float('inf'))
-        mapFrames=0
+    def wait(self,states,*,timeout=30,exclude=(),deadline=None,accept=None,blockedIntermediate=None,loadingHardTimeout=None):
+        start=self.clock();hard=min(start+loadingHardTimeout,deadline or float('inf')) if loadingHardTimeout is not None else None
+        end=min(start+timeout,deadline or float('inf'))
+        if hard is not None:end=min(end,hard)
+        mapFrames=0;loadingKind=None;loadingSignature=None
         while self.clock()<end:
             d,items,state=self.read()
             accepted=state in states and state not in exclude and (accept is None or accept(d,items,state))
@@ -728,9 +757,24 @@ class EventRunner:
             else:mapFrames=0
             if state in ('battle_defeated','unsafe_modal','mission_gate') and not accepted and not (state=='mission_gate' and blockedIntermediate is not None and blockedIntermediate(d,items,state)):
                 raise ScriptStop('Event transition blocked: '+state)
+            if hard is not None and state=='unknown':
+                image=getattr(d,'im',None)
+                dark=getattr(image,'shape',None)==(720,1280,3) and float(image.mean())<18
+                labels=getattr(d,'isLoading',lambda:False)() is True
+                kind='labels' if labels else 'dark' if dark else None
+                signature=getattr(d,'getLoadingProgressSignature',lambda:None)() if labels else None
+                if kind and (kind!=loadingKind or signature is not None and signature!=loadingSignature):
+                    # One dark loading episode admits 60s waiting. Identical
+                    # black frames never keep renewing it; only positive
+                    # loading-label/indicator progress can extend to hard cap.
+                    end=min(hard,max(end,self.clock()+60))
+                    loadingKind=kind;loadingSignature=signature
+                    self.ledger.append('event_loading_progress',loadingKind=kind,hardSeconds=loadingHardTimeout)
             # Fresh captures after a verified action are read-only; no retry.
             schedule.sleep(.2)
         raise FlowTimeout('Event transition timed out; no repeated input')
+    def waitAfterBattle(self):
+        return self.wait({'event_map','event_world_map','story','mission_gate','reward_receipt','item_receipt','master_level_up'},timeout=30,loadingHardTimeout=180,accept=lambda d,i,s:s!='mission_gate' or event.findLockedEventMission(i) is not None)
     def touch(self,items,pos,action,**guard):
         if guard.get('dismissNotice') and pos not in (loginRewardInfoClose(items),promotionalInfoClose(items)):
             raise ScriptStop('Informational permission only authorizes its close button')
@@ -1048,6 +1092,7 @@ class EventRunner:
         self.touch(items,position,'advance_event_instructions')
         return self.wait({'event_map','event_world_map','story','event_tutorial','mission_list','item_detail'},timeout=30,deadline=deadline,accept=lambda d,labels,state:state!='event_tutorial' or event.eventTutorialKey(labels)!=key)
     def claimCompletedMission(self,number=None):
+        from fgoEventEngine import conditionKey
         if not self.autoClaim:raise ScriptStop('Completed Mission claim policy disabled')
         previous=None;stable=0;end=self.clock()+15
         while self.clock()<end:
@@ -1058,7 +1103,10 @@ class EventRunner:
             if card is None:
                 if state not in ('unknown','mission_list'):raise ScriptStop('Mission claim foreground changed; no input')
                 stable=0;previous=None;schedule.sleep(.2);continue
-            before=event.missionCompletedCount(items);identity=(card['mission'],card['progress'],before,card['position'],requirement['condition'] if requirement else None)
+            before=event.missionCompletedCount(items)
+            if before is None:
+                stable=0;previous=None;schedule.sleep(.2);continue
+            identity=(card['mission'],card['progress'],before,card['position'],conditionKey(requirement['condition']) if requirement else None)
             same=previous is not None and identity[:3]==previous[:3] and identity[4]==previous[4] and max(abs(a-b) for a,b in zip(identity[3],previous[3]))<=6
             stable=stable+1 if same else 1;previous=identity
             if stable>=3:break
@@ -1074,9 +1122,9 @@ class EventRunner:
                 d,items,state=self.closeMissionItemInfo(d,items)
             elif state=='mission_reward_receipt':
                 proof=event.missionRewardReceipt(items)
-                if proof is None or proof['beforeCount'] not in (None,before):
+                if proof is None or proof['beforeCount'] not in (None,before) or proof['mission'] not in (None,card['mission']):
                     raise ScriptStop('Mission receipt counter context disagrees; no close')
-                d,items,state=self.closeMissionRewardReceipt(d,items,expectedBeforeCount=before)
+                d,items,state=self.closeMissionRewardReceipt(d,items,expectedBeforeCount=before,expectedMission=card['mission'])
                 # The receipt handler already proved three incremented frames.
                 if state!='mission_list' or event.missionCompletedCount(items)!=before+1:
                     raise ScriptStop('Mission receipt returned without proved increment')
@@ -1090,35 +1138,54 @@ class EventRunner:
             if state in ('unsafe_modal','battle_defeated'):raise ScriptStop('Mission claim stopped: '+state)
             schedule.sleep(.2)
         raise FlowTimeout('Mission claim has no proved counter increment; no repeated claim')
-    def closeMissionRewardReceipt(self,d,items,*,countResumedClaim=False,expectedBeforeCount=None):
+    def closeMissionRewardReceipt(self,d,items,*,countResumedClaim=False,expectedBeforeCount=None,expectedMission=None):
         proof=event.missionRewardReceipt(items)
         if proof is None:raise ScriptStop('Earned Mission reward receipt unproven')
         before=expectedBeforeCount if expectedBeforeCount is not None else proof['beforeCount']
-        pending=[r for r in self.records() if r.get('kind')=='mission_claim_intent' and r.get('mission')==proof['mission'] and not any(c.get('kind')=='mission_claim' and c.get('mission')==r.get('mission') and c.get('beforeCount')==r.get('beforeCount') for c in self.records())]
+        pending=[r for r in self.records() if r.get('kind')=='mission_claim_intent' and (proof['mission'] is None or r.get('mission')==proof['mission']) and not any(c.get('kind')=='mission_claim' and c.get('mission')==r.get('mission') and c.get('beforeCount')==r.get('beforeCount') for c in self.records())]
+        mission=proof['mission']
+        if mission is None:
+            matching=[r for r in pending if (before is None or r.get('beforeCount')==before) and r.get('mission') in proof.get('visibleMissions',())]
+            if len(matching)!=1:raise ScriptStop('Receipt Mission ambiguous without unique pending claim; no close')
+            mission=matching[0]['mission']
+        if expectedMission is not None and mission!=expectedMission:raise ScriptStop('Receipt Mission disagrees with claim; no close')
         if before is None:
             if len(pending)!=1:raise ScriptStop('Receipt counter missing without unique claim context; no close')
             before=pending[0]['beforeCount']
         if proof['beforeCount'] not in (None,before):raise ScriptStop('Receipt counter disagrees with claim context; no close')
-        if countResumedClaim and any(r.get('kind')=='mission_claim' and r.get('mission')==proof['mission'] and r.get('beforeCount')==before for r in self.records()):raise ScriptStop('Mission receipt already accounted; no repeated close')
+        if countResumedClaim and any(r.get('kind')=='mission_claim' and r.get('mission')==mission and r.get('beforeCount')==before for r in self.records()):raise ScriptStop('Mission receipt already accounted; no repeated close')
         stable=1;end=self.clock()+15
         while self.clock()<end:
             d,items,state=self.read();current=event.missionRewardReceipt(items)
-            same=state=='mission_reward_receipt' and current is not None and current['reward']==proof['reward'] and max(abs(a-b) for a,b in zip(current['position'],proof['position']))<=6
+            same=state=='mission_reward_receipt' and current is not None and current['mission'] in (None,mission) and mission in current.get('visibleMissions',(mission,)) and current['reward']==proof['reward'] and max(abs(a-b) for a,b in zip(current['position'],proof['position']))<=6
             stable=stable+1 if same else 0
             if same and current['beforeCount'] not in (None,before):raise ScriptStop('Fresh receipt counter changed context; no close')
             if stable>=3:proof=current;break
             if state not in ('unknown','mission_gate','mission_reward_receipt'):raise ScriptStop('Reward receipt changed foreground; no close')
             schedule.sleep(.2)
         else:raise ScriptStop('Earned Mission receipt transient; no close')
-        self.ledger.append('mission_receipt_dismiss_intent',mission=proof['mission'],reward=proof['reward'],beforeCount=before)
+        self.ledger.append('mission_receipt_dismiss_intent',mission=mission,reward=proof['reward'],beforeCount=before)
         self.touch(items,proof['position'],'close_earned_mission_reward')
         outcome=self.waitMissionClaimIncrement(before)
         if countResumedClaim:
             self.claimed+=1
             intent=pending[0] if len(pending)==1 else {}
-            self.ledger.append('mission_claim',mission=proof['mission'],beforeCount=before,afterCount=before+1,beforeProgress=intent.get('progress'),claimed=True,recovered=True,choice=False,reward=proof['reward'])
+            self.ledger.append('mission_claim',mission=mission,beforeCount=before,afterCount=before+1,beforeProgress=intent.get('progress'),claimed=True,recovered=True,choice=False,reward=proof['reward'])
         self.ledger.append('mission_reward_receipt',reward=proof['reward'],consumed=False,beforeCount=before,afterCount=event.missionCompletedCount(outcome[1]),resumedClaim=countResumedClaim)
         return outcome
+    def reconcilePendingMissionClaim(self,d,items):
+        pending=[r for r in self.records() if r.get('kind')=='mission_claim_intent' and not any(c.get('kind')=='mission_claim' and c.get('mission')==r.get('mission') and c.get('beforeCount')==r.get('beforeCount') for c in self.records())]
+        if not pending:return d,items,'mission_list'
+        if len(pending)!=1:raise ScriptStop('Pending Mission claims ambiguous; no input')
+        intent=pending[0];before=intent['beforeCount'];mission=intent['mission']
+        closes=[r for r in self.records() if r.get('kind')=='mission_receipt_dismiss_intent' and r.get('mission')==mission and r.get('beforeCount')==before]
+        if len(closes)!=1:raise ScriptStop('Pending Mission has no unique earned receipt dismissal; no input')
+        for _ in range(3):
+            d,items,state=self.read()
+            if state!='mission_list' or event.missionCompletedCount(items)!=before+1:raise ScriptStop('Pending Mission counter increment unproved; no input')
+        self.claimed+=1
+        self.ledger.append('mission_claim',mission=mission,beforeCount=before,afterCount=before+1,beforeProgress=intent.get('progress'),claimed=True,recovered=True,choice=False,reward=closes[0]['reward'],source='unique earned receipt dismissal and three fresh incremented counters')
+        return d,items,state
     def waitMissionClaimIncrement(self,before):
         """Receipt may auto-return to map; still prove the actual list counter."""
         stable=0
@@ -1127,7 +1194,7 @@ class EventRunner:
             count=event.missionCompletedCount(labels)
             stable=stable+1 if state=='mission_list' and count is not None and before is not None and count==before+1 else 0
             return stable>=3
-        end=self.clock()+30
+        end=self.clock()+90
         outcome=self.wait({'mission_list','event_tutorial','event_map','event_world_map'},deadline=end,accept=lambda d,labels,state:state!='mission_list' or counted(d,labels,state))
         if outcome[2]=='event_tutorial':
             # The actual first claim opens a passive unlock tutorial. Prove and
@@ -1205,6 +1272,7 @@ class EventRunner:
         raise ScriptStop('Mission top correction budget exhausted; no more scroll input')
 
     def seekMission(self,number):
+        from fgoEventEngine import conditionKey
         previous=None;stable=0;lastThumb=None;lastItems=None;end=self.clock()+90;drags=0;edgeAligned=False;incompleteReads=0
         while self.clock()<end:
             d,items,state=self.read()
@@ -1212,7 +1280,7 @@ class EventRunner:
             if state!='mission_list':previous=None;stable=0;schedule.sleep(.2);continue
             card=event.findMissionCard(items,number)
             if card:
-                identity=(card['mission'],event.normalizeText(card['condition']),card['progress'])
+                identity=(card['mission'],conditionKey(card['condition']),card['progress'])
                 stable=stable+1 if identity==previous else 1;previous=identity
                 if stable>=3:
                     self.ledger.append('mission_observed',mission=card['mission'],condition=card['condition'],progress=card['progress'])
@@ -1327,12 +1395,21 @@ class EventRunner:
                 self.ledger.append('apple',item=name,beforeAP=before,afterAP=self.ap(after));return
             schedule.sleep(.2)
         raise ScriptStop('Apple confirmation unproven')
+    def battleEntryFrame(self):
+        d,items,state=self.read();QuartzGuard.check(items)
+        if state=='unknown':
+            # A pending result can miss OCR on the next acquisition after
+            # three positive frames. Wait read-only for a fresh legal state;
+            # never reinterpret UNKNOWN as formation/battle/result.
+            d,items,state=self.wait({'support','formation','battle','battle_result','friend_request','continue','master_level_up','formation_restriction_notice'},timeout=15)
+            QuartzGuard.check(items)
+        return d,items,state
     def runBattle(self,*,questKind='main'):
         if questKind not in ('main','free'):raise ValueError('Unknown event quest kind')
         main=self.main;flow=main.makeFlow();self.flow=flow;cycle=BattleCycle(main,flow)
         token=INPUT_OBSERVER.set(flow.deviceInput)
         try:
-            d,items,state=self.read();QuartzGuard.check(items)
+            d,items,state=self.battleEntryFrame()
             if state=='master_level_up':d,items,state=self.closeMasterLevelUp(d,items)
             for _ in range(3):
                 if state!='formation_restriction_notice':break
@@ -1344,7 +1421,7 @@ class EventRunner:
                 cycle.settleBattleResult(boundary=self.eventBoundary,friendCloseTimeout=60)
                 if flow.observation.state==S.CONTINUE:
                     flow.action('decline_event_repeat',lambda:main.press('F'))
-                    outcome=self.wait({'event_map','event_world_map','story','mission_gate'},timeout=30,accept=lambda d,i,s:s!='mission_gate' or event.findLockedEventMission(i) is not None)
+                    outcome=self.waitAfterBattle()
                 else:outcome=self.read()
                 if outcome[2] not in ('event_map','event_world_map','mission_gate','story','reward_receipt','item_receipt','item_detail'):raise ScriptStop('Resumed result has no positive event boundary')
                 self.settledResumes+=1
@@ -1381,7 +1458,7 @@ class EventRunner:
                 if not resumed:main.emitCompleted(won,battle.result)
             if flow.observation.state==S.CONTINUE:
                 flow.action('decline_event_repeat',lambda:main.press('F'))
-                return self.wait({'event_map','event_world_map','story','mission_gate'},timeout=30,accept=lambda d,i,s:s!='mission_gate' or event.findLockedEventMission(i) is not None)
+                return self.waitAfterBattle()
             return self.read()
         except (ConnectionError,StopIteration) as error:
             flow.trace.failure('CAPTURE_ERROR',(),0,(type(error).__name__,))
@@ -1502,6 +1579,7 @@ class EventRunner:
                     elif state=='ap_empty':
                         self.restoreAp();d,items,state=self.read()
                     elif state=='mission_list':
+                        d,items,state=self.reconcilePendingMissionClaim(d,items)
                         if event.findCompletedMissionCard(items) and self.autoClaim:d,items,state=self.claimCompletedMission()
                         else:d,items,state=self.returnFromMissions(d,items)
                     elif state=='mission_gate':

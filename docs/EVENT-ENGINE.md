@@ -93,3 +93,27 @@ development items. No merge into `cn-dev` is authorized by this task.
 The prior clean single/continuous acceptance requirements in older event notes
 are superseded as campaign blockers by the current main-story-first task.
 Historical failures and recovered outcomes remain historical evidence.
+
+
+### Mission completion and post-settlement boundaries
+
+Three actual experiments established a blocking Mission counter of 4/4:
+AP5 +2, then two AP40 +1 samples. The AP40 outcomes were recovered after
+long noble-animation timeouts; the newly bounded animation wait has not yet
+passed a live battle. No further experimental farming is required for that gate.
+
+Condition identity ignores ornamental quotation marks only; words, numbers
+and exclusion parentheses remain mandatory. Exact completed-card claims also
+require a readable pre-claim counter and three stable full-condition frames.
+An obtained-item receipt can cover several background Mission headers. The
+receipt does not guess a task number: closing requires the unique durable
+pending claim consistent with the visible headers and counter. A weak obtained
+label is re-read from its actual crop at two scales with the unchanged threshold.
+
+Post-battle map transitions now separate bounded loading progress from generic
+UNKNOWN. Proven fixed loading labels or a real dark loading frame can extend
+the stall budget, with a fixed parent-capped hard deadline. Static darkness does
+not repeatedly renew it. A transient terminal detector miss is revalidated
+read-only before outcome recovery; no result, turn count or time is fabricated.
+Fixed-until-complete farming remains bound to its measured quest, with no silent
+substitution if that quest is no longer freshly available.

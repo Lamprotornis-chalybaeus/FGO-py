@@ -140,8 +140,8 @@ class EventContractTests(unittest.TestCase):
         tutorial=(Mock(),[], 'event_tutorial');proved=(Mock(),after,'mission_list')
         runner.wait=Mock(side_effect=[tutorial,proved]);runner.advanceTutorial=Mock(return_value=proved)
         runner.closeMissionRewardReceipt(None,labels,countResumedClaim=True)
-        runner.advanceTutorial.assert_called_once_with(tutorial[0],tutorial[1],deadline=40)
-        self.assertEqual([call.kwargs['deadline'] for call in runner.wait.call_args_list],[40,40])
+        runner.advanceTutorial.assert_called_once_with(tutorial[0],tutorial[1],deadline=100)
+        self.assertEqual([call.kwargs['deadline'] for call in runner.wait.call_args_list],[100,100])
         self.assertEqual(runner.claimed,1);self.assertEqual(runner.touch.call_count,1)
     def test_receipt_counter_disagreement_cannot_count_a_claim(self):
         labels=self.missionReceipt();runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock())
