@@ -280,6 +280,8 @@ def missionRewardReceipt(items):
 
 def findEventTutorialNext(items):
     if _unsafeEventOverlay(items):return None
+    unlocked=findNewShinsengumiNoticeClose(items)
+    if unlocked:return unlocked
     uniform=findAwardedUniformNoticeClose(items)
     if uniform:return uniform
     notice=findTemporaryServantNoticeClose(items)
@@ -319,6 +321,17 @@ def findAwardedUniformNoticeClose(items):
     actions=[i for i in items if _text(i) in ('装备','更换','决定','确认','取消') and 400<_center(i)[1]<650]
     return _center(close[0]) if len(close)==1 and not actions else None
 
+def findNewShinsengumiNoticeClose(items):
+    """Observed unlocked-area instructions; close only, never equip/claim."""
+    if _unsafeEventOverlay(items):return None
+    strong=[i for i in items if i.score>=.85]
+    phrases=(('在「NEW新选组屯所」',(220,275)),('开放了NEW新选组关卡',(275,320)),('穿上『浅葱的队服',(335,385)),('保护京都的治安吧',(380,430)))
+    for text,(lo,hi) in phrases:
+        if sum(_text(i).rstrip('。.!！')==normalizeText(text) and 300<_center(i)[0]<1000 and lo<_center(i)[1]<hi for i in strong)!=1:return None
+    close=[i for i in strong if _text(i)=='关闭' and 500<_center(i)[0]<800 and 520<_center(i)[1]<610]
+    actions=[i for i in items if _text(i) in ('装备','更换','决定','确认','取消','领取') and 400<_center(i)[1]<650]
+    return _center(close[0]) if len(close)==1 and not actions else None
+
 def findTemporaryServantNoticeClose(items):
     # Observed passive explanation of an already granted temporary servant.
     # OCR confuses 入/人 in these two fixed phrases; no servant name is used.
@@ -346,6 +359,7 @@ def eventMissionUnlockTutorialProof(items):
 
 def eventTutorialKey(items):
     if findEventTutorialNext(items) is None:return None
+    if findNewShinsengumiNoticeClose(items):return 'new-shinsengumi-unlock-info'
     if findAwardedUniformNoticeClose(items):return 'awarded-uniform-info'
     if findTemporaryServantNoticeClose(items):return 'temporary-servant-info'
     if eventMissionUnlockTutorialProof(items):return 'mission-unlock'

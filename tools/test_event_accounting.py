@@ -344,3 +344,27 @@ class MissionBlockSemanticsTests(unittest.TestCase):
         for text in ('需要完成任务12才能解锁','完成任务No.12后开放','请先完成任务12'):
             self.assertTrue(event.findMissionGate([item(text,400,300)]))
             self.assertFalse(event.findMissionGate([item(text,400,300,score=.84)]))
+
+class NewShinsengumiNoticeTests(unittest.TestCase):
+    def labels(self):
+        return [item('在「NEW新选组屯所」',430,233,w=400,h=32),item('开放了NEW新选组关卡。',430,272,w=400,h=32),item('穿上『浅葱的队服',430,345,w=350,h=32),item('保护京都的治安吧！',430,383,w=400,h=32),item('关闭',600,542,w=80,h=40)]
+    def test_actual_joint_notice_has_a_producer_and_own_episode_key(self):
+        labels=self.labels()
+        self.assertEqual(event.classifyEventState(labels),'event_tutorial')
+        self.assertEqual(event.eventTutorialKey(labels),'new-shinsengumi-unlock-info')
+        self.assertEqual(event.findEventTutorialNext(labels),(640,562))
+    def test_missing_weak_duplicate_or_action_not_authorized(self):
+        labels=self.labels()
+        for index in range(len(labels)):
+            self.assertIsNone(event.findNewShinsengumiNoticeClose(labels[:index]+labels[index+1:]))
+        labels[0]=item('在「NEW新选组屯所」',430,233,w=400,h=32,score=.84)
+        self.assertIsNone(event.findNewShinsengumiNoticeClose(labels))
+        for extra in (self.labels()[0],item('装备',600,500),item('领取',600,500)):
+            self.assertIsNone(event.findNewShinsengumiNoticeClose(self.labels()+[extra]))
+    def test_three_fresh_frames_single_close_not_equipment(self):
+        labels=self.labels();runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger());runner.touch=Mock()
+        runner.read=Mock(return_value=(Mock(),labels,'event_tutorial'));runner.wait=Mock(return_value=(Mock(),[],'event_world_map'))
+        runner.advanceTutorial(None,labels)
+        runner.touch.assert_called_once_with(labels,(640,562),'advance_event_instructions')
+        with self.assertRaises(ec.ScriptStop):runner.advanceTutorial(None,labels)
+        self.assertEqual(runner.touch.call_count,1)
