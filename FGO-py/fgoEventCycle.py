@@ -421,6 +421,13 @@ def missionConditionItems(d,items):
             # Restore only actually reread punctuation, never change the
             # condition words/count or fabricate the wrapped exclusion.
             words=lambda v:''.join(re.findall(r'[\w]',event.normalizeText(v)))
+            if min(float(sa),float(sb))>=.85 and text==event.normalizeText(b) and words(text)==words(openingLine.text) and '(' not in text:
+                # On the real No.23 frame a one-pixel left text boundary
+                # changes punctuation segmentation. One bounded alternate
+                # crop must still read the same words and real parenthesis
+                # independently at both scales.
+                x1,y1,x2,y2=openingLine.box;crop=d._crop((x1+1,y1,x2,y2))
+                a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2));text=event.normalizeText(a)
             if min(float(sa),float(sb))>=.85 and text==event.normalizeText(b) and words(text)==words(openingLine.text) and '(' in text and ')' not in text:
                 replacement=event.OcrItem(a,openingLine.box,min(float(sa),float(sb)))
                 result.remove(openingLine);result.append(replacement)

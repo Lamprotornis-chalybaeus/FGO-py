@@ -410,6 +410,14 @@ class WrappedMissionFreshReadTests(unittest.TestCase):
         d=Mock(_crop=Mock(return_value=numpy.zeros((20,400,3),dtype='uint8')))
         for output in ([('击败21个敌人（召唤出来的敌人除',.99)]*2,[('击败20个敌人（召唤出来的敌人除',.84)]*2,[('击败20个敌人（召唤出来的敌人除',.99),('击败20个敌人召唤出来的敌人除',.99)]):
             with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=output):self.assertIsNone(event.findMissionCard(ec.missionConditionItems(d,self.labels()),11))
+    def test_one_pixel_boundary_alternate_still_needs_two_exact_reads(self):
+        import numpy
+        d=Mock(_crop=Mock(return_value=numpy.zeros((20,400,3),dtype='uint8')))
+        missing='击败20个敌人召唤出来的敌人除';full='击败20个敌人（召唤出来的敌人除'
+        for alternate,expected in (([(full,.91)]*2,True),([(full,.91),(missing,.91)],False)):
+            with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[(missing,.91)]*2+alternate+[('外)',.91)]*2):
+                card=event.findMissionCard(ec.missionConditionItems(d,self.labels()),11)
+            self.assertEqual(card is not None,expected)
     def test_one_incomplete_frame_followed_by_three_complete_has_no_scroll(self):
         labels=cycleTests.MissionConditionCropTests().labels();complete=[item(i.text,*i.box[:2],w=i.box[2]-i.box[0],h=i.box[3]-i.box[1]) if i.text=='外)' else i for i in labels]
         runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger());runner.read=Mock(side_effect=[(Mock(),labels,'mission_list')]+[(Mock(),complete,'mission_list')]*3)
