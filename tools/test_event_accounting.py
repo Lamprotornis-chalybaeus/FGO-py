@@ -124,3 +124,69 @@ class NodeEvidenceTests(unittest.TestCase):
         runner,result=self.scenario(battle=True,locked=True)
         self.assertEqual((runner.cleanNodes,runner.battleNodes,runner.completed),(1,1,1))
         self.assertEqual(result['state'],'limit_reached');self.assertEqual(runner.touch.call_count,1)
+
+
+class ReceiptCounterContextTests(unittest.TestCase):
+    def test_receipt_can_auto_return_to_map_but_requires_actual_counter(self):
+        labels=cycleTests.EventContractTests().missionReceipt();after=cycleTests.EventContractTests().missionList(1)
+        mapLabels=[item('关闭',70,25,w=80),item('活动报酬',1124,10,w=120)]
+        frame=Mock();frame.isMainInterface.return_value=True
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger());runner.touch=Mock()
+        shifted=[item('关闭',70,25,w=80),item('活动报酬',1125,10,w=120)]
+        runner.read=Mock(side_effect=[(frame,labels,'mission_reward_receipt')]*2+[(frame,shifted,'event_map'),(frame,mapLabels,'event_map')])
+        runner.wait=Mock(side_effect=[(frame,mapLabels,'event_map'),(frame,after,'mission_list')])
+        runner.closeMissionRewardReceipt(None,labels,countResumedClaim=True)
+        self.assertEqual(runner.touch.call_count,2);self.assertEqual(runner.claimed,1)
+        self.assertEqual(runner.touch.call_args.args[2],'reopen_missions_after_claim_map_return')
+        self.assertEqual(runner.wait.call_args_list[0].kwargs['deadline'],runner.wait.call_args_list[1].kwargs['deadline'])
+    def test_auto_map_without_unique_control_never_reopens_or_counts(self):
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger());runner.touch=Mock()
+        runner.wait=Mock(return_value=(Mock(),[],'event_map'))
+        with self.assertRaises(ec.ScriptStop):runner.waitMissionClaimIncrement(0)
+        runner.touch.assert_not_called();self.assertEqual(runner.claimed,0)
+    def test_unlocked_map_with_wrong_counter_does_not_count(self):
+        labels=[item('活动报酬',1124,10,w=120)];frame=Mock();frame.isMainInterface.return_value=True
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger());runner.touch=Mock()
+        runner.read=Mock(return_value=(frame,labels,'event_map'))
+        runner.wait=Mock(side_effect=[(frame,labels,'event_map'),(frame,cycleTests.EventContractTests().missionList(0),'mission_list')])
+        with self.assertRaises(ec.ScriptStop):runner.waitMissionClaimIncrement(0)
+        runner.touch.assert_called_once();self.assertEqual(runner.claimed,0)
+    def test_missing_overlay_counter_uses_proved_parent_not_a_guess(self):
+        labels=[i for i in cycleTests.EventContractTests().missionReceipt() if i.text!='0/100']
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger());runner.touch=Mock()
+        runner.read=Mock(return_value=(Mock(),labels,'mission_reward_receipt'))
+        runner.wait=Mock(return_value=(Mock(),cycleTests.EventContractTests().missionList(1),'mission_list'))
+        runner.closeMissionRewardReceipt(None,labels,expectedBeforeCount=0)
+        runner.touch.assert_called_once();self.assertEqual(runner.records()[-1]['afterCount'],1)
+    def test_real_counter_disagreement_never_closes(self):
+        labels=cycleTests.EventContractTests().missionReceipt()
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger());runner.touch=Mock()
+        with self.assertRaises(ec.ScriptStop):runner.closeMissionRewardReceipt(None,labels,expectedBeforeCount=1)
+        runner.touch.assert_not_called()
+    def test_resumed_receipt_records_claim_once_without_claim_input(self):
+        labels=cycleTests.EventContractTests().missionReceipt()
+        ledger=Ledger([{'kind':'mission_claim_intent','mission':1,'beforeCount':0,'progress':[1,1]}])
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=ledger);runner.touch=Mock()
+        runner.read=Mock(return_value=(Mock(),labels,'mission_reward_receipt'))
+        runner.wait=Mock(return_value=(Mock(),cycleTests.EventContractTests().missionList(1),'mission_list'))
+        runner.closeMissionRewardReceipt(None,labels,countResumedClaim=True)
+        with self.assertRaises(ec.ScriptStop):runner.closeMissionRewardReceipt(None,labels,countResumedClaim=True)
+        runner.touch.assert_called_once();self.assertEqual(sum(r['kind']=='mission_claim' for r in ledger.data['records']),1)
+
+class EmpiricalMissionMappingTests(unittest.TestCase):
+    def runner(self,**changes):
+        record=dict(kind='mission_mapping',mission=11,condition='击败12个天之力敌人',quest='实测关卡',before='0/12',after='12/12',sampleBattles=2,source='two actual local experiments',generic=False)
+        record.update(changes)
+        return ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger([record]))
+    def requirement(self,**changes):
+        result=dict(mission=11,condition='击败12个天之力敌人',progress='0/12');result.update(changes);return result
+    def test_exact_empirical_requirement_finds_mapping_without_input(self):
+        runner=self.runner();runner.touch=Mock()
+        self.assertEqual(runner.observedMissionMapping(self.requirement())['quest'],'实测关卡');runner.touch.assert_not_called()
+    def test_other_mission_attribute_or_total_does_not_inherit_mapping(self):
+        runner=self.runner()
+        for change in (dict(mission=12),dict(condition='击败12个地之力敌人'),dict(progress='0/20')):
+            self.assertIsNone(runner.observedMissionMapping(self.requirement(**change)))
+    def test_unproved_or_generic_mapping_is_not_a_solver(self):
+        for change in (dict(generic=True),dict(source=''),dict(sampleBattles=0),dict(after='712'),dict(after='0/12')):
+            self.assertIsNone(self.runner(**change).observedMissionMapping(self.requirement()))

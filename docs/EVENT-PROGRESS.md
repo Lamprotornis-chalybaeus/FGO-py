@@ -230,3 +230,18 @@ position is used, not an inferred card-body coordinate. Reward choices stop.
 Fresh main title/AP structure and absence of its numbered lock must be proved
 before starting the next main node. A natural numbered Mission gate can end a
 positively completed node, but never authorizes selecting its locked quest.
+
+An earned Mission receipt can omit the old list counter and can auto-return to
+the event map after unlocking a main episode. A missing counter is accepted
+only with the proved parent claim context or one unresolved exact Mission claim
+intent. A conflicting visible counter still stops. After a single receipt close,
+the actual task list must prove the count increment on three fresh captures;
+an unlocked map alone never proves a claimed reward. Map return uses three
+positive reward-control observations and one reopen input within the existing
+parent budget. Close intent is durable before sending input.
+
+Empirical Mission mappings require the same numbered full condition, total,
+source, quest and positive measured before/after progress. Mission11's local
+two-battle 0/12 -> 7/12 -> 12/12 observation is specific to that Mission and
+quest, not a generic Heavenly-attribute solver. Unknown or conflicting mappings
+stop at the gate without randomly selecting a Free Quest.

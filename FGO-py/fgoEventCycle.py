@@ -951,9 +951,9 @@ class EventRunner:
                 d,items,state=self.closeMissionItemInfo(d,items)
             elif state=='mission_reward_receipt':
                 proof=event.missionRewardReceipt(items)
-                if proof is None or proof['beforeCount']!=before:
+                if proof is None or proof['beforeCount'] not in (None,before):
                     raise ScriptStop('Mission receipt counter context disagrees; no close')
-                d,items,state=self.closeMissionRewardReceipt(d,items)
+                d,items,state=self.closeMissionRewardReceipt(d,items,expectedBeforeCount=before)
                 # The receipt handler already proved three incremented frames.
                 if state!='mission_list' or event.missionCompletedCount(items)!=before+1:
                     raise ScriptStop('Mission receipt returned without proved increment')
@@ -967,20 +967,37 @@ class EventRunner:
             if state in ('unsafe_modal','battle_defeated'):raise ScriptStop('Mission claim stopped: '+state)
             schedule.sleep(.2)
         raise FlowTimeout('Mission claim has no proved counter increment; no repeated claim')
-    def closeMissionRewardReceipt(self,d,items,*,countResumedClaim=False):
+    def closeMissionRewardReceipt(self,d,items,*,countResumedClaim=False,expectedBeforeCount=None):
         proof=event.missionRewardReceipt(items)
         if proof is None:raise ScriptStop('Earned Mission reward receipt unproven')
-        before=proof['beforeCount'];stable=1;end=self.clock()+15
+        before=expectedBeforeCount if expectedBeforeCount is not None else proof['beforeCount']
+        pending=[r for r in self.records() if r.get('kind')=='mission_claim_intent' and r.get('mission')==proof['mission'] and not any(c.get('kind')=='mission_claim' and c.get('mission')==r.get('mission') and c.get('beforeCount')==r.get('beforeCount') for c in self.records())]
+        if before is None:
+            if len(pending)!=1:raise ScriptStop('Receipt counter missing without unique claim context; no close')
+            before=pending[0]['beforeCount']
+        if proof['beforeCount'] not in (None,before):raise ScriptStop('Receipt counter disagrees with claim context; no close')
+        if countResumedClaim and any(r.get('kind')=='mission_claim' and r.get('mission')==proof['mission'] and r.get('beforeCount')==before for r in self.records()):raise ScriptStop('Mission receipt already accounted; no repeated close')
+        stable=1;end=self.clock()+15
         while self.clock()<end:
             d,items,state=self.read();current=event.missionRewardReceipt(items)
             same=state=='mission_reward_receipt' and current is not None and current['reward']==proof['reward'] and max(abs(a-b) for a,b in zip(current['position'],proof['position']))<=6
             stable=stable+1 if same else 0
-            if same and current['beforeCount'] is not None:before=current['beforeCount']
+            if same and current['beforeCount'] not in (None,before):raise ScriptStop('Fresh receipt counter changed context; no close')
             if stable>=3:proof=current;break
             if state not in ('unknown','mission_gate','mission_reward_receipt'):raise ScriptStop('Reward receipt changed foreground; no close')
             schedule.sleep(.2)
         else:raise ScriptStop('Earned Mission receipt transient; no close')
+        self.ledger.append('mission_receipt_dismiss_intent',mission=proof['mission'],reward=proof['reward'],beforeCount=before)
         self.touch(items,proof['position'],'close_earned_mission_reward')
+        outcome=self.waitMissionClaimIncrement(before)
+        if countResumedClaim:
+            self.claimed+=1
+            intent=pending[0] if len(pending)==1 else {}
+            self.ledger.append('mission_claim',mission=proof['mission'],beforeCount=before,afterCount=before+1,beforeProgress=intent.get('progress'),claimed=True,recovered=True,choice=False,reward=proof['reward'])
+        self.ledger.append('mission_reward_receipt',reward=proof['reward'],consumed=False,beforeCount=before,afterCount=event.missionCompletedCount(outcome[1]),resumedClaim=countResumedClaim)
+        return outcome
+    def waitMissionClaimIncrement(self,before):
+        """Receipt may auto-return to map; still prove the actual list counter."""
         stable=0
         def counted(d,labels,state):
             nonlocal stable
@@ -988,16 +1005,31 @@ class EventRunner:
             stable=stable+1 if state=='mission_list' and count is not None and before is not None and count==before+1 else 0
             return stable>=3
         end=self.clock()+30
-        outcome=self.wait({'mission_list','event_tutorial'},deadline=end,accept=lambda d,labels,state:state=='event_tutorial' or counted(d,labels,state))
+        outcome=self.wait({'mission_list','event_tutorial','event_map','event_world_map'},deadline=end,accept=lambda d,labels,state:state!='mission_list' or counted(d,labels,state))
         if outcome[2]=='event_tutorial':
             # The actual first claim opens a passive unlock tutorial. Prove and
             # close it once, then still require the real list counter increment.
             outcome=self.advanceTutorial(outcome[0],outcome[1],deadline=end)
+            outcome=self.wait({'mission_list','event_map','event_world_map'},deadline=end,accept=lambda d,labels,state:state!='mission_list' or counted(d,labels,state))
+        if outcome[2] in ('event_map','event_world_map'):
+            # Observed No.11 unlock closes the task list automatically. Reopen
+            # its unique real reward control, never infer success from unlock.
+            d,items,state=outcome
+            def control(labels):
+                entries=[i.center for i in labels if i.score>=.85 and event._text(i)=='活动报酬' and i.center[0]>1100 and i.center[1]<100]
+                return entries[0] if len(entries)==1 and not event._unsafeEventOverlay(labels) else None
+            position=control(items)
+            if position is None:raise ScriptStop('Post-claim map reward control unproved; no input')
+            for _ in range(2):
+                if self.clock()>=end:raise FlowTimeout('Mission claim parent deadline expired; no input')
+                d,items,state=self.read()
+                current=control(items)
+                if state not in ('event_map','event_world_map') or not d.isMainInterface() or current is None or max(abs(a-b) for a,b in zip(current,position))>6:raise ScriptStop('Post-claim map transient; no input')
+                position=current
+            self.touch(items,position,'reopen_missions_after_claim_map_return')
             outcome=self.wait({'mission_list'},deadline=end,accept=counted)
         if outcome[2]!='mission_list' or before is None or event.missionCompletedCount(outcome[1])!=before+1:
             raise ScriptStop('Mission receipt increment unconfirmed')
-        if countResumedClaim:self.claimed+=1
-        self.ledger.append('mission_reward_receipt',reward=proof['reward'],consumed=False,beforeCount=before,afterCount=event.missionCompletedCount(outcome[1]),resumedClaim=countResumedClaim)
         return outcome
     def openMissionRequirements(self,d,items):
         proof=event.findLockedEventMission(items)
@@ -1227,6 +1259,21 @@ class EventRunner:
             if not d.isMainInterface() or self.ap(d) is None:return False
             if state=='mission_gate':return event.findLockedEventMission(items) is not None
         return state in ('event_map','event_world_map','story','reward_receipt','item_receipt') and not event._unsafeEventOverlay(items)
+    def observedMissionMapping(self,requirement):
+        """Exact empirical Mission identity; never a generic attribute solver."""
+        found=[]
+        for record in self.records():
+            if record.get('kind')!='mission_mapping' or record.get('generic') is not False:continue
+            if record.get('mission')!=requirement['mission'] or event.normalizeText(record.get('condition',''))!=event.normalizeText(requirement['condition']):continue
+            if not record.get('source') or not record.get('quest') or not isinstance(record.get('sampleBattles'),int) or record['sampleBattles']<1:continue
+            before=re.fullmatch(r'(\d+)/(\d+)',str(record.get('before','')))
+            after=re.fullmatch(r'(\d+)/(\d+)',str(record.get('after','')))
+            current=re.fullmatch(r'(\d+)/(\d+)',str(requirement.get('progress','')))
+            if not before or not after or not current:continue
+            if int(before[2])!=int(after[2]) or int(after[2])!=int(current[2]) or not 0<=int(before[1])<int(after[1])<=int(after[2]):continue
+            found.append(record)
+        if len({r['quest'] for r in found})>1:raise ScriptStop('Conflicting empirical Mission mappings; no Free Quest')
+        return found[-1] if found else None
     def run(self,maxNodes=1,*,mapSmoke=False):
         with automationOwner.claim():
             try:
@@ -1265,7 +1312,8 @@ class EventRunner:
                             d,items,state=self.openMissionRequirements(d,items)
                             d,items,state,card=self.seekMission(proof['mission'])
                             self.ledger.append('mission_requirement',mission=card['mission'],condition=card['condition'],progress=card['progress'],source='three fresh complete numbered Mission card frames')
-                            return self.report('mission_gate',requirement=card,message='No positively evidenced mapping for the current requirement; no random Free Quest',AP=self.ap(d))
+                            mapping=self.observedMissionMapping(card)
+                            return self.report('mission_gate',requirement=card,observedMapping=mapping,message='Exact empirical mapping found; fresh quest identity still required' if mapping else 'No positively evidenced mapping for the current requirement; no random Free Quest',AP=self.ap(d))
                         if state=='event_world_map':d,items,state=self.openNextArea()
                         d,items,node=self.stableNode();before=self.ap(d)
                         pending={**node,'battlesBefore':self.normalCompletedBattles+self.recoveredCompletedBattles,'storyBefore':self.storySegments,'settlementsBefore':self.settledResumes,'resumed':False}
