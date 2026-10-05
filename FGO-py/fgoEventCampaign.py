@@ -7,7 +7,7 @@ import re,time
 from fgoAutomation import automationOwner
 from fgoSchedule import ScriptStop,schedule
 import fgoEventProgress as event
-from fgoEventEngine import CampaignState,EventFarmTask,EventProfile,missionValue
+from fgoEventEngine import CampaignState,EventFarmTask,EventProfile,MissionExperimentEngine,missionValue
 from fgoEventQuest import EventQuestLocator,QuestNotObserved
 
 def completeProof(items):
@@ -21,6 +21,11 @@ class EventCampaignRunner:
         self.runner=runner;self.index=index;self.evidence=evidence;self.profile=profile
         self.locator=EventQuestLocator(runner,index);self.state=CampaignState.ENTER_EVENT
         self.solved=set();self.experiments=0;self.startEntries=runner.newBattleEntries
+        self.learning=MissionExperimentEngine(evidence,runner.ledger)
+        self.deadline=None;self.entryLimit=None
+    def checkBudget(self):
+        if self.deadline is not None and self.runner.clock()>=self.deadline:raise ScriptStop('Campaign parent hard deadline reached; no new selection')
+        if self.entryLimit is not None and self.runner.newBattleEntries>=self.entryLimit:raise ScriptStop('Campaign parent entry budget reached; no new selection')
     def phase(self,state,**fields):
         self.state=state;self.runner.ledger.append('campaign_phase',state=state.value,**fields)
     def observeMissions(self,required,*,fromTop=True):
@@ -85,6 +90,7 @@ class EventCampaignRunner:
             else:raise ScriptStop('Unhandled event boundary '+state)
         raise ScriptStop('Event boundary hard deadline exhausted')
     def battleQuest(self,quest):
+        self.checkBudget()
         self.phase(CampaignState.FREE_QUEST,quest=quest.key)
         fresh=self.locator.locate(quest)
         originLock=event.findLockedEventMission(self.runner.last[1]) if self.runner.last else None
@@ -117,6 +123,7 @@ class EventCampaignRunner:
         mission=requirement['mission']
         self.missionMenu();before,origin,card=self.observeMissions(mission,fromTop=False)
         for attempt in range(40):
+            self.checkBudget()
             done,total=missionValue(card)
             if done==total:
                 self.phase(CampaignState.REWARD,mission=mission)
@@ -133,7 +140,7 @@ class EventCampaignRunner:
             choices=self.evidence.rank(quests,card)
             if not choices:raise ScriptStop('No untried or positively mapped available candidate; experiment budget stops')
             for _ in range(3):
-                self.runner.ledger.append('mission_experiment_intent',quest=choices[0].key,mission=mission,before=before,startedEntryIds=sorted(self.runner._entryIds))
+                intent=self.learning.begin(choices[0],mission,before,self.runner._entryIds)
                 try:
                     quest,entry,outcome=self.battleQuest(choices[0]);break
                 except QuestNotObserved:
@@ -144,9 +151,8 @@ class EventCampaignRunner:
                     if not choices:raise ScriptStop('No fresh available candidate after catalog changed')
             else:raise ScriptStop('Mission unavailable-candidate correction budget exhausted')
             self.missionMenu();after,origin,nextCard=self.observeMissions(mission,fromTop=False)
-            row=self.evidence.record(quest,entry,before,after,won=True,source='one actual won Free Quest; independent before/after readable Mission snapshots')
+            self.learning.finish(intent,quest,entry,after,self.runner.records())
             self.experiments+=1
-            self.runner.ledger.append('mission_experiment',entryId=entry,quest=quest.key,deltaVector=row['deltaVector'],mission=mission)
             before=after;card=nextCard
         raise ScriptStop('Mission experiment hard budget reached')
     def farm(self,task):
@@ -165,6 +171,9 @@ class EventCampaignRunner:
         return outcome
     def run(self,*,maxNodes=100,maxNewEntries=120,hardSeconds=7200):
         end=self.runner.clock()+hardSeconds;nodes=0
+        oldDeadline,oldLimit=self.deadline,self.entryLimit
+        self.deadline=min(end,oldDeadline) if oldDeadline is not None else end
+        self.entryLimit=min(self.startEntries+maxNewEntries,oldLimit) if oldLimit is not None else self.startEntries+maxNewEntries
         with automationOwner.claim():
             try:
                 while self.runner.clock()<end and nodes<maxNodes:
@@ -186,6 +195,7 @@ class EventCampaignRunner:
                 return self.report('bounded_stop',reason='node/time budget reached')
             except ScriptStop as error:
                 self.runner.evidence(error);return self.report('blocked',reason=str(error),errorType=type(error).__name__)
+            finally:self.deadline,self.entryLimit=oldDeadline,oldLimit
     def report(self,state,**fields):
         values=self.runner.report(state,**fields)
         values.update(campaignState=self.state.value,solvedMissions=sorted(self.solved),experiments=self.experiments,indexEntries=len(self.index.entries),locatorMetrics=self.locator.metrics,goal=self.profile.goal,mainStoryComplete=state=='event_complete')

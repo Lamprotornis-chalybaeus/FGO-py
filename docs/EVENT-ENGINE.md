@@ -17,6 +17,10 @@ outcomes are quality measurements, not prerequisites for advancing the event.
 - `MissionEvidenceDB` computes deltas only for full conditions reliably present
   in both snapshots of one uniquely identified won battle. Missing cards are
   not negative samples; already capped counters cannot prove a negative.
+- `MissionExperimentEngine` saves an immutable before snapshot and prior entry
+  IDs before selection. Reconciliation requires a new, uniquely won entry and
+  a fresh full blocking-card after snapshot; duplicate reconciliation does not
+  increment samples again.
 - `EventFarmTask` describes fixed runs or a specified Mission completion target.
 - `EventCurrency` is an identity/value/source interface. Currency OCR and
   currency-target farming are not yet validated.
@@ -27,6 +31,10 @@ still substitute Chinese characters at high confidence. Operator-reviewed full
 title patches can correct such substitutions only when a fresh pixel match,
 two-scale line read, area and AP agree. Patches remain beside the private index;
 their spelling corrections are not activity names hardcoded into the engine.
+An entry not re-observed during a completed bounded area scan is excluded from
+current candidates, while its historical identity/effects remain intact. A
+fresh re-observation restores eligibility. This is not an enemy-effect negative
+sample or a claim that the card can never return.
 
 ## Mission learning
 
@@ -54,6 +62,8 @@ formation off. The user's explicit local policy may permit apples and isolated
 event formation. `QuartzGuard` remains mandatory; quartz is never an AP fallback.
 Natural AP is used first. Existing item/resource selectors must independently
 prove any restoration input.
+Nested Mission experiments check the campaign's parent time/entry budget before
+starting another selection, in addition to their own finite attempt bounds.
 
 Private images, title patches, traces, indices, configurations, experiment
 evidence and profiles stay local and are not CI artifacts. The removed drop

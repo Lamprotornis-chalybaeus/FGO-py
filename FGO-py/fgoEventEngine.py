@@ -159,6 +159,31 @@ class MissionEvidenceDB:
                 payload['negativeMappings'][n]={k:v for k,v in values.items() if v['negativeSamples'] and not v['positiveSamples']}
             saveLocal(self.path,payload)
 
+class MissionExperimentEngine:
+    """Durable before/entry/after provenance, independent of battle AI.
+
+    Recovery may reconcile an already won entry; it never authorizes a new
+    entry or derives a condition from history instead of fresh UI evidence.
+    """
+    def __init__(self,evidence,ledger):self.evidence=evidence;self.ledger=ledger
+    def begin(self,quest,mission,before,startedEntryIds):
+        if quest.eventKey!=self.evidence.eventKey or str(mission) not in before:raise ValueError('Experiment scope/baseline missing')
+        for card in before.values():missionValue(card)
+        intent={'quest':quest.key,'mission':int(mission),'before':json.loads(json.dumps(before)), 'startedEntryIds':sorted(set(startedEntryIds))}
+        self.ledger.append('mission_experiment_intent',**intent)
+        return intent
+    def finish(self,intent,quest,entryId,after,outcomes):
+        if intent['quest']!=quest.key or entryId in intent['startedEntryIds']:raise ValueError('Experiment entry does not belong to selection intent')
+        wins=[r for r in outcomes if r.get('kind')=='battle_outcome' and r.get('entryId')==entryId]
+        if len(wins)!=1 or wins[0].get('won') is not True:raise ValueError('Experiment requires exactly one proved win')
+        # The blocking card must be present after the battle, not just the
+        # secondary cards. Missing data cannot silently close an experiment.
+        if str(intent['mission']) not in after:raise ValueError('Blocking Mission after snapshot missing')
+        duplicate=any(r['entryId']==entryId for r in self.evidence.data['experiments'])
+        row=self.evidence.record(quest,entryId,intent['before'],after,won=True,source='durable selection intent; unique shared BattleCycle win; independent full Mission snapshots')
+        if not duplicate:self.ledger.append('mission_experiment',entryId=entryId,quest=quest.key,deltaVector=row['deltaVector'],mission=intent['mission'])
+        return row
+
 @dataclass
 class EventProfile:
     eventKey:str

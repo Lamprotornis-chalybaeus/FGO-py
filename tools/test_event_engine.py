@@ -111,6 +111,31 @@ class LearningTests(unittest.TestCase):
             self.assertEqual(loaded.effects(23,card()['condition'])[entry().key]['averageDelta'],3)
             self.assertNotIn('image',path.read_text(encoding='utf-8'))
 
+class ExperimentTests(unittest.TestCase):
+    def setUp(self):
+        self.db=engine.MissionEvidenceDB('event');self.ledger=Mock()
+        self.learning=engine.MissionExperimentEngine(self.db,self.ledger)
+        self.intent=self.learning.begin(entry(),23,{'23':card()},['old'])
+    def win(self):return [{'kind':'battle_outcome','entryId':'new','won':True}]
+    def test_durable_before_is_copied_and_recovery_is_idempotent(self):
+        before={'23':card()};intent=self.learning.begin(entry(),23,before,['old'])
+        before['23']['progress']='4/4'
+        self.assertEqual(intent['before']['23']['progress'],'0/4')
+        for _ in range(2):self.learning.finish(intent,entry(),'new',{'23':card(cur=2)},self.win())
+        self.assertEqual(len(self.db.data['experiments']),1)
+        self.assertEqual(sum(c.args[0]=='mission_experiment' for c in self.ledger.append.call_args_list),1)
+    def test_prior_entry_duplicate_outcomes_defeat_or_missing_after_stop(self):
+        cases=[('old',{'23':card(cur=2)},self.win()),('new',{'23':card(cur=2)},self.win()*2),('new',{'23':card(cur=2)},[{'kind':'battle_outcome','entryId':'new','won':False}]),('new',{},self.win())]
+        for eid,after,outcomes in cases:
+            with self.assertRaises(ValueError):self.learning.finish(self.intent,entry(),eid,after,outcomes)
+        self.assertEqual(self.db.data['experiments'],[])
+    def test_wrong_quest_or_scope_never_records(self):
+        with self.assertRaises(ValueError):self.learning.finish(self.intent,entry(title='other'),'new',{'23':card(cur=2)},self.win())
+        with self.assertRaises(ValueError):self.learning.begin(entry(eventKey='another'),23,{'23':card()},[])
+    def test_after_condition_change_is_not_an_empirical_mapping(self):
+        with self.assertRaises(ValueError):self.learning.finish(self.intent,entry(),'new',{'23':card(cur=2,condition='击败其他敌人')},self.win())
+        self.assertEqual(self.db.data['experiments'],[])
+
 class LocatorTests(unittest.TestCase):
     def runner(self):
         runner=Mock();runner.clock=__import__('time').monotonic;runner.ledger=Mock();return runner
@@ -170,6 +195,14 @@ class LocatorTests(unittest.TestCase):
             self.assertEqual(quest.verifiedTitle('actual',5,'area','f'*64,[proof],image=image,box=(778,299,982,326),proofRoot=root),'actual')
 
 class CampaignTests(unittest.TestCase):
+    def test_nested_free_quest_obeys_parent_budget_before_any_selection(self):
+        runner=Mock();runner.newBattleEntries=4;runner.clock=Mock(return_value=100)
+        c=campaign.EventCampaignRunner(runner,engine.EventQuestIndex('event'),engine.MissionEvidenceDB('event'),engine.EventProfile('event','heading'))
+        c.locator.locate=Mock();c.deadline=99
+        with self.assertRaises(ScriptStop):c.battleQuest(entry())
+        c.deadline=200;c.entryLimit=4
+        with self.assertRaises(ScriptStop):c.battleQuest(entry())
+        c.locator.locate.assert_not_called();runner.touch.assert_not_called()
     def test_solver_rereads_current_mission_without_restarting_top_scan(self):
         runner=Mock();runner.newBattleEntries=0
         c=campaign.EventCampaignRunner(runner,engine.EventQuestIndex('event'),engine.MissionEvidenceDB('event'),engine.EventProfile('event','heading'))
