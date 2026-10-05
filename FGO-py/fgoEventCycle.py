@@ -161,6 +161,20 @@ def startupNoticeKey(items):
     return titles[0] if len(titles)==1 else None
 
 
+def storyItems(d,items):
+    """Observed arrow contaminates full-screen 跳过 OCR; verify text only."""
+    import cv2
+    weak=[i for i in items if '跳过' in event._text(i) and 1100<i.center[0]<1280 and i.center[1]<100]
+    auto=[i for i in items if i.score>=.85 and event._text(i)=='自动' and i.center[0]>1180 and i.center[1]>600]
+    dialogue=[i for i in items if i.score>=.85 and 470<i.center[1]<650 and len(event._text(i))>=7]
+    if len(weak)!=1 or len(auto)!=1 or not dialogue:return items
+    line=d._crop((1160,20,1225,60))
+    a,sa=OCR.ZHS.ocr_single_line(line);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(line,None,fx=2,fy=2))
+    if not min(float(sa),float(sb))>=.85:return items
+    if event.normalizeText(a)!='跳过' or event.normalizeText(b)!='跳过':return items
+    return [i for i in items if i is not weak[0]]+[event.OcrItem('跳过',(1160,20,1225,60),min(float(sa),float(sb)))]
+
+
 class EventMain(kernel.Main):
     def __init__(self,runner,**kwargs):
         super().__init__(appleTotal=0,appleKind=0,**kwargs)
@@ -189,7 +203,7 @@ class EventMain(kernel.Main):
                 if not flow.networkHandled:
                     flow.action('network_error_confirm',lambda:kernel.handleNetworkError(flow.detect));flow.networkHandled=True
             elif observation.state in {S.UNKNOWN,S.QUEST_READY}:
-                items=nav.labels(flow.detect);state=event.classifyEventState(items,event._detectFlags(flow.detect))
+                items=storyItems(flow.detect,nav.labels(flow.detect));state=event.classifyEventState(items,event._detectFlags(flow.detect))
                 if state in ('story','start_confirmation'):
                     self.runner.handleTransition(flow.detect,items,state,deadline=deadline)
                     lastProgress=flow.clock()
@@ -218,14 +232,22 @@ class EventRunner:
         schedule.checkStop();schedule.checkSuspend()
         d=self.reader()
         if d.im.shape[:2]!=(720,1280) or XDetect.region!='CN':raise ScriptStop('Event requires CN 1280x720')
-        items=nav.labels(d);state=event.classifyEventState(items,event._detectFlags(d))
+        items=storyItems(d,nav.labels(d));state=event.classifyEventState(items,event._detectFlags(d))
         self.last=(d,items,state)
         return self.last
     def wait(self,states,*,timeout=30,exclude=(),deadline=None):
         end=min(self.clock()+timeout,deadline or float('inf'))
+        mapFrames=0
         while self.clock()<end:
             d,items,state=self.read()
-            if state in states and state not in exclude:return d,items,state
+            if state in states and state not in exclude:
+                if state=='event_map':
+                    # A fading old map after start is not a completion edge.
+                    # Require the menu template and HUD on three acquisitions.
+                    mapFrames=mapFrames+1 if d.isMainInterface() and self.ap(d) is not None else 0
+                    if mapFrames>=3:return d,items,state
+                else:return d,items,state
+            else:mapFrames=0
             if state in ('battle_defeated','unsafe_modal','mission_gate'):
                 raise ScriptStop('Event transition blocked: '+state)
             # Fresh captures after a verified action are read-only; no retry.
@@ -308,7 +330,7 @@ class EventRunner:
             if not event._isStartQuestConfirmation(items):raise ScriptStop('Unverified start confirmation')
             target=next(i for i in items if event._reliable(i) and event._text(i)=='开始')
             self.touch(items,event._center(target),'confirm_event_start')
-            return self.wait({'story','support','formation','battle','event_map','ap_empty'},deadline=deadline)
+            return self.wait({'story','support','formation','battle','ap_empty'},deadline=deadline)
         if state=='story':
             position=event.findSkipButton(items)
             if not position:raise ScriptStop('Story has no unique positive SKIP; no dialogue blind click')
@@ -384,7 +406,7 @@ class EventRunner:
         finally:
             INPUT_OBSERVER.reset(token);self.flow=None
     def eventBoundary(self,d):
-        items=nav.labels(d)
+        items=storyItems(d,nav.labels(d))
         state=event.classifyEventState(items,event._detectFlags(d))
         return state in ('event_map','story') and not event._unsafeEventOverlay(items)
     def run(self,maxNodes=1,*,mapSmoke=False):
@@ -400,18 +422,21 @@ class EventRunner:
                 if state in ('story','start_confirmation','support','formation','battle','battle_result'):
                     # Actual in-progress UI proves a resumable entry. A saved
                     # ledger may annotate it, but never causes another tap.
-                    pending={'title':'resumed actual event node','battlesBefore':self.main.completedAttempts}
+                    pending={'title':'resumed actual event node','battlesBefore':self.main.completedAttempts,'storyBefore':self.storySegments}
                 while self.completed<int(maxNodes):
                     steps+=1
                     if steps>1000 or self.clock()-entryStart>3600:raise ScriptStop('Event bounded node progress exhausted')
                     if state=='event_map':
                         if pending:
+                            d,items,state=self.wait({'event_map'},timeout=30)
+                            if self.main.completedAttempts<=pending['battlesBefore'] and self.storySegments<=pending['storyBefore']:
+                                raise ScriptStop('Event map return has no completed story/battle evidence; node not counted')
                             self.completed+=1
                             self.ledger.append('node',title=pending['title'],type='battle' if self.main.completedAttempts>pending['battlesBefore'] else 'story',beforeAP=before,afterAP=self.ap(d),apples=dict(self.apples),stats=self.main.result,nextState=state)
                             pending=None;entryStart=self.clock()
                             if self.completed>=int(maxNodes):break
                         d,items,node=self.stableNode();before=self.ap(d)
-                        pending={**node,'battlesBefore':self.main.completedAttempts}
+                        pending={**node,'battlesBefore':self.main.completedAttempts,'storyBefore':self.storySegments}
                         self.ledger.append('node_intent',title=node['title'],beforeAP=before,restrictions=node['restrictions'])
                         self.touch(items,node['position'],'select_main_node')
                         d,items,state=self.wait({'start_confirmation','story','support','formation','battle','ap_empty'},timeout=30)

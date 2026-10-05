@@ -80,7 +80,10 @@ class SharedEventCycleTests(unittest.TestCase):
         flow=BattleFlow(scenario.read,scenario,clock=scenario,trace=FlowTrace(clock=scenario))
         names={'FRIEND':'support','FORMATION':'formation','TURN_BEGIN':'battle','BATTLE_RESULT':'battle_result','QUEST_READY':'event_map','CONTINUE':'continue','DEFEATED':'battle_defeated'}
         labels=[item('开始任务',900,550)]
-        runner.read=lambda:(scenario.read(),labels,names.get(scenario.state,'unknown'))
+        def read():
+            d=scenario.read();d.getAp=lambda:224
+            return d,labels,names.get(scenario.state,'unknown')
+        runner.read=read
         with patch.object(runner.main,'makeFlow',return_value=flow),patch.object(ec.nav,'labels',return_value=labels),patch.object(ec,'schedule',scenario),patch.object(ec.kernel,'schedule',scenario),patch.object(ec.kernel.XDetect,'region','CN'),patch.object(ec.kernel.friendImg,'flush',return_value=False),patch.object(ec.fgoDevice.device,'touch',side_effect=lambda pos,**kw:scenario.press('8')),patch.object(ec.fgoDevice.device,'press',side_effect=scenario.press):
             try:runner.runBattle();error=None
             except ec.ScriptStop as e:error=e
@@ -98,6 +101,16 @@ class SharedEventCycleTests(unittest.TestCase):
 
 
 class EventContractTests(unittest.TestCase):
+    def test_story_skip_arrow_requires_independent_text_and_dialogue_controls(self):
+        labels=[item('跳过|',1150,20,w=85,score=.73),item('自动',1200,620,w=40),item('有人吗，有人在吗？',300,580,w=300)]
+        d=Mock();d._crop.return_value=__import__('numpy').zeros((40,65,3),dtype='uint8')
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('跳过',.99)):
+            verified=ec.storyItems(d,labels)
+            self.assertEqual(event.findSkipButton(verified),(1192,40))
+            self.assertEqual(event.classifyEventState(verified),'story')
+            self.assertEqual(ec.storyItems(d,labels[:1]),labels[:1])
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('跳过',.84)):
+            self.assertIsNone(event.findSkipButton(ec.storyItems(d,labels)))
     def test_weekly_update_notice_closes_not_opens_mission_panel(self):
         labels=[item('御主任务已更新。',490,280),item('来挑战最新的御主任务吧。',415,315),item('关闭',400,550,w=80),item('前往御主任务界面',720,550)]
         self.assertEqual(ec.weeklyUpdateInfoClose(labels),(440,562))
@@ -160,6 +173,19 @@ class EventContractTests(unittest.TestCase):
         runner=object.__new__(ec.EventRunner);runner.touch=Mock();runner.wait=Mock(return_value=(None,[],'story'))
         runner.handleTransition(None,labels,'start_confirmation')
         runner.touch.assert_called_once();runner.wait.assert_called_once()
+        self.assertNotIn('event_map',runner.wait.call_args.args[0])
+    def test_fading_map_cannot_complete_start_wait(self):
+        clock=Clock();runner=object.__new__(ec.EventRunner);runner.clock=clock
+        fading=Mock();fading.isMainInterface.return_value=True;fading.getAp.return_value=229
+        labels=[];runner.read=Mock(return_value=(fading,labels,'event_map'))
+        with patch.object(ec,'schedule',clock):
+            with self.assertRaises(FlowTimeout):runner.wait({'story','support','formation','battle','ap_empty'},timeout=1)
+    def test_map_boundary_requires_three_fresh_hud_captures(self):
+        clock=Clock();runner=object.__new__(ec.EventRunner);runner.clock=clock
+        d=Mock();d.isMainInterface.return_value=True;d.getAp.return_value=224
+        runner.read=Mock(return_value=(d,[],'event_map'))
+        with patch.object(ec,'schedule',clock):runner.wait({'event_map'},timeout=1)
+        self.assertEqual(runner.read.call_count,3)
     def test_plain_confirm_not_a_start_producer(self):
         labels=[item('是否购买？',400,200),item('开始',800,500),item('取消',400,500)]
         runner=object.__new__(ec.EventRunner);runner.touch=Mock()
