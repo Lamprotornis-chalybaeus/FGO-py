@@ -396,7 +396,16 @@ def missionProgressItems(d,items):
             mask=cv2.cvtColor(mask,cv2.COLOR_GRAY2BGR)
             a,sa=OCR.EN.ocr_single_line(cv2.resize(mask,None,fx=2,fy=2));b,sb=OCR.EN.ocr_single_line(cv2.resize(mask,None,fx=3,fy=3))
             text=event.normalizeText(a)
-            if not min(float(sa),float(sb))>=.85 or text!=event.normalizeText(b) or not re.fullmatch(r'\d+/\d+',text):continue
+            if not min(float(sa),float(sb))>=.85 or text!=event.normalizeText(b) or not re.fullmatch(r'\d+/\d+',text):
+                # Padding can include a horizontal bar rim (real 2/4 became
+                # "-2/4"). Reread only the original detected digit pixels;
+                # never strip punctuation from an OCR result to make it pass.
+                tight=d._crop(weak[0].box)
+                _,mask=cv2.threshold(cv2.cvtColor(tight,cv2.COLOR_BGR2GRAY),160,255,cv2.THRESH_BINARY)
+                mask=cv2.cvtColor(mask,cv2.COLOR_GRAY2BGR)
+                a,sa=OCR.EN.ocr_single_line(cv2.resize(mask,None,fx=2,fy=2));b,sb=OCR.EN.ocr_single_line(cv2.resize(mask,None,fx=3,fy=3))
+                text=event.normalizeText(a)
+                if not min(float(sa),float(sb))>=.85 or text!=event.normalizeText(b) or not re.fullmatch(r'\d+/\d+',text):continue
         current,total=map(int,text.split('/'))
         if not 0<=current<=total or total<=0:continue
         result.remove(weak[0]);result.append(event.OcrItem(a,rect,min(float(sa),float(sb))))
@@ -611,6 +620,12 @@ class EventMain(kernel.Main):
             schedule.sleep(.2)
         flow.fail(FlowTimeout,'TIMEOUT event formation start',{S.TURN_BEGIN},180)
 
+
+def missionAnchorProgress(before,after):
+    def anchors(items):
+        return {event._text(i):i.center[1] for i in items if i.score>=.85 and re.fullmatch(r'编号\d+',event._text(i)) and i.center[0]>1100 and 270<i.center[1]<650}
+    old,new=anchors(before),anchors(after)
+    return bool(set(new)-set(old)) or any(abs(new[k]-old[k])>12 for k in set(old)&set(new))
 
 def missionScrollThumb(image):
     import cv2,numpy
@@ -1004,7 +1019,7 @@ class EventRunner:
                 raise ScriptStop('Already advanced this awarded item instance; no repeated input')
             self.seenItemReceipts.append(signature)
         self.touch(items,position,'dismiss_earned_event_reward_receipt')
-        allowed={'event_map','event_world_map','story','mission_list','mission_gate','event_tutorial','friend_request','continue'}
+        allowed={'event_map','event_world_map','story','mission_list','mission_gate','event_tutorial','friend_request','continue','item_receipt'}
         if event.findEventItemReceipt(items):allowed.add('item_detail');allowed.add('reward_receipt')
         outcome=self.wait(allowed,timeout=30)
         self.ledger.append('reward_receipt',alreadyAwarded=True,consumed=False,nextState=outcome[2])
@@ -1186,7 +1201,7 @@ class EventRunner:
         raise ScriptStop('Mission top correction budget exhausted; no more scroll input')
 
     def seekMission(self,number):
-        previous=None;stable=0;lastThumb=None;end=self.clock()+90;drags=0;edgeAligned=False;incompleteReads=0
+        previous=None;stable=0;lastThumb=None;lastItems=None;end=self.clock()+90;drags=0;edgeAligned=False;incompleteReads=0
         while self.clock()<end:
             d,items,state=self.read()
             if state not in ('unknown','mission_list'):raise ScriptStop('Mission lookup foreground changed; no input')
@@ -1221,11 +1236,13 @@ class EventRunner:
                 if incompleteReads>=3:raise ScriptStop('Target Mission text incomplete after bounded fresh reads; no inferred condition')
                 schedule.sleep(.2);continue
             thumb=missionScrollThumb(d.im)
-            if lastThumb is not None and max(abs(a-b) for a,b in zip(thumb,lastThumb))<=2:raise ScriptStop('Mission lookup scrollbar stalled; no repeated input')
+            if lastThumb is not None and max(abs(a-b) for a,b in zip(thumb,lastThumb))<=2 and not missionAnchorProgress(lastItems,items):raise ScriptStop('Mission lookup viewport stalled; no repeated input')
             if drags>=4:raise ScriptStop('Mission lookup correction budget exhausted')
             first=min(numbers);delta=max(-80,min(80,round((int(number)-first)*3.5)))
             center=round(sum(thumb)/2);endpoint=max(280,min(570,center+delta))
-            fine=abs(delta)<10
+            # Real 11-pixel scrollbar drags stayed below this game's gesture
+            # slop. Use a full content swipe for nearby rows, then re-observe.
+            fine=abs(delta)<20
             if not fine and abs(endpoint-center)<3:raise ScriptStop('Mission lookup reached physical boundary without target')
             # Approximation chooses only a scroll position, never a quest or
             # Mission identity. Small scrollbar deltas can be below drag slop:
@@ -1235,8 +1252,9 @@ class EventRunner:
             if fine:daily._menuSwipe((1000,400),(1000,550 if int(number)<first else 300))
             else:daily._menuSwipe((1261,center),(1261,endpoint))
             self.ledger.append('input',action=action,target=int(number))
-            lastThumb=thumb;drags+=1
-            self.wait({'mission_list'},timeout=15,accept=lambda d,i,s:event.findMissionCard(i,number) is not None or max(abs(a-b) for a,b in zip(missionScrollThumb(d.im),lastThumb))>2)
+            lastThumb=thumb;lastItems=items;drags+=1
+            sourceItems=items
+            self.wait({'mission_list'},timeout=15,accept=lambda d,i,s:event.findMissionCard(i,number) is not None or missionAnchorProgress(sourceItems,i) or max(abs(a-b) for a,b in zip(missionScrollThumb(d.im),lastThumb))>2)
         raise ScriptStop('Mission lookup deadline expired; no inferred condition')
 
     def returnFromMissions(self,d,items):
@@ -1311,6 +1329,7 @@ class EventRunner:
         token=INPUT_OBSERVER.set(flow.deviceInput)
         try:
             d,items,state=self.read();QuartzGuard.check(items)
+            if state=='master_level_up':d,items,state=self.closeMasterLevelUp(d,items)
             for _ in range(3):
                 if state!='formation_restriction_notice':break
                 d,items,state=self.closeFormationRestrictionNotice(d,items,deadline=flow.deadline)
@@ -1369,7 +1388,21 @@ class EventRunner:
         if state in ('event_map','event_world_map','mission_gate'):
             if not d.isMainInterface() or self.ap(d) is None:return False
             if state=='mission_gate':return event.findLockedEventMission(items) is not None
-        return state in ('event_map','event_world_map','story','reward_receipt','item_receipt') and not event._unsafeEventOverlay(items)
+        return state in ('event_map','event_world_map','story','reward_receipt','item_receipt','master_level_up') and not event._unsafeEventOverlay(items)
+    def closeMasterLevelUp(self,d,items):
+        position=event.findMasterLevelUpAdvance(items)
+        if position is None:raise ScriptStop('Master level-up foreground unproven')
+        stable=1;end=self.clock()+15
+        while stable<3 and self.clock()<end:
+            d,items,state=self.read()
+            if state=='master_level_up' and event.findMasterLevelUpAdvance(items)==position:stable+=1
+            elif state=='unknown':stable=0
+            else:raise ScriptStop('Master level-up foreground changed; no input')
+            schedule.sleep(.2)
+        if stable<3:raise ScriptStop('Master level-up fresh proof deadline; no input')
+        self.ledger.append('master_level_up',naturalLevelUpRestoration=True,apItemConsumed=False,quartzConsumed=False)
+        self.touch(items,position,'dismiss_master_level_up')
+        return self.wait({'battle_result','friend_request','continue','event_map','event_world_map','story'},timeout=30)
     def observedMissionMapping(self,requirement):
         """Exact empirical Mission identity; never a generic attribute solver."""
         found=[]
@@ -1395,7 +1428,7 @@ class EventRunner:
                     if not node:raise ScriptStop('Map smoke has no next main node')
                     return self.report('map_smoke_pass',nextNode=node,AP=self.ap(d))
                 pending=None;before=None;entryStart=self.clock();steps=0
-                if state in ('story','story_skip_confirmation','start_confirmation','support','special_formation_offer','formation_restriction_notice','formation_settings','formation_review','formation','battle','battle_result'):
+                if state in ('story','story_skip_confirmation','start_confirmation','support','special_formation_offer','formation_restriction_notice','formation_settings','formation_review','formation','battle','battle_result','master_level_up'):
                     # Actual in-progress UI proves a resumable entry. A saved
                     # ledger may annotate it, but never causes another tap.
                     pending={'title':'resumed actual event node','battlesBefore':self.normalCompletedBattles+self.recoveredCompletedBattles,'storyBefore':self.storySegments,'settlementsBefore':self.settledResumes,'resumed':True}
@@ -1435,7 +1468,7 @@ class EventRunner:
                         d,items,state=self.wait({'start_confirmation','story','support','formation','battle','ap_empty'},timeout=30)
                     elif state in ('start_confirmation','story','story_skip_confirmation'):
                         d,items,state=self.handleTransition(d,items,state)
-                    elif state in ('support','formation','battle','battle_result','friend_request','continue'):
+                    elif state in ('support','formation','battle','battle_result','friend_request','continue','master_level_up'):
                         if state=='formation' and event.isEventIncompleteFormation(items):
                             d,items,state=self.configureTemporaryParty(d,items,state)
                         else:d,items,state=self.runBattle()

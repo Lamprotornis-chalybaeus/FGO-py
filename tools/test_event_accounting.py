@@ -211,6 +211,30 @@ class MissionHeaderReadTests(unittest.TestCase):
                 self.assertEqual(ec.missionHeaderItems(Mock(),labels),labels);ocr.assert_not_called()
 
 class FormationRestrictionNoticeTests(unittest.TestCase):
+    def test_numbered_mission_content_progress_is_valid_even_with_tiny_thumb_change(self):
+        before=[item('编号25',1150,320),item('编号26',1150,480)]
+        self.assertTrue(ec.missionAnchorProgress(before,[item('编号25',1150,420),item('编号26',1150,580)]))
+        self.assertTrue(ec.missionAnchorProgress(before,[item('编号27',1150,320)]))
+        self.assertFalse(ec.missionAnchorProgress(before,[item('编号25',1150,321),item('编号26',1150,482)]))
+        self.assertFalse(ec.missionAnchorProgress(before,[item('编号27',1150,320,score=.84)]))
+    def masterLabels(self):
+        return [item('等级提升',556,88,w=584,h=127),item('御主等级',696,267,w=165,h=40),item('行动力上限',708,407,w=140,h=32),item('好友上限',705,445,w=118,h=36),item('行动力已全部回复',705,491,w=227,h=34),item('请点击游戏界面',507,628,w=268,h=44)]
+    def test_master_level_up_requires_all_independent_foreground_labels(self):
+        labels=self.masterLabels()
+        self.assertEqual(event.classifyEventState(labels,{'battle_result':True}),'master_level_up')
+        for j in range(len(labels)):self.assertIsNone(event.findMasterLevelUpAdvance(labels[:j]+labels[j+1:]))
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger());runner.touch=Mock();runner.read=Mock(return_value=(Mock(),labels,'master_level_up'));runner.wait=Mock(return_value=(Mock(),[],'battle_result'))
+        runner.closeMasterLevelUp(None,labels);runner.touch.assert_called_once_with(labels,(640,650),'dismiss_master_level_up')
+        self.assertEqual(runner.newBattleEntries,0);self.assertEqual(runner.apples,{})
+    def test_master_level_up_one_unknown_resets_proof_until_three_fresh_complete(self):
+        labels=self.masterLabels();runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger());runner.touch=Mock()
+        runner.read=Mock(side_effect=[(Mock(),[],'unknown')]+[(Mock(),labels,'master_level_up')]*3);runner.wait=Mock(return_value=(Mock(),[],'battle_result'))
+        with patch.object(ec.schedule,'sleep'):runner.closeMasterLevelUp(None,labels)
+        self.assertEqual(runner.read.call_count,4);runner.touch.assert_called_once()
+    def test_master_level_up_deadline_never_touches(self):
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger());runner.clock=Mock(side_effect=[0,15]);runner.touch=Mock()
+        with self.assertRaises(ec.ScriptStop):runner.closeMasterLevelUp(None,self.masterLabels())
+        runner.touch.assert_not_called()
     def uniformLabels(self):
         return [item('该关卡的魔术礼装会固定为',416,287,w=447,h=37),item('持有的『测试队服』。',433,327,w=371,h=36),item('队伍确认',1045,6,w=226,h=58),item('关闭',600,541,w=81,h=44)]
     def test_fixed_uniform_is_passive_notice_not_skill_failure_or_party_change(self):

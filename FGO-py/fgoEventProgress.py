@@ -393,6 +393,14 @@ def findNextEventArea(items):
     area=areas[0]
     return {'title':str(area.text),'position':_center(area)}
 
+def findMasterLevelUpAdvance(items):
+    if _unsafeEventOverlay(items):return None
+    strong=[i for i in items if i.score>=.85]
+    anchors=(('等级提升',(500,1200,80,230)),('御主等级',(650,950,240,320)),('行动力上限',(650,950,390,455)),('好友上限',(650,950,440,495)),('行动力已全部回复',(650,1000,485,545)),('请点击游戏界面',(450,850,600,690)))
+    for text,(x1,x2,y1,y2) in anchors:
+        if len([i for i in strong if _text(i)==text and x1<_center(i)[0]<x2 and y1<_center(i)[1]<y2])!=1:return None
+    return (640,650)
+
 def classifyEventState(items,flags=None):
     flags=flags or {}
     # Confirmations can cover a still-recognizable support/formation background.
@@ -403,6 +411,7 @@ def classifyEventState(items,flags=None):
     if flags.get('friend_request'):return 'friend_request'
     if flags.get('battle_continue'):return 'continue'
     if _unsafeEventOverlay(items):return 'unsafe_modal'
+    if findMasterLevelUpAdvance(items):return 'master_level_up'
     if missionRewardReceipt(items):return 'mission_reward_receipt'
     if findMissionItemInfoClose(items):return 'item_information'
     if findEventQuestInfoClose(items):return 'quest_information'

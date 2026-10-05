@@ -23,7 +23,7 @@ class EventCampaignRunner:
         self.solved=set();self.experiments=0;self.startEntries=runner.newBattleEntries
     def phase(self,state,**fields):
         self.state=state;self.runner.ledger.append('campaign_phase',state=state.value,**fields)
-    def observeMissions(self,required):
+    def observeMissions(self,required,*,fromTop=True):
         """Collect every reliably readable card along the bounded target route.
 
         Coverage is explicitly partial, never a fabricated complete 100-Mission
@@ -45,7 +45,7 @@ class EventCampaignRunner:
             return d,items,state
         self.runner.read=read
         try:
-            self.runner.missionListTop()
+            if fromTop:self.runner.missionListTop()
             d,items,state,card=self.runner.seekMission(required)
             observed[str(required)]={k:card[k] for k in ('mission','condition','progress')}
         finally:self.runner.read=raw
@@ -79,6 +79,7 @@ class EventCampaignRunner:
             elif state=='event_tutorial':outcome=self.runner.advanceTutorial(d,items)
             elif state=='item_information':outcome=self.runner.closeMissionItemInfo(d,items)
             elif state=='quest_information':outcome=self.runner.closeQuestInformation(d,items)
+            elif state=='master_level_up':outcome=self.runner.closeMasterLevelUp(d,items)
             elif state in ('story','story_skip_confirmation','start_confirmation'):outcome=self.runner.handleTransition(d,items,state,deadline=end)
             elif state in ('battle_result','friend_request','continue'):outcome=self.runner.runBattle(questKind='free')
             else:raise ScriptStop('Unhandled event boundary '+state)
@@ -114,7 +115,7 @@ class EventCampaignRunner:
     def solve(self,requirement):
         self.phase(CampaignState.MISSION_GATE,mission=requirement['mission'])
         mission=requirement['mission']
-        self.missionMenu();before,origin,card=self.observeMissions(mission)
+        self.missionMenu();before,origin,card=self.observeMissions(mission,fromTop=False)
         for attempt in range(40):
             done,total=missionValue(card)
             if done==total:
@@ -133,7 +134,7 @@ class EventCampaignRunner:
             if not choices:raise ScriptStop('No untried or positively mapped available candidate; experiment budget stops')
             self.runner.ledger.append('mission_experiment_intent',quest=choices[0].key,mission=mission,before=before,startedEntryIds=sorted(self.runner._entryIds))
             quest,entry,outcome=self.battleQuest(choices[0])
-            self.missionMenu();after,origin,nextCard=self.observeMissions(mission)
+            self.missionMenu();after,origin,nextCard=self.observeMissions(mission,fromTop=False)
             row=self.evidence.record(quest,entry,before,after,won=True,source='one actual won Free Quest; independent before/after readable Mission snapshots')
             self.experiments+=1
             self.runner.ledger.append('mission_experiment',entryId=entry,quest=quest.key,deltaVector=row['deltaVector'],mission=mission)

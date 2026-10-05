@@ -386,6 +386,11 @@ class EventContractTests(unittest.TestCase):
         runner.handleRewardReceipt(None,labels)
         self.assertEqual(runner.read.call_count,2)
         runner.touch.assert_called_once_with(labels,(640,639),'dismiss_earned_event_reward_receipt')
+    def test_earned_reward_summary_accepts_positive_awarded_card_as_next_phase(self):
+        labels=self.receipt();runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock())
+        runner.read=Mock(return_value=(Mock(),labels,'reward_receipt'));runner.touch=Mock();runner.wait=Mock(return_value=(None,[],'item_receipt'))
+        self.assertEqual(runner.handleRewardReceipt(None,labels)[2],'item_receipt')
+        self.assertIn('item_receipt',runner.wait.call_args.args[0]);runner.touch.assert_called_once()
     def test_receipt_transient_ocr_miss_requires_three_new_positive_reads(self):
         labels=self.receipt();runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock())
         runner.read=Mock(side_effect=[(Mock(),labels[:3],'unknown')]+[(Mock(),labels,'reward_receipt')]*3)
@@ -807,6 +812,15 @@ class MissionLookupTests(unittest.TestCase):
 
 
 class MissionNeighbourAlignmentTests(unittest.TestCase):
+    def test_three_row_distance_uses_content_and_still_requires_actual_target(self):
+        import numpy
+        im=numpy.zeros((720,1280,3),dtype='uint8');im[301:328,1255:1268]=240
+        labels=MissionLookupTests().labels();before=[i for i in labels if i.text not in ('编号11','击败20个敌人','目标进行度','0/20')]+[item('编号14',1145,410,w=65)]
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock());runner.wait=Mock(return_value=(Mock(im=im),labels,'mission_list'))
+        runner.read=Mock(side_effect=[(Mock(im=im),before,'mission_list')]+[(Mock(im=im),labels,'mission_list')]*3)
+        with patch.object(ec.daily,'_menuSwipe') as swipe:result=runner.seekMission(11)
+        swipe.assert_called_once_with((1000,400),(1000,550));self.assertEqual(result[3]['mission'],11)
+        self.assertEqual(runner.read.call_count,4)
     def test_clipped_predecessor_uses_content_scroll_never_guessed_claim(self):
         import numpy
         im=numpy.zeros((720,1280,3),dtype='uint8');im[301:328,1255:1268]=240
@@ -1075,6 +1089,15 @@ class MissionProgressLabelCropTests(unittest.TestCase):
 
 
 class MissionOutlinedFractionTests(unittest.TestCase):
+    def test_padded_rim_is_not_stripped_and_tight_pixels_must_agree(self):
+        import numpy
+        labels=[i if i.text!='0/20' else item('2/4',605,400,w=70,score=.84) for i in MissionLookupTests().labels()]
+        d=Mock(_crop=Mock(return_value=numpy.zeros((30,70,3),dtype='uint8')))
+        for tight,expected in (([('2/4',.97),('2/4',.94)],True),([('-2/4',.99)]*2,False),([('2/4',.99),('2/3',.99)],False)):
+            with patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('214',.8)),patch.object(ec.OCR.EN,'ocr_single_line',side_effect=[('-2/4',.95)]*2+tight):
+                card=event.findMissionCard(ec.missionProgressItems(d,labels),11)
+            self.assertEqual(card is not None,expected)
+            if card:self.assertEqual(card['progress'],'2/4')
     def test_real_slash_needs_two_strong_masked_reads(self):
         import numpy
         labels=[i if i.text!='0/20' else item('7112',605,400,w=70,score=.89) for i in MissionLookupTests().labels()]
@@ -1086,7 +1109,7 @@ class MissionOutlinedFractionTests(unittest.TestCase):
         labels=[i if i.text!='0/20' else item('7112',605,400,w=70,score=.89) for i in MissionLookupTests().labels()]
         d=Mock(_crop=Mock(return_value=numpy.zeros((30,70,3),dtype='uint8')))
         for output in ([('7/12',.99),('7/13',.99)],[('7/12',.99),('7/12',.84)],[('7/12',float('nan')),('7/12',.99)],[('712',.99),('712',.99)],[('13/12',.99),('13/12',.99)]):
-            with patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('712',.99)),patch.object(ec.OCR.EN,'ocr_single_line',side_effect=output):
+            with patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('712',.99)),patch.object(ec.OCR.EN,'ocr_single_line',side_effect=output*2):
                 self.assertIsNone(event.findMissionCard(ec.missionProgressItems(d,labels),11))
 
 

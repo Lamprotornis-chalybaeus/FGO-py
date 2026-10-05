@@ -292,6 +292,8 @@ all condition words/counts; missing parentheses/tails are never synthesized.
 Visible but incomplete target cards allow at most three fresh observations,
 without a scroll or selection retry, then stop.
 
+### Historical checkpoint before empirical campaign learning (superseded policy)
+
 The current natural blocker is Mission23, progress 0/4: defeat four Evil-attribute
 enemies, excluding enemies summoned during battle. Three fresh full-card proofs
 were obtained. No empirical mapping exists for this requirement; Mission11's
@@ -302,3 +304,15 @@ timeouts and diagnostic stops are retained; they are not relabeled as clean.
 Natural AP remained sufficient: no apple, quartz, restoration or revival was
 used. The event candidate is still unmerged; battle P0 remains mitigated /
 awaiting longer-term observation, which is not permanent proof of correctness.
+
+### Current campaign development
+
+The main-story-first task supersedes clean 1/3/10 as an advancement prerequisite.
+It authorizes bounded unknown-Mission experiments with non-quartz resources.
+See [Event Engine](EVENT-ENGINE.md) for the scoped index, empirical evidence DB,
+partial snapshot coverage, privacy constraints and unvalidated structures.
+The first AP5 candidate won normally in two turns (105.87 seconds). Independent
+full-condition snapshots prove Mission23 increased from 0/4 to 2/4; this is one
+positive sample, not a claim about other quests or attributes. A game Master
+level-up automatically restored AP during settlement; no AP item or quartz was
+used. Activity completion is not yet established.

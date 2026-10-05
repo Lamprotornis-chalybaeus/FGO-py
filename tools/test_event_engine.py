@@ -157,6 +157,13 @@ class LocatorTests(unittest.TestCase):
             self.assertEqual(quest.verifiedTitle('actual',5,'area','f'*64,[proof],image=image,box=(778,299,982,326),proofRoot=root),'actual')
 
 class CampaignTests(unittest.TestCase):
+    def test_solver_rereads_current_mission_without_restarting_top_scan(self):
+        runner=Mock();runner.newBattleEntries=0
+        c=campaign.EventCampaignRunner(runner,engine.EventQuestIndex('event'),engine.MissionEvidenceDB('event'),engine.EventProfile('event','heading'))
+        c.missionMenu=Mock();c.observeMissions=Mock(side_effect=ScriptStop('fresh observation failed'))
+        with self.assertRaises(ScriptStop):c.solve({'mission':23})
+        c.observeMissions.assert_called_once_with(23,fromTop=False)
+        runner.touch.assert_not_called();runner.claimCompletedMission.assert_not_called()
     def test_selected_free_quest_only_allows_its_old_lock_as_read_only_fading_frame(self):
         runner=Mock();runner.newBattleEntries=0;runner.last=(Mock(),['origin'],'mission_gate');runner.wait.side_effect=ScriptStop('end observation')
         c=campaign.EventCampaignRunner(runner,engine.EventQuestIndex('event'),engine.MissionEvidenceDB('event'),engine.EventProfile('event','heading'))
