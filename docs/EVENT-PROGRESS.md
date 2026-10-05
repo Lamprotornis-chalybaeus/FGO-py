@@ -1,53 +1,53 @@
-# CN event progression development
+# CN event progression candidate
 
-Branch: `feat/cn-event-progress`, based on daily acceptance commit
-`34d4e24a803bb6e2979cf2ab79c6fa18dbe3b483`. This feature is not merged.
+Development branch: `feat/cn-event-progress`, based on daily acceptance merge
+`34d4e24a803bb6e2979cf2ab79c6fa18dbe3b483`. This event feature is not merged
+into `cn-dev`. Battle P0 remains **mitigated / awaiting longer-term observation**;
+that status does not certify event mechanics or a permanent fix.
 
-The development entry is `fgoEventCycle.EventRunner(EventResourcePolicy())`.
-An explicit resource policy is required. The existing GUI event API keeps its
-conservative default unless its caller supplies that policy. The development
-runner advances positively recognized main nodes and skips positively identified
-story dialogs; it never chooses an arbitrary Free Quest.
+## Implemented and bounded
 
-## Resource contract
+- Explicit event resource policy with a hard QuartzGuard. Quartz AP restoration,
+  quartz revival and resource confirmation ambiguity stop without confirmation.
+- Current CN story skip controls and Yes/No confirmation require positive OCR.
+  Consecutive dialogue episodes need three stable fresh observations. A completed
+  skip is counted only after a positive departure, not after its input.
+- Event battle preparation, AI and settlement reuse the shared BattleCycle;
+  approved card/skill strategy is unchanged. Bond, Bond level-up, Master EXP,
+  rewards and optional friend handling retain their existing detectors.
+- Restricted-party errors override background formation/start evidence. Empty
+  observed starting slots prevent start. Temporary automatic formation is a
+  separate permission, disabled by default. It requires a positively isolated
+  special-party offer or a restricted event settings page; normal parties are
+  never automatically replaced by this path.
+- The observed automatic-party review page is distinct from quest start. Its
+  unique decision requires three stable proofs and one input, followed by a
+  bounded wait for the confirmation header and start control. No click retries.
+- Old fading maps cannot count nodes. A completed story/battle and three fresh
+  positive map/HUD captures are required. Restart observes the actual UI;
+  private ledger entries never supply blind click coordinates.
 
-- Apples may be enabled; quartz cannot be enabled, even by configuration.
-- Mixed restoration selectors authorize only an explicit apple label. Stock
-  and restoration amount must be visible; unknown resource UI stops locally.
-- Quartz AP restoration and quartz revival are denied. First defeat stops.
-- Reward choices, buying, summoning and formal party modifications are outside
-  this runner. A fixed/restricted formation must have a unique start control.
-- An already-awarded login notice can only be dismissed. The gift box is not
-  opened. Campaign information can only be closed when its independent title,
-  ongoing/date labels and sole close button are verified, with no affirmative
-  resource controls. Promotional text does not authorize exchanges.
+## Evidence and remaining gates
 
-## Shared battle lifecycle
+The zero-AP event-map smoke passed. Subsequent development encountered omitted
+story controls, a different skip confirmation, consecutive story segments,
+special-party prompts, insufficient starting members, and a distinct temporary
+party review page. These are retained historical diagnostics, not successful
+main-node gates. Each repair has synthetic regressions; private raw frames and
+trace files are not published or included in CI artifacts.
 
-Event battles use the existing `BattleCycle` preparation, support selection,
-`Battle` AI and settlement. BOND/BOND_LEVEL_UP/MASTER_EXP/REWARDS and friend
-requests keep their established positive detectors. There is no second OCR
-result-click loop. The optional settlement boundary recognizes event story/map
-UI; UNKNOWN alone cannot end settlement or cause a click. Ordinary farming
-without that callback retains its original contract.
+The current offline suite passes 638 cases, with the original three explicitly
+local integration skips. Full event battle, three-node and ten-node acceptance
+must be reported from actual local runs. A general Mission-to-Free-Quest mapping,
+real AP-item selector validation and reward-claim live coverage remain incomplete.
+An unsupported mission condition stops with local evidence rather than inventing
+a quest. The operator report contains exact revisions, corrected node counts,
+resources and current live outcome.
 
-Formation start can positively handle event story/start-confirmation boundaries
-within the preparation parent's hard deadline. The ordinary Main wait and AI
-skill/card strategies are unchanged. No team selection or automatic formation
-is enabled by the event subclass.
-
-## Evidence and restart
-
-Ledger and failure images live under the local log root's `event` directory,
-outside public fixtures and CI artifacts. An intent precedes node selection;
-completion is recorded only after returning to a positive event boundary.
-Restart reads actual game UI. The ledger never supplies click coordinates.
-
-Mission requirements are recorded only from explicit wording. A mission gate
-without evidenced matching quest data stops for local diagnosis; it does not
-invent enemy composition or farm unrelated quests. Live gates are incremental:
-zero-AP map, story, one battle, three main nodes, ten nodes, then further
-authorized progression. Acceptance results are recorded after actual testing.
-
-Battle P0 remains **mitigated / awaiting longer-term observation**. Event
-development does not imply permanent resolution or completed event acceptance.
+Capture connection resets and an exhausted stream now stop with a specific
+event capture error and unconfirmed outcome statistics. They never authorize
+automatic capture-service restarts or another game input. One development run
+was interrupted while an independent probe used a different ADB server version;
+it cannot be accepted as a clean event battle gate. Subsequent local probes use
+the exact worker ADB executable. This diagnostic interference is distinct from
+a proven battle detector or AI failure.

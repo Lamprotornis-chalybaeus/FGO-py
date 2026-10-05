@@ -49,6 +49,13 @@ Do not attach private screenshots, game/account data, configuration, support tem
 
 Priority: P1. Event-specific formation requirements and a general Mission solver remain incomplete. Distinguish supported generic navigation from unsupported event mechanics; do not report an unsupported path as verified.
 
+The unmerged event candidate now recognizes the observed special-party offer,
+insufficient starting members, automatic-formation settings and temporary-party
+review. A separate opt-in permission is required to let the game compose that
+isolated party. Background formation evidence never authorizes a start beneath
+those overlays. Current story, formation and fading-map diagnostic failures are
+retained; they are not completed node gates. See [EVENT-PROGRESS.md](EVENT-PROGRESS.md).
+
 # CN navigation normalization coverage
 
 Priority: P1. New page identities can appear. Extend coverage using verified page titles and return controls, while preserving refusal of battle, purchase, AP recovery, story and reward-choice modals. Complete daily scanning remains comparatively slow.

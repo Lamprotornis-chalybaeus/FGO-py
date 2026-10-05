@@ -4,6 +4,11 @@ Status: **Development / Experimental**. Development branch: `cn-dev` on the fork
 
 ## Implemented
 
+The separate, unmerged `feat/cn-event-progress` candidate adds explicitly
+authorized story/AP policy, shared BattleCycle event boundaries and guarded
+temporary-party handling. Its map smoke passed; full event gates and Mission
+mapping are still under development. See [EVENT-PROGRESS.md](EVENT-PROGRESS.md).
+
 - Windows GUI startup and automatic connection to a saved device.
 - CN continuous-battle dialog recognition compatibility patch; this does not establish reliable repeated farming.
 - Bounded CN Free Quest navigation, verified map positioning, and shared home/terminal normalization.

@@ -18,6 +18,9 @@ from fgoDetect import Detect,XDetect,OCR
 from fgoPaths import paths
 from fgoSchedule import ScriptStop,schedule
 
+class EventCaptureError(ScriptStop):
+    """Lost capture transport stops this run; it never authorizes recovery input."""
+
 
 @dataclass(frozen=True)
 class EventResourcePolicy:
@@ -274,11 +277,13 @@ class EventRunner:
         self.storyMode=storyMode
         self.ledger=ledger or ProgressLedger(paths.logRoot/'event'/'progress-ledger.json')
         self.main=EventMain(self,friendPolicy=friendPolicy,friendMaxRefresh=friendMaxRefresh)
-        self.completed=0;self.storySegments=0;self.claimed=0;self.apples={}
+        self.completed=0;self.storySegments=0;self.claimed=0;self.apples={};self.captureFailures=0
         self.last=None;self.flow=None
     def read(self):
         schedule.checkStop();schedule.checkSuspend()
-        d=self.reader()
+        try:d=self.reader()
+        except (ConnectionError,StopIteration) as error:
+            raise EventCaptureError('Event capture transport lost: '+type(error).__name__+'; no automatic restart or input') from error
         if d.im.shape[:2]!=(720,1280) or XDetect.region!='CN':raise ScriptStop('Event requires CN 1280x720')
         items=skipConfirmationItems(d,storyItems(d,nav.labels(d)));state=event.classifyEventState(items,event._detectFlags(d))
         self.last=(d,items,state)
@@ -592,6 +597,10 @@ class EventRunner:
                 flow.action('decline_event_repeat',lambda:main.press('F'))
                 return self.wait({'event_map','story'},timeout=30)
             return self.read()
+        except (ConnectionError,StopIteration) as error:
+            flow.trace.failure('CAPTURE_ERROR',(),0,(type(error).__name__,))
+            self.ledger.append('battle_interrupted',reason=type(error).__name__,stats=main.result,completed=False)
+            raise EventCaptureError('Event battle capture transport lost: '+type(error).__name__+'; outcome unconfirmed') from error
         finally:
             INPUT_OBSERVER.reset(token);self.flow=None
     def eventBoundary(self,d):
@@ -650,7 +659,8 @@ class EventRunner:
                     else:raise ScriptStop('Event unexpected state '+state)
                 return self.report('limit_reached')
             except ScriptStop as error:
+                if isinstance(error,EventCaptureError):self.captureFailures+=1
                 self.evidence(error)
                 return self.report('blocked',message=str(error),errorType=type(error).__name__)
     def report(self,state,**fields):
-        return {'type':'EventProgress','state':state,'nodes':self.completed,'storySegments':self.storySegments,'claimed':self.claimed,'apples':self.apples,'quartz':0,'quartzRevive':0,'stats':self.main.result,**fields}
+        return {'type':'EventProgress','state':state,'nodes':self.completed,'storySegments':self.storySegments,'claimed':self.claimed,'apples':self.apples,'quartz':0,'quartzRevive':0,'captureFailures':self.captureFailures,'stats':self.main.result,**fields}

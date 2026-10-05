@@ -101,6 +101,19 @@ class SharedEventCycleTests(unittest.TestCase):
 
 
 class EventContractTests(unittest.TestCase):
+    def test_capture_reset_and_exhausted_stream_stop_without_any_input(self):
+        for failure in (ConnectionResetError('synthetic reset'),StopIteration()):
+            runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock(),reader=Mock(side_effect=failure))
+            with patch.object(ec.fgoDevice.device,'touch') as touch:
+                with self.assertRaises(ec.EventCaptureError):runner.read()
+                touch.assert_not_called()
+    def test_capture_failure_report_retains_incomplete_stats_and_stops_owner(self):
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock())
+        runner.openMap=Mock(side_effect=ec.EventCaptureError('lost capture'));runner.evidence=Mock()
+        with patch.object(ec.fgoDevice.device,'touch') as touch:
+            result=runner.run(1)
+            self.assertEqual(result['state'],'blocked');self.assertEqual(result['captureFailures'],1)
+            self.assertEqual(result['stats']['completedAttempts'],0);touch.assert_not_called()
     def partyReview(self):
         return [item('队伍编制',1045,10),item('受限',605,25,w=75),item('拖动修改从者配置。',525,620),item('取消',103,660),item('决定',1130,650)]
     def test_actual_temporary_party_review_overrides_background_formation(self):
