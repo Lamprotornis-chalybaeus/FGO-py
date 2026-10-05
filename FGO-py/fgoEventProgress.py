@@ -114,7 +114,7 @@ def _isStory(items,flags=None):
     allText=' '.join(_text(i) for i in items)
     if any(token in allText for token in ('活动举办时间','ap5','ap10','推荐职阶')):return False
     controls=[i for i in items if _text(i) in ('menu','菜单','skip','跳过') and _center(i)[1]<180]
-    dialogue=[i for i in items if 570<_center(i)[1]<650 and _center(i)[0]<1100 and len(_text(i))>=4]
+    dialogue=[i for i in items if 570<_center(i)[1]<680 and _center(i)[0]<1100 and len(_text(i))>=4]
     return bool(controls and dialogue)
 
 def _isStartQuestConfirmation(items):
@@ -181,7 +181,8 @@ def findEventRewardReceipt(items):
     return _center(footer[0]) if len(headers)==len(earned)==len(amount)==len(footer)==1 else None
 
 def findEventItemReceipt(items):
-    """Observed automatically awarded CE card; no inventory/choice action."""
+    """Observed automatically awarded card; no inventory/choice action."""
+    if findEventServantReceipt(items):return findEventServantReceipt(items)
     if _unsafeEventOverlay(items):return None
     positive=[i for i in items if float(i.score)>=.85]
     if any(_text(i) in ('强化','召唤','决定','取消','选择','装备') for i in items):return None
@@ -191,7 +192,31 @@ def findEventItemReceipt(items):
     footer=[i for i in positive if _text(i)=='请点击游戏界面' and 450<_center(i)[0]<850 and 670<_center(i)[1]<720]
     return _center(footer[0]) if len(kind)==len(health)==len(value)==len(footer)==1 else None
 
+def findEventServantReceipt(items):
+    if _unsafeEventOverlay(items):return None
+    if any(_text(i) in ('强化','召唤','决定','取消','选择','装备') for i in items):return None
+    strong=[i for i in items if float(i.score)>=.85]
+    kind=[i for i in strong if _text(i)=='lancer' and 570<_center(i)[0]<720 and 540<_center(i)[1]<590]
+    attack=[i for i in strong if _text(i)=='攻击力' and 450<_center(i)[0]<600 and 600<_center(i)[1]<635]
+    health=[i for i in strong if _text(i)=='生命值' and 700<_center(i)[0]<830 and 600<_center(i)[1]<635]
+    values=[[i for i in strong if re.fullmatch(r'\d+',_text(i)) and lo<_center(i)[0]<hi and 625<_center(i)[1]<675] for lo,hi in ((450,600),(680,830))]
+    footer=[i for i in strong if _text(i)=='请点击游戏界面' and 450<_center(i)[0]<850 and 670<_center(i)[1]<720]
+    # The observed full card/text band opens its information page. The
+    # instruction explicitly allows touching the game canvas; use the clear
+    # right-hand background outside that card, only after all receipt proofs.
+    return (1000,690) if len(kind)==len(attack)==len(health)==len(footer)==1 and all(len(v)==1 for v in values) else None
+
+def eventServantDetailProof(items):
+    if _unsafeEventOverlay(items):return False
+    strong=[i for i in items if float(i.score)>=.85]
+    for name,(lo,hi) in (('能力',(500,700)),('资料',(700,900)),('战斗形象',(900,1100)),('语音',(1100,1280))):
+        if sum(_text(i)==name and lo<_center(i)[0]<hi and 100<_center(i)[1]<180 for i in strong)!=1:return False
+    classLabel=[i for i in strong if _text(i)=='枪兵' and _center(i)[0]>1100 and 50<_center(i)[1]<100]
+    skills=[i for i in strong if _text(i)=='持有技能' and 500<_center(i)[0]<700 and 590<_center(i)[1]<650]
+    return len(classLabel)==len(skills)==1
+
 def eventItemDetailProof(items):
+    if eventServantDetailProof(items):return True
     if _unsafeEventOverlay(items):return False
     positive=[i for i in items if float(i.score)>=.85]
     kind=[i for i in positive if _text(i)=='概念礼装' and _center(i)[0]>1100 and _center(i)[1]<100]
@@ -219,6 +244,8 @@ def missionRewardReceipt(items):
 
 def findEventTutorialNext(items):
     if _unsafeEventOverlay(items):return None
+    notice=findTemporaryServantNoticeClose(items)
+    if notice is not None:return notice
     strong=[i for i in items if float(i.score)>=.85]
     instruction=[i for i in strong if _text(i)=='点击界面右上方的' and 250<_center(i)[0]<600 and _center(i)[1]<100]
     reward=[i for i in strong if _text(i)=='活动报酬按钮' and 250<_center(i)[0]<600 and 65<_center(i)[1]<140]
@@ -243,6 +270,18 @@ def eventTutorialCloseProof(items):
     states=[name for name in ('全部','未开放','可领取','已达成') if sum(_text(i)==name and 470<_center(i)[1]<550 for i in strong)==1]
     return len(title)==len(change)==len(instructions)==1 and len(states)==4 and not _unsafeEventOverlay(items)
 
+def findTemporaryServantNoticeClose(items):
+    # Observed passive explanation of an already granted temporary servant.
+    # OCR confuses 入/人 in these two fixed phrases; no servant name is used.
+    if _unsafeEventOverlay(items):return None
+    strong=[i for i in items if float(i.score)>=.85]
+    title=[i for i in strong if re.fullmatch(r'关于暂时加[入人]状态的从者',_text(i).strip('~～')) and 400<_center(i)[0]<900 and 100<_center(i)[1]<180]
+    limited=[i for i in strong if _text(i).rstrip('。.')=='活动期间限时加入' and 400<_center(i)[0]<900 and 280<_center(i)[1]<360]
+    quest=[i for i in strong if _text(i)=='在活动中通关特定关卡后' and 400<_center(i)[0]<900 and 370<_center(i)[1]<450]
+    permanent=[i for i in strong if re.fullmatch(r'即可正式加[入人][。.]?',_text(i)) and 400<_center(i)[0]<900 and 430<_center(i)[1]<490]
+    close=[i for i in strong if _text(i)=='关闭' and 500<_center(i)[0]<800 and 520<_center(i)[1]<610]
+    return _center(close[0]) if len(title)==len(limited)==len(quest)==len(permanent)==len(close)==1 else None
+
 def eventMissionUnlockTutorialProof(items):
     # Actual post-claim instructional page, not a main-quest requirement.
     if _unsafeEventOverlay(items):return False
@@ -258,6 +297,7 @@ def eventMissionUnlockTutorialProof(items):
 
 def eventTutorialKey(items):
     if findEventTutorialNext(items) is None:return None
+    if findTemporaryServantNoticeClose(items):return 'temporary-servant-info'
     if eventMissionUnlockTutorialProof(items):return 'mission-unlock'
     if eventTutorialCloseProof(items):return 'mission-display'
     return 'mission-rewards' if any(_text(i)=='任务报酬的领取方法' for i in items) else 'overview'

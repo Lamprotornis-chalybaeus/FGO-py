@@ -36,7 +36,7 @@ party review page. These are retained historical diagnostics, not successful
 main-node gates. Each repair has synthetic regressions; private raw frames and
 trace files are not published or included in CI artifacts.
 
-The current offline suite passes 681 cases, with the original three explicitly
+The current offline suite passes 688 cases, with the original three explicitly
 local integration skips. Full event battle, three-node and ten-node acceptance
 must be reported from actual local runs. A general Mission-to-Free-Quest mapping,
 real AP-item selector validation remain incomplete. Completed non-choice Mission claims have initial live evidence,
@@ -101,3 +101,13 @@ Game inputs are never replayed by this retry. Input intent is persisted before
 the single physical touch, preventing a failed pre-input log write from touching
 the device. Short observed dialogue in the lower text panel is recognized with
 independent skip/auto proof; upper captions cannot substitute for dialogue.
+
+
+Observed post-story temporary-servant receipt, passive join explanation and
+servant information tabs now have distinct positive structural proofs. No
+servant identity is used to choose an action. Information pages permit only
+closing; inventory/lock/mark/enhancement controls are untouched. A Mission
+receipt may lead to the observed unlock tutorial; its close still requires a
+three-frame real counter increment under the same bounded parent deadline.
+The second story-only episode returned to a positive map through recovery with
+no new battle entry and unchanged AP. It is not a clean story gate.

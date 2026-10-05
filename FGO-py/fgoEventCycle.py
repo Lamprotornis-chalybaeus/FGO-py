@@ -178,7 +178,7 @@ def storyItems(d,items):
     import cv2
     weak=[i for i in items if '跳过' in event._text(i) and 1100<i.center[0]<1280 and i.center[1]<100]
     auto=[i for i in items if i.score>=.85 and event._text(i)=='自动' and i.center[0]>1180 and i.center[1]>600]
-    dialogue=[i for i in items if i.score>=.85 and 570<i.center[1]<650 and i.center[0]<1100 and len(event._text(i))>=4]
+    dialogue=[i for i in items if i.score>=.85 and 570<i.center[1]<680 and i.center[0]<1100 and len(event._text(i))>=4]
     # Full-screen OCR may omit the arrow-contaminated label altogether. The
     # two fixed text reads plus independent dialogue/auto controls produce it.
     if len(weak)>1 or len(auto)>1 or not dialogue:return items
@@ -243,7 +243,8 @@ def itemReceiptItems(d,items):
     kind=[i for i in items if i.score>=.85 and event._text(i)=='概念礼装' and 570<i.center[0]<720 and 580<i.center[1]<650]
     health=[i for i in items if i.score>=.85 and event._text(i)=='生命值' and 700<i.center[0]<830 and 580<i.center[1]<650]
     value=[i for i in items if i.score>=.85 and re.fullmatch(r'(?:\+\d+|0)',event._text(i)) and 450<i.center[0]<600 and 625<i.center[1]<675]
-    if len(kind)!=1 or len(health)>1 or len(value)>1:return items
+    if len(kind)!=1:return servantReceiptItems(d,items)
+    if len(health)>1 or len(value)>1:return items
     import cv2
     if not health:
         rect=(745,600,805,634);crop=d._crop(rect)
@@ -259,6 +260,22 @@ def itemReceiptItems(d,items):
     a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
     if min(float(sa),float(sb))<.85 or event.normalizeText(a)!=event.normalizeText(b) or event.normalizeText(a)!='请点击游戏界面':return items
     return [i for i in items if not(event._text(i)=='请点击游戏界面' and i.center[1]>670)]+[event.OcrItem('请点击游戏界面',rect,min(float(sa),float(sb)))]
+
+def servantReceiptItems(d,items):
+    # Actual post-story card: supplement omitted class/health text only when
+    # attack, both numeric stat regions and dismissal footer are independent.
+    if event._unsafeEventOverlay(items):return items
+    strong=[i for i in items if i.score>=.85]
+    if not any(event._text(i)=='攻击力' and 450<i.center[0]<600 and 600<i.center[1]<635 for i in strong):return items
+    if not all(sum(bool(re.fullmatch(r'\d+',event._text(i))) and lo<i.center[0]<hi and 625<i.center[1]<675 for i in strong)==1 for lo,hi in ((450,600),(680,830))):return items
+    if not any(event._text(i)=='请点击游戏界面' and 450<i.center[0]<850 and i.center[1]>670 for i in strong):return items
+    import cv2
+    result=list(items)
+    for expected,rect,ocr in (('lancer',(582,546,704,585),OCR.EN),('生命值',(741,603,814,634),OCR.ZHS)):
+        crop=d._crop(rect);a,sa=ocr.ocr_single_line(crop);b,sb=ocr.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
+        if min(float(sa),float(sb))<.85 or event.normalizeText(a)!=expected or event.normalizeText(b)!=expected:return items
+        result=[i for i in result if not(rect[0]<i.center[0]<rect[2] and rect[1]<i.center[1]<rect[3])]+[event.OcrItem(a,rect,min(float(sa),float(sb)))]
+    return result
 
 def itemDetailItems(d,items):
     if not event.eventItemDetailProof(items):return items
@@ -698,7 +715,7 @@ class EventRunner:
                 raise ScriptStop('Already advanced this awarded item instance; no repeated input')
             self.seenItemReceipts.append(signature)
         self.touch(items,position,'dismiss_earned_event_reward_receipt')
-        allowed={'event_map','event_world_map','story','mission_list','mission_gate'}
+        allowed={'event_map','event_world_map','story','mission_list','mission_gate','event_tutorial'}
         if event.findEventItemReceipt(items):allowed.add('item_detail');allowed.add('reward_receipt')
         outcome=self.wait(allowed,timeout=30)
         self.ledger.append('reward_receipt',alreadyAwarded=True,consumed=False,nextState=outcome[2])
@@ -711,16 +728,17 @@ class EventRunner:
             if state!='item_detail' or event.findEventItemDetailClose(items)!=position:raise ScriptStop('Item detail close unstable; no input')
         self.touch(items,position,'close_awarded_item_details')
         return self.wait({'event_map','event_world_map','story','reward_receipt','item_receipt','event_tutorial'},timeout=30)
-    def advanceTutorial(self,d,items):
+    def advanceTutorial(self,d,items,*,deadline=None):
         position=event.findEventTutorialNext(items)
         key=event.eventTutorialKey(items)
         if position is None or key is None or key in self.seenTutorials:raise ScriptStop('Event tutorial forward unproven or already advanced')
         for _ in range(2):
             d,items,state=self.read()
             if state!='event_tutorial' or event.findEventTutorialNext(items)!=position or event.eventTutorialKey(items)!=key:raise ScriptStop('Event tutorial transient; no input')
+        if deadline is not None and self.clock()>=deadline:raise FlowTimeout('Event tutorial parent deadline expired; no input')
         self.seenTutorials.add(key)
         self.touch(items,position,'advance_event_instructions')
-        return self.wait({'event_map','event_world_map','story','event_tutorial','mission_list'},timeout=30,accept=lambda d,labels,state:state!='event_tutorial' or event.eventTutorialKey(labels)!=key)
+        return self.wait({'event_map','event_world_map','story','event_tutorial','mission_list','item_detail'},timeout=30,deadline=deadline,accept=lambda d,labels,state:state!='event_tutorial' or event.eventTutorialKey(labels)!=key)
     def claimCompletedMission(self):
         if not self.autoClaim:raise ScriptStop('Completed Mission claim policy disabled')
         previous=None;stable=0;end=self.clock()+15
@@ -741,7 +759,16 @@ class EventRunner:
             d,items,state=self.read()
             if state in ('reward_receipt','item_receipt'):
                 d,items,state=self.handleRewardReceipt(d,items)
-            elif state=='mission_reward_receipt':d,items,state=self.closeMissionRewardReceipt(d,items)
+            elif state=='mission_reward_receipt':
+                proof=event.missionRewardReceipt(items)
+                if proof is None or proof['beforeCount']!=before:
+                    raise ScriptStop('Mission receipt counter context disagrees; no close')
+                d,items,state=self.closeMissionRewardReceipt(d,items)
+                # The receipt handler already proved three incremented frames.
+                if state!='mission_list' or event.missionCompletedCount(items)!=before+1:
+                    raise ScriptStop('Mission receipt returned without proved increment')
+                self.claimed+=1;self.ledger.append('mission_claim',mission=card['mission'],title=card['title'],beforeCount=before,afterCount=before+1,choice=False)
+                return d,items,state
             count=event.missionCompletedCount(items) if state=='mission_list' else None
             stable=stable+1 if count is not None and count==before+1 else 0
             if stable>=3:
@@ -770,7 +797,15 @@ class EventRunner:
             count=event.missionCompletedCount(labels)
             stable=stable+1 if state=='mission_list' and count is not None and before is not None and count==before+1 else 0
             return stable>=3
-        outcome=self.wait({'mission_list'},timeout=30,accept=counted)
+        end=self.clock()+30
+        outcome=self.wait({'mission_list','event_tutorial'},deadline=end,accept=lambda d,labels,state:state=='event_tutorial' or counted(d,labels,state))
+        if outcome[2]=='event_tutorial':
+            # The actual first claim opens a passive unlock tutorial. Prove and
+            # close it once, then still require the real list counter increment.
+            outcome=self.advanceTutorial(outcome[0],outcome[1],deadline=end)
+            outcome=self.wait({'mission_list'},deadline=end,accept=counted)
+        if outcome[2]!='mission_list' or before is None or event.missionCompletedCount(outcome[1])!=before+1:
+            raise ScriptStop('Mission receipt increment unconfirmed')
         if countResumedClaim:self.claimed+=1
         self.ledger.append('mission_reward_receipt',reward=proof['reward'],consumed=False,beforeCount=before,afterCount=event.missionCompletedCount(outcome[1]),resumedClaim=countResumedClaim)
         return outcome

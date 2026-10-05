@@ -133,6 +133,22 @@ class EventContractTests(unittest.TestCase):
         runner.closeMissionRewardReceipt(None,labels,countResumedClaim=True)
         runner.touch.assert_called_once_with(labels,(640,540),'close_earned_mission_reward')
         self.assertEqual(runner.claimed,1)
+    def test_receipt_unlock_tutorial_preserves_increment_proof_and_parent_budget(self):
+        labels=self.missionReceipt();after=self.missionList(1)
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock(),clock=lambda:10)
+        runner.touch=Mock();runner.read=Mock(return_value=(Mock(),labels,'mission_reward_receipt'))
+        tutorial=(Mock(),[], 'event_tutorial');proved=(Mock(),after,'mission_list')
+        runner.wait=Mock(side_effect=[tutorial,proved]);runner.advanceTutorial=Mock(return_value=proved)
+        runner.closeMissionRewardReceipt(None,labels,countResumedClaim=True)
+        runner.advanceTutorial.assert_called_once_with(tutorial[0],tutorial[1],deadline=40)
+        self.assertEqual([call.kwargs['deadline'] for call in runner.wait.call_args_list],[40,40])
+        self.assertEqual(runner.claimed,1);self.assertEqual(runner.touch.call_count,1)
+    def test_receipt_counter_disagreement_cannot_count_a_claim(self):
+        labels=self.missionReceipt();runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock())
+        runner.touch=Mock();runner.read=Mock(return_value=(Mock(),labels,'mission_reward_receipt'));runner.wait=Mock(return_value=(Mock(),self.missionList(0),'mission_list'))
+        with self.assertRaises(ec.ScriptStop):runner.closeMissionRewardReceipt(None,labels,countResumedClaim=True)
+        self.assertEqual(runner.claimed,0)
+
     def test_mission_list_requires_its_real_geometry_not_tutorial_embedding(self):
         labels=self.missionList()
         self.assertEqual(event.classifyEventState(labels),'mission_list')
@@ -667,3 +683,48 @@ class ShortStoryTests(unittest.TestCase):
         labels=[item('跳过',1160,20,w=65),item('皇都神剑组？',89,450,w=278,h=43)]
         self.assertEqual(event.classifyEventState(labels),'unknown')
         self.assertIsNone(ec.storySignature(labels))
+
+
+class EarnedServantTests(unittest.TestCase):
+    def labels(self):
+        return [item('Lancer',582,546,w=122,h=39),item('攻击力',471,607,w=76,h=24),item('生命值',741,603,w=73,h=31),item('1382',503,628,w=81,h=32),item('2142',697,629,w=74,h=28),item('请点击游戏界面',505,669,w=271,h=47)]
+    def test_observed_earned_card_requires_class_stats_and_footer(self):
+        labels=self.labels()
+        self.assertEqual(event.classifyEventState(labels),'item_receipt')
+        self.assertEqual(event.findEventServantReceipt(labels),(1000,690))
+        for index in range(len(labels)):
+            self.assertIsNone(event.findEventServantReceipt(labels[:index]+labels[index+1:]))
+        self.assertIsNone(event.findEventServantReceipt(labels+[item('召唤',900,500)]))
+        self.assertIsNone(event.findEventBattleStart(labels))
+    def test_missing_class_and_health_are_verified_at_two_scales(self):
+        import numpy
+        labels=self.labels()[1:2]+self.labels()[3:];d=Mock(_crop=Mock(return_value=numpy.zeros((32,80,3),dtype='uint8')))
+        with patch.object(ec.OCR.EN,'ocr_single_line',return_value=('Lancer',.99)),patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('生命值',.99)):
+            self.assertEqual(event.classifyEventState(ec.servantReceiptItems(d,labels)),'item_receipt')
+        with patch.object(ec.OCR.EN,'ocr_single_line',side_effect=[('Lancer',.99),('ancer',.99)]):
+            self.assertEqual(ec.servantReceiptItems(d,labels),labels)
+
+
+class TemporaryServantInfoTests(unittest.TestCase):
+    def test_actual_passive_notice_has_its_own_joint_producer(self):
+        labels=[item('～关于暂时加人状态的从者～',405,129,w=470,h=35),item('活动期间限时加入。',472,305,w=313,h=39),item('在活动中通关特定关卡后',437,395,w=408,h=36),item('即可正式加人。',507,435,w=244,h=42),item('关闭',600,541,w=81,h=46)]
+        self.assertEqual(event.classifyEventState(labels),'event_tutorial')
+        self.assertEqual(event.eventTutorialKey(labels),'temporary-servant-info')
+        self.assertEqual(event.findEventTutorialNext(labels),(640,564))
+        for index in range(len(labels)):
+            self.assertIsNone(event.findTemporaryServantNoticeClose(labels[:index]+labels[index+1:]))
+        self.assertIsNone(event.findTemporaryServantNoticeClose(labels+[item('请选择奖励',500,250)]))
+    def test_second_line_inside_real_dialogue_panel_supplies_body_evidence(self):
+        labels=[item('跳过',1160,20,w=65),item('啊，',89,587,w=56,h=37),item('我也没打算在这里久留。',89,644,w=372,h=37)]
+        self.assertEqual(event.classifyEventState(labels),'story')
+        self.assertIsNotNone(ec.storySignature(labels))
+
+
+class ServantDetailTests(unittest.TestCase):
+    def test_actual_servant_information_page_only_proves_close(self):
+        labels=[item('能力',545,117,w=80),item('资料',745,116,w=79),item('战斗形象',931,119,w=110),item('语音',1142,116,w=84),item('枪兵',1203,61,w=49),item('持有技能',509,597,w=98),item('关闭',7,25,w=64,h=33)]
+        self.assertEqual(event.classifyEventState(labels),'item_detail')
+        self.assertEqual(event.findEventItemDetailClose(labels),(39,41))
+        for index in range(len(labels)):
+            self.assertIsNone(event.findEventItemDetailClose(labels[:index]+labels[index+1:]))
+        self.assertIsNone(event.findEventBattleStart(labels))

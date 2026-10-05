@@ -70,7 +70,7 @@ The battle-cycle state machine was merged into `cn-dev` by fast-forward to `5e6b
 
 ## Event reward / Mission diagnostics (unmerged candidate)
 
-The event feature has 681 passing offline cases (three existing local integration
+The event feature has 688 passing offline cases (three existing local integration
 skips). Observed CE receipts/details, event tutorials and one completed non-choice
 Mission reward have dedicated producers. Interruptions and recoveries remain
 diagnostic evidence, not clean event gates. Main-quest Mission/FQ mapping and
