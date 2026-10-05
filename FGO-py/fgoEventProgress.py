@@ -303,44 +303,22 @@ def _claimMissionRewards(detect,items):
     return detect,items,{'state':'mission_blocked','claimed':claimed,'message':'已达 20 项奖励领取上限，已停止。'}
 
 def _runEventBattle(detect,items,state,friendPolicy,friendMaxRefresh):
-    """Run one entered event battle using the existing friend picker and Battle AI.
+    """Shared preparation/Battle/settlement; no second OCR result loop."""
+    from fgoEventCycle import EventResourcePolicy,EventRunner
+    runner=EventRunner(EventResourcePolicy(allowApples=False),friendPolicy=friendPolicy,friendMaxRefresh=friendMaxRefresh)
+    try:
+        detect,items,state=runner.runBattle()
+        return detect,items,{'state':state,'battles':runner.main.completedAttempts,'battle':getattr(getattr(runner.main,'battleProc',None),'result',None),'message':'Shared BattleCycle completed.'}
+    except ScriptStop as error:
+        runner.evidence(error)
+        return detect,items,{'state':'blocked','battles':runner.main.completedAttempts,'message':str(error)}
 
-    Team controls and AP restore controls are intentionally never invoked here.
-    """
-    battleReport=None
-    if state=='support':
-        main=fgoKernel.Main(appleTotal=0,appleKind=0,battleClass=fgoKernel.Battle,friendPolicy=friendPolicy,friendMaxRefresh=friendMaxRefresh)
-        try:main.chooseFriend()
-        except ScriptStop as error:return detect,items,{'state':'blocked','battles':0,'message':str(error)}
-        detect,items,state=_waitClassified(60,exclude=('support',))
-        if state=='story':return detect,items,{'state':'story_paused','battles':0,'message':'助战选择后进入剧情，请阅读完成后继续。未点击跳过。'}
-        if state!='formation':return detect,items,{'state':'blocked','battles':0,'message':'选择助战后未确认编队界面，已停止。'}
-    if state=='formation':
-        position=findEventBattleStart(items)
-        if not position:return detect,items,{'state':'blocked','battles':0,'message':'未能唯一识别编队界面的开始按钮；没有更改编队或开始战斗。'}
-        fgoDevice.device.touch(position)
-        detect,items,state=_waitClassified(30,exclude=('formation',))
-        if state=='story':return detect,items,{'state':'story_paused','battles':0,'message':'开始战斗前进入剧情，请阅读完成后继续。未点击跳过。'}
-        if state!='battle':return detect,items,{'state':'blocked','battles':0,'message':'点击 OCR 确认的开始按钮后未识别到战斗，已停止。'}
-    if state=='battle':
-        battle=fgoKernel.Battle()
-        try:won=battle()
-        except ScriptStop as error:return Detect(.2),items,{'state':'blocked','battles':0,'message':str(error)}
-        battleReport=battle.result
-        if not won:return Detect(.2),items,{'state':'battle_defeated','battles':1,'battle':battleReport,'message':'活动战斗失败；没有复活或恢复 AP。'}
-        detect=Detect(.3);items=_readScreen(detect);state=classifyEventState(items,_detectFlags(detect))
-    for _ in range(8):
-        if state=='event_map':return detect,items,{'state':'event_map','battles':1 if battleReport else 0,'battle':battleReport,'message':'活动战斗已完成并返回活动地图。'}
-        if state=='story':return detect,items,{'state':'story_paused','battles':1 if battleReport else 0,'battle':battleReport,'message':'活动战斗后进入剧情，请阅读完成后继续。未点击跳过。'}
-        if state!='battle_result':return detect,items,{'state':'blocked','battles':1 if battleReport else 0,'battle':battleReport,'message':'战斗结算界面未能可靠识别，已停止。'}
-        position=findBattleProgressButton(items)
-        if not position:return detect,items,{'state':'blocked','battles':1 if battleReport else 0,'battle':battleReport,'message':'未能唯一识别战斗结算“下一步/继续”按钮，已停止。'}
-        fgoDevice.device.touch(position)
-        detect,items,state=_waitClassified(20,exclude=('battle_result',))
-    return detect,items,{'state':'blocked','battles':1 if battleReport else 0,'battle':battleReport,'message':'活动战斗结算超过 8 个已确认步骤，已停止。'}
 
-def progress(maxNodes=1,storyMode=EVENT_STORY_PAUSE,autoClaim=False,friendPolicy='first',friendMaxRefresh=2):
+def progress(maxNodes=1,storyMode=EVENT_STORY_PAUSE,autoClaim=False,friendPolicy='first',friendMaxRefresh=2,resourcePolicy=None):
     """Conservative CN event state machine: unknown screens stop; story pauses by default."""
+    if resourcePolicy is not None:
+        from fgoEventCycle import EventRunner
+        return EventRunner(resourcePolicy,friendPolicy=friendPolicy,friendMaxRefresh=friendMaxRefresh).run(maxNodes)
     if XDetect.region!='CN':return {'type':'EventProgress','state':'blocked','message':'活动推进首版仅适配简体中文服务器。'}
     maxNodes=max(1,min(EVENT_NODE_LIMIT,int(maxNodes)))
     if storyMode not in (EVENT_STORY_PAUSE,EVENT_STORY_SKIP):return {'type':'EventProgress','state':'blocked','message':'剧情策略无效，已停止。'}

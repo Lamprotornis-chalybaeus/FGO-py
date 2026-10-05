@@ -269,24 +269,17 @@ class EventProgressTests(unittest.TestCase):
         self.assertIsNone(event.findClaimableMissionReward(ineligible))
 
     def test_event_battle_reuses_main_friend_picker_and_battle_ai(self):
-        detect=FakeDetect();formation=[item('开始任务',900,540)];finished=[]
-        battle=Mock(return_value=True);battle.result={'turn':3,'time':42.0,'material':{}}
-        main=Mock()
-        with patch.object(fgoKernel,'Main',return_value=main) as main_factory, \
-             patch.object(event,'_waitClassified',side_effect=[(detect,formation,'formation'),(detect,[],'battle')]), \
-             patch.object(fgoKernel,'Battle',return_value=battle) as battle_factory, \
-             patch.object(event,'Detect',return_value=detect), \
-             patch.object(event,'_readScreen',return_value=finished), \
-             patch.object(event,'classifyEventState',return_value='event_map'), \
-             patch.object(event.fgoDevice.device,'touch') as touch:
-            _,_,result=event._runEventBattle(detect,[], 'support','first',2)
-        main_factory.assert_called_once_with(appleTotal=0,appleKind=0,battleClass=battle_factory,friendPolicy='first',friendMaxRefresh=2)
-        main.chooseFriend.assert_called_once()
-        touch.assert_called_once_with((970,552))
-        battle_factory.assert_called_once_with()
-        battle.assert_called_once_with()
-        self.assertEqual(result['state'],'event_map')
-        self.assertEqual(result['battles'],1)
+        # The legacy GUI shim delegates to the shared cycle, with apples off.
+        import fgoEventCycle as cycle
+        runner=Mock();runner.main.completedAttempts=1
+        runner.main.battleProc.result={'turn':3,'time':42}
+        detect=FakeDetect();runner.runBattle.return_value=(detect,[],'event_map')
+        with patch.object(cycle,'EventRunner',return_value=runner) as factory:
+            _,_,result=event._runEventBattle(detect,[],'support','first',2)
+        runner.runBattle.assert_called_once_with()
+        self.assertFalse(factory.call_args.args[0].allowApples)
+        self.assertFalse(factory.call_args.args[0].allowQuartz)
+        self.assertEqual(result['state'],'event_map');self.assertEqual(result['battles'],1)
 
 
 class GuiIntegrationTests(unittest.TestCase):

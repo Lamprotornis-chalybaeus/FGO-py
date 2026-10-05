@@ -211,35 +211,44 @@ class BattleCycle:
             else:
                 observation=self.flow.waitForFlowState({S.QUEST_READY,S.FRIEND,S.FRIEND_EMPTY,S.FORMATION,S.CONTINUE,S.AP_EMPTY,S.TURN_BEGIN},timeout=min(45,max(0,deadline-self.flow.clock())),transition_name='battle entry')
         self.flow.fail(FlowTimeout,'TIMEOUT battle preparation',{S.TURN_BEGIN},180)
-    def settleBattleResult(self):
+    def settleBattleResult(self,boundary=None):
         S=BattleFlowState;observation=self.flow.observe()
         deadline=self.flow.clock()+60
         overlay=BondResultEpisode()
+        def waitForFlowState(expected,**kwargs):
+            if boundary is not None:
+                expected=set(expected)|{S.UNKNOWN}
+                accept=kwargs.pop('accept',None)
+                kwargs['accept']=lambda d:bool(boundary(d)) if self.flow.observation.state==S.UNKNOWN else accept is None or accept(d)
+            return self.flow.waitForFlowState(expected,**kwargs)
         def nextResultInstance(d,page):
             if not page or not d.isBattleFinished() or d.getBattleResultPage()!=page:return True
             return page=='BOND_LEVEL_UP' and overlay.ready(d,self.flow.observation.capture_sequence)
         while self.flow.clock()<deadline:
             state=observation.state
+            # An event may end in positively recognized story/map UI instead
+            # of a repeat Free Quest. UNKNOWN alone never authorizes departure.
+            if state==S.UNKNOWN and boundary is not None and boundary(self.flow.detect):return observation
             if state in {S.CONTINUE,S.QUEST_READY}:return observation
             if state==S.BATTLE_RESULT:
                 page=getattr(self.flow.detect,'getBattleResultPage',lambda:None)()
                 if page=='BOND_LEVEL_UP':
                     if not overlay.ready(self.flow.detect,observation.capture_sequence):
-                        observation=self.flow.waitForFlowState({S.BATTLE_RESULT,S.ADD_FRIEND,S.CONTINUE,S.QUEST_READY,S.SPECIAL_MODAL},timeout=min(30,max(0,deadline-self.flow.clock())),transition_name='bond result instance',accept=lambda d:nextResultInstance(d,page))
+                        observation=waitForFlowState({S.BATTLE_RESULT,S.ADD_FRIEND,S.CONTINUE,S.QUEST_READY,S.SPECIAL_MODAL},timeout=min(30,max(0,deadline-self.flow.clock())),transition_name='bond result instance',accept=lambda d:nextResultInstance(d,page))
                         continue
                     overlay.acknowledge()
                 self.flow.action('result_next',lambda:self.main.press(' '))
                 expected={S.ADD_FRIEND,S.CONTINUE,S.QUEST_READY,S.SPECIAL_MODAL}|({S.BATTLE_RESULT} if page else set())
-                observation=self.flow.waitForFlowState(expected,timeout=min(30,max(0,deadline-self.flow.clock())),transition_name='result dismissal',allowed_intermediate={S.BATTLE_RESULT},accept=lambda d:nextResultInstance(d,page))
+                observation=waitForFlowState(expected,timeout=min(30,max(0,deadline-self.flow.clock())),transition_name='result dismissal',allowed_intermediate={S.BATTLE_RESULT},accept=lambda d:nextResultInstance(d,page))
             elif state==S.ADD_FRIEND:
                 self.flow.action('close_add_friend',lambda:self.main.press('X'))
-                observation=self.flow.waitForFlowState({S.CONTINUE,S.QUEST_READY,S.BATTLE_RESULT},timeout=20,transition_name='friend request close',allowed_intermediate={S.ADD_FRIEND})
+                observation=waitForFlowState({S.CONTINUE,S.QUEST_READY,S.BATTLE_RESULT},timeout=20,transition_name='friend request close',allowed_intermediate={S.ADD_FRIEND})
             elif state==S.SPECIAL_MODAL:
                 self.main.checkSpecialModal()
                 self.flow.action('close_special_modal',lambda:self.main.press('\x1B'))
-                observation=self.flow.waitForFlowState({S.CONTINUE,S.QUEST_READY,S.BATTLE_RESULT,S.ADD_FRIEND},timeout=20,transition_name='special result modal',allowed_intermediate={S.SPECIAL_MODAL})
+                observation=waitForFlowState({S.CONTINUE,S.QUEST_READY,S.BATTLE_RESULT,S.ADD_FRIEND},timeout=20,transition_name='special result modal',allowed_intermediate={S.SPECIAL_MODAL})
             else:
-                observation=self.flow.waitForFlowState({S.BATTLE_RESULT,S.ADD_FRIEND,S.CONTINUE,S.QUEST_READY,S.SPECIAL_MODAL},timeout=30,transition_name='settlement')
+                observation=waitForFlowState({S.BATTLE_RESULT,S.ADD_FRIEND,S.CONTINUE,S.QUEST_READY,S.SPECIAL_MODAL},timeout=30,transition_name='settlement')
         self.flow.fail(FlowTimeout,'TIMEOUT settlement',{S.CONTINUE,S.QUEST_READY},60)
     def finish(self):
         S=BattleFlowState

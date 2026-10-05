@@ -667,8 +667,14 @@ class Main:
                 return flow.waitForFlowState({S.TURN_BEGIN},timeout=90,transition_name='auto formation start')
         flow.action('start_quest',self.startQuest)
         flow.trace.beginFormationStart()
-        observation=flow.waitForFlowState({S.TURN_BEGIN},timeout=180,stall_timeout=60,transition_name='formation start',allowed_intermediate={S.FORMATION,S.LOADING},progress_signature=lambda d:getattr(d,'getLoadingProgressSignature',lambda:None)())
+        observation=self.waitFormationStart(flow)
         flow.trace.endFormationStart()
+        return observation
+    def waitFormationStart(self,flow):
+        # Event progression may positively handle a story boundary here. The
+        # ordinary farming contract retains exactly the proven bounded wait.
+        S=BattleFlowState
+        observation=flow.waitForFlowState({S.TURN_BEGIN},timeout=180,stall_timeout=60,transition_name='formation start',allowed_intermediate={S.FORMATION,S.LOADING},progress_signature=lambda d:getattr(d,'getLoadingProgressSignature',lambda:None)())
         return observation
     @serialize(mutex)
     def __call__(self,questIndex=0,battleTotal=None):
