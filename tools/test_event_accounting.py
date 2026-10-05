@@ -368,3 +368,28 @@ class NewShinsengumiNoticeTests(unittest.TestCase):
         runner.touch.assert_called_once_with(labels,(640,562),'advance_event_instructions')
         with self.assertRaises(ec.ScriptStop):runner.advanceTutorial(None,labels)
         self.assertEqual(runner.touch.call_count,1)
+
+class LockedAreaBoundaryTests(unittest.TestCase):
+    def locked(self):
+        return [item('关闭',70,25,w=80),item('活动报酬',1125,12,w=120),item('主线关卡第五话',775,126,w=225),item('无战斗',1139,125),item('完成任务No.23后开放',827,176,w=208),item('AP0',783,204),item('关卡举办时间剩余9日',983,243,w=220)]
+    def test_area_wait_accepts_only_jointly_proven_numbered_locked_map(self):
+        # Use the real world-map structure without depending on a test class.
+        labels=[item('管理室',70,25),item('活动报酬',1125,12,w=120),item('菜单',1148,633),item('京都城区',590,400,w=100),item('下一个',600,175)]
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger());runner.read=Mock(return_value=(Mock(),labels,'event_world_map'));runner.touch=Mock();runner.wait=Mock(return_value=(None,self.locked(),'mission_gate'))
+        self.assertEqual(runner.openNextArea()[2],'mission_gate')
+        runner.touch.assert_called_once()
+        allowed=runner.wait.call_args.args[0];accept=runner.wait.call_args.kwargs['accept']
+        self.assertEqual(allowed,{'event_map','mission_gate'})
+        self.assertTrue(accept(None,self.locked(),'mission_gate'))
+        self.assertFalse(accept(None,[item('需要完成任务23才能解锁',400,300)],'mission_gate'))
+    def test_opened_lock_routes_to_exact_requirement_not_node_selection(self):
+        from contextlib import nullcontext
+        labels=self.locked();runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger());d=Mock()
+        runner.openMap=Mock(return_value=(d,[],'event_world_map'));runner.openNextArea=Mock(return_value=(d,labels,'mission_gate'));runner.stableNode=Mock();runner.touch=Mock()
+        runner.openMissionRequirements=Mock(return_value=(d,[],'mission_list'))
+        card={'mission':23,'condition':'通关指定NEW新选组关卡','progress':'0/1'}
+        runner.seekMission=Mock(return_value=(d,[],'mission_list',card));runner.ap=Mock(return_value=139)
+        with patch.object(ec.automationOwner,'claim',return_value=nullcontext()):result=runner.run(1)
+        self.assertEqual(result['state'],'mission_gate');self.assertEqual(result['requirement'],card)
+        self.assertEqual(result['nodes'],0);self.assertEqual(result['newBattleEntries'],0)
+        runner.seekMission.assert_called_once_with(23);runner.stableNode.assert_not_called();runner.touch.assert_not_called()

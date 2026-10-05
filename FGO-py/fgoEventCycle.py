@@ -773,7 +773,7 @@ class EventRunner:
             if count>=3:
                 self.touch(items,area['position'],'open_next_event_area')
                 self.ledger.append('area',title=area['title'],AP=self.ap(d))
-                return self.wait({'event_map'},timeout=30)
+                return self.wait({'event_map','mission_gate'},timeout=30,accept=lambda d,i,s:s!='mission_gate' or event.findLockedEventMission(i) is not None)
         raise ScriptStop('Event area marker transient; no navigation input')
     def handleTransition(self,d,items,state,*,deadline=None):
         if state in ('story','story_skip_confirmation') and getattr(self,'storyMode','skip')!='skip':
@@ -1375,7 +1375,9 @@ class EventRunner:
                             self.ledger.append('mission_requirement',mission=card['mission'],condition=card['condition'],progress=card['progress'],source='three fresh complete numbered Mission card frames')
                             mapping=self.observedMissionMapping(card)
                             return self.report('mission_gate',requirement=card,observedMapping=mapping,message='Exact empirical mapping found; fresh quest identity still required' if mapping else 'No positively evidenced mapping for the current requirement; no random Free Quest',AP=self.ap(d))
-                        if state=='event_world_map':d,items,state=self.openNextArea()
+                        if state=='event_world_map':
+                            d,items,state=self.openNextArea()
+                            if state=='mission_gate':continue
                         d,items,node=self.stableNode();before=self.ap(d)
                         pending={**node,'battlesBefore':self.normalCompletedBattles+self.recoveredCompletedBattles,'storyBefore':self.storySegments,'settlementsBefore':self.settledResumes,'resumed':False}
                         self.ledger.append('node_intent',title=node['title'],beforeAP=before,restrictions=node['restrictions'])
