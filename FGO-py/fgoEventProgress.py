@@ -191,6 +191,11 @@ def findTemporaryPartyDecision(items):
     positive=[i for i in items if float(i.score)>=.85]
     title=[i for i in positive if _text(i)=='队伍编制' and _center(i)[0]>1000 and _center(i)[1]<100]
     restricted=[i for i in positive if _text(i)=='受限' and _center(i)[1]<100]
+    if not restricted:
+        heading=[i for i in positive if _text(i)=='编成限制' and 500<_center(i)[0]<800 and _center(i)[1]<65]
+        condition=[i for i in positive if re.fullmatch(r'请将[\u4e00-\u9fff]{2,12}设置为首发队员[。.]?',_text(i)) and 400<_center(i)[0]<900 and 65<_center(i)[1]<105]
+        fixed=[i for i in positive if _text(i)=='编队限制' and _center(i)[0]<250 and 300<_center(i)[1]<390]
+        if len(heading)==len(condition)==len(fixed)==1:restricted=heading
     instruction=[i for i in positive if _text(i).rstrip('。.')=='拖动修改从者配置' and 600<_center(i)[1]<660]
     cancel=[i for i in positive if _text(i)=='取消' and _center(i)[0]<250 and _center(i)[1]>640]
     decision=[i for i in positive if _text(i)=='决定' and _center(i)[0]>1050 and _center(i)[1]>640]

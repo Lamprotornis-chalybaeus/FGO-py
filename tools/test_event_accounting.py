@@ -241,3 +241,20 @@ class FormationRestrictionNoticeTests(unittest.TestCase):
         self.assertEqual(runner.touch.call_count,2)
         with self.assertRaises(ec.ScriptStop):runner.closeFormationRestrictionNotice(None,second)
         self.assertEqual(runner.touch.call_count,2)
+
+class ConstrainedPartyReviewTests(unittest.TestCase):
+    def labels(self):
+        return [item('队伍编制',1044,9,w=224,h=54),item('编成限制',569,17,w=143,h=38),item('请将河上彦斋设置为首发队员。',500,68,w=265,h=23),item('编队限制',93,344,w=75,h=23),item('拖动修改从者配置。',530,622,w=260,h=22),item('取消',103,658,w=74,h=40),item('决定',1133,650,w=104,h=40)]
+    def test_new_review_uses_all_three_restriction_proofs_not_one_heading(self):
+        labels=self.labels();self.assertIsNotNone(event.findTemporaryPartyDecision(labels))
+        self.assertEqual(event.classifyEventState(labels,{'formation':True}),'formation_review')
+        for index in (1,2,3):self.assertIsNone(event.findTemporaryPartyDecision(labels[:index]+labels[index+1:]))
+    def test_review_without_sent_isolated_auto_formation_never_decides(self):
+        runner=ec.EventRunner(ec.EventResourcePolicy(allowTemporaryAutoFormation=True),ledger=Ledger());runner.touch=Mock()
+        with self.assertRaisesRegex(ec.ScriptStop,'isolated'):runner.confirmTemporaryParty(None,self.labels())
+        runner.touch.assert_not_called()
+    def test_proved_isolated_review_decides_once_then_waits_for_formation(self):
+        labels=self.labels();runner=ec.EventRunner(ec.EventResourcePolicy(allowTemporaryAutoFormation=True),ledger=Ledger([dict(kind='input',action='auto_form_isolated_event_party')]))
+        runner.read=Mock(return_value=(Mock(),labels,'formation_review'));runner.touch=Mock();runner.wait=Mock(return_value=(Mock(),[],'formation'))
+        runner.confirmTemporaryParty(None,labels)
+        runner.touch.assert_called_once();self.assertEqual(runner.touch.call_args.args[2],'confirm_temporary_event_party')

@@ -840,6 +840,7 @@ class EventRunner:
             raise ScriptStop('Special formation offer unstable; no input')
         target=[i for i in labels if i.score>=.85 and event._text(i)=='自动编成' and 540<i.center[1]<640]
         if len(target)!=1:raise ScriptStop('Special auto formation button ambiguous')
+        self.ledger.append('isolated_party_intent',source='fresh offer explicitly does not use normal party settings')
         callback=lambda:self.touch(labels,target[0].center,'auto_form_isolated_event_party')
         if flow:
             flow.action('auto_form_isolated_event_party',callback)
@@ -880,6 +881,9 @@ class EventRunner:
         if not self.policy.allowTemporaryAutoFormation:raise ScriptStop('Temporary party confirmation permission disabled')
         position=event.findTemporaryPartyDecision(items)
         if position is None:raise ScriptStop('Restricted temporary party review unproven')
+        if not any(i.score>=.85 and event._text(i)=='受限' and i.center[1]<100 for i in items):
+            sent=[r for r in self.records() if r.get('kind')=='input']
+            if not sent or sent[-1].get('action')!='auto_form_isolated_event_party':raise ScriptStop('Restricted review has no isolated auto-formation input context; no decision')
         for _ in range(2):
             d,items,state=self.read()
             if state!='formation_review' or event.findTemporaryPartyDecision(items)!=position:
