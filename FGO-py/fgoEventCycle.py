@@ -167,12 +167,26 @@ def storyItems(d,items):
     weak=[i for i in items if '跳过' in event._text(i) and 1100<i.center[0]<1280 and i.center[1]<100]
     auto=[i for i in items if i.score>=.85 and event._text(i)=='自动' and i.center[0]>1180 and i.center[1]>600]
     dialogue=[i for i in items if i.score>=.85 and 470<i.center[1]<650 and len(event._text(i))>=7]
-    if len(weak)!=1 or len(auto)!=1 or not dialogue:return items
+    # Full-screen OCR may omit the arrow-contaminated label altogether. The
+    # two fixed text reads plus independent dialogue/auto controls produce it.
+    if len(weak)>1 or len(auto)!=1 or not dialogue:return items
     line=d._crop((1160,20,1225,60))
     a,sa=OCR.ZHS.ocr_single_line(line);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(line,None,fx=2,fy=2))
     if not min(float(sa),float(sb))>=.85:return items
     if event.normalizeText(a)!='跳过' or event.normalizeText(b)!='跳过':return items
-    return [i for i in items if i is not weak[0]]+[event.OcrItem('跳过',(1160,20,1225,60),min(float(sa),float(sb)))]
+    return [i for i in items if not weak or i is not weak[0]]+[event.OcrItem('跳过',(1160,20,1225,60),min(float(sa),float(sb)))]
+
+
+def skipConfirmationItems(d,items):
+    import cv2
+    message=[i for i in items if i.score>=.85 and '是否跳过该段剧情' in event._text(i) and 200<i.center[1]<400]
+    no=[i for i in items if i.score>=.85 and event._text(i)=='否' and 250<i.center[0]<600 and 480<i.center[1]<620]
+    yes=[i for i in items if event._text(i)=='是' and 650<i.center[0]<1000 and 480<i.center[1]<620]
+    if len(message)!=1 or len(no)!=1 or len(yes)>1:return items
+    rect=(800,532,854,589)
+    crop=d._crop(rect);a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
+    if not min(float(sa),float(sb))>=.85 or event.normalizeText(a)!='是' or event.normalizeText(b)!='是':return items
+    return [i for i in items if not yes or i is not yes[0]]+[event.OcrItem('是',rect,min(float(sa),float(sb)))]
 
 
 class EventMain(kernel.Main):
@@ -203,8 +217,8 @@ class EventMain(kernel.Main):
                 if not flow.networkHandled:
                     flow.action('network_error_confirm',lambda:kernel.handleNetworkError(flow.detect));flow.networkHandled=True
             elif observation.state in {S.UNKNOWN,S.QUEST_READY}:
-                items=storyItems(flow.detect,nav.labels(flow.detect));state=event.classifyEventState(items,event._detectFlags(flow.detect))
-                if state in ('story','start_confirmation'):
+                items=skipConfirmationItems(flow.detect,storyItems(flow.detect,nav.labels(flow.detect)));state=event.classifyEventState(items,event._detectFlags(flow.detect))
+                if state in ('story','story_skip_confirmation','start_confirmation'):
                     self.runner.handleTransition(flow.detect,items,state,deadline=deadline)
                     lastProgress=flow.clock()
                 elif state not in ('unknown',):raise ScriptStop('Unexpected event start boundary: '+state)
@@ -232,7 +246,7 @@ class EventRunner:
         schedule.checkStop();schedule.checkSuspend()
         d=self.reader()
         if d.im.shape[:2]!=(720,1280) or XDetect.region!='CN':raise ScriptStop('Event requires CN 1280x720')
-        items=storyItems(d,nav.labels(d));state=event.classifyEventState(items,event._detectFlags(d))
+        items=skipConfirmationItems(d,storyItems(d,nav.labels(d)));state=event.classifyEventState(items,event._detectFlags(d))
         self.last=(d,items,state)
         return self.last
     def wait(self,states,*,timeout=30,exclude=(),deadline=None):
@@ -277,8 +291,16 @@ class EventRunner:
         self.ledger.append('blocked',reason=str(reason),stats=self.main.result)
     def openMap(self):
         d,items,state=self.read()
+        if state=='unknown' and not startupInfoClose(d,items) and nav.safeMenuPageCN(d,items)=='UNKNOWN':
+            # Story controls can pulse out of full-screen OCR. Finite fresh
+            # observation may recover a positive producer, never an input.
+            end=self.clock()+10
+            while self.clock()<end:
+                schedule.sleep(.2);d,items,state=self.read()
+                if state!='unknown' or startupInfoClose(d,items) or nav.safeMenuPageCN(d,items)!='UNKNOWN':break
+            else:raise ScriptStop('Unknown event entry after bounded fresh reads; no navigation input')
         if state=='event_map':return d,items,state
-        if state in ('story','start_confirmation','support','formation','battle','battle_result','ap_empty'):
+        if state in ('story','story_skip_confirmation','start_confirmation','support','formation','battle','battle_result','ap_empty'):
             return d,items,state # Resume actual state, never ledger-driven.
         dismissed=set()
         for _ in range(8):
@@ -326,6 +348,11 @@ class EventRunner:
             if count>=3:return d,items,node
         raise ScriptStop('Main node transient; no selection')
     def handleTransition(self,d,items,state,*,deadline=None):
+        if state=='story_skip_confirmation':
+            position=event.findSkipConfirmation(items)
+            if not position:raise ScriptStop('Unverified story skip confirmation')
+            self.touch(items,position,'confirm_story_skip');self.storySegments+=1
+            return self.wait({'event_map','support','formation','battle','story','start_confirmation','ap_empty'},timeout=45,exclude=('story',),deadline=deadline)
         if state=='start_confirmation':
             if not event._isStartQuestConfirmation(items):raise ScriptStop('Unverified start confirmation')
             target=next(i for i in items if event._reliable(i) and event._text(i)=='开始')
@@ -406,7 +433,7 @@ class EventRunner:
         finally:
             INPUT_OBSERVER.reset(token);self.flow=None
     def eventBoundary(self,d):
-        items=storyItems(d,nav.labels(d))
+        items=skipConfirmationItems(d,storyItems(d,nav.labels(d)))
         state=event.classifyEventState(items,event._detectFlags(d))
         return state in ('event_map','story') and not event._unsafeEventOverlay(items)
     def run(self,maxNodes=1,*,mapSmoke=False):
@@ -419,7 +446,7 @@ class EventRunner:
                     if not node:raise ScriptStop('Map smoke has no next main node')
                     return self.report('map_smoke_pass',nextNode=node,AP=self.ap(d))
                 pending=None;before=None;entryStart=self.clock();steps=0
-                if state in ('story','start_confirmation','support','formation','battle','battle_result'):
+                if state in ('story','story_skip_confirmation','start_confirmation','support','formation','battle','battle_result'):
                     # Actual in-progress UI proves a resumable entry. A saved
                     # ledger may annotate it, but never causes another tap.
                     pending={'title':'resumed actual event node','battlesBefore':self.main.completedAttempts,'storyBefore':self.storySegments}
@@ -440,7 +467,7 @@ class EventRunner:
                         self.ledger.append('node_intent',title=node['title'],beforeAP=before,restrictions=node['restrictions'])
                         self.touch(items,node['position'],'select_main_node')
                         d,items,state=self.wait({'start_confirmation','story','support','formation','battle','ap_empty'},timeout=30)
-                    elif state in ('start_confirmation','story'):
+                    elif state in ('start_confirmation','story','story_skip_confirmation'):
                         d,items,state=self.handleTransition(d,items,state)
                     elif state in ('support','formation','battle','battle_result'):
                         d,items,state=self.runBattle()

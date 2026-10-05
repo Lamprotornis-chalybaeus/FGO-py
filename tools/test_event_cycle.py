@@ -101,6 +101,26 @@ class SharedEventCycleTests(unittest.TestCase):
 
 
 class EventContractTests(unittest.TestCase):
+    def test_actual_story_skip_yes_no_producer_requires_phrase_and_both_controls(self):
+        labels=[item('是否跳过该段剧情？',450,300,w=350),item('否',430,540,w=45),item('是',805,540,w=45,score=.66)]
+        d=Mock();d._crop.return_value=__import__('numpy').zeros((57,54,3),dtype='uint8')
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('是',.99)):
+            verified=ec.skipConfirmationItems(d,labels)
+            self.assertEqual(event.classifyEventState(verified),'story_skip_confirmation')
+            self.assertEqual(event.findSkipConfirmation(verified),(827,560))
+            self.assertEqual(ec.skipConfirmationItems(d,labels[1:]),labels[1:])
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('是',.84)):
+            self.assertIsNone(event.findSkipConfirmation(ec.skipConfirmationItems(d,labels)))
+    def test_resuming_skip_confirmation_does_not_touch_skip_again(self):
+        labels=[item('是否跳过该段剧情？',450,300,w=350),item('否',430,540,w=45),item('是',805,540,w=45)]
+        runner=object.__new__(ec.EventRunner);runner.touch=Mock();runner.wait=Mock();runner.storySegments=0
+        runner.handleTransition(None,labels,'story_skip_confirmation')
+        self.assertEqual(runner.touch.call_count,1)
+        self.assertEqual(runner.touch.call_args.args[2],'confirm_story_skip')
+    def test_unknown_story_control_miss_recovers_by_reading_only(self):
+        clock=Clock();runner=object.__new__(ec.EventRunner);runner.clock=clock;runner.read=Mock(side_effect=[(Mock(),[],'unknown'),(Mock(),[],'story')])
+        with patch.object(ec,'schedule',clock),patch.object(ec,'startupInfoClose',return_value=None),patch.object(ec.nav,'safeMenuPageCN',return_value='UNKNOWN'),patch.object(ec.nav,'normalizeToTerminalCN') as normalize,patch.object(ec.fgoDevice.device,'touch') as touch:
+            self.assertEqual(runner.openMap()[2],'story');normalize.assert_not_called();touch.assert_not_called()
     def test_story_skip_arrow_requires_independent_text_and_dialogue_controls(self):
         labels=[item('跳过|',1150,20,w=85,score=.73),item('自动',1200,620,w=40),item('有人吗，有人在吗？',300,580,w=300)]
         d=Mock();d._crop.return_value=__import__('numpy').zeros((40,65,3),dtype='uint8')
@@ -109,6 +129,7 @@ class EventContractTests(unittest.TestCase):
             self.assertEqual(event.findSkipButton(verified),(1192,40))
             self.assertEqual(event.classifyEventState(verified),'story')
             self.assertEqual(ec.storyItems(d,labels[:1]),labels[:1])
+            self.assertIsNotNone(event.findSkipButton(ec.storyItems(d,labels[1:])))
         with patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('跳过',.84)):
             self.assertIsNone(event.findSkipButton(ec.storyItems(d,labels)))
     def test_weekly_update_notice_closes_not_opens_mission_panel(self):

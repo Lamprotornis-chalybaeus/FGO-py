@@ -124,6 +124,7 @@ def classifyEventState(items,flags=None):
     flags=flags or {}
     # Confirmations can cover a still-recognizable support/formation background.
     if _isStartQuestConfirmation(items):return 'start_confirmation'
+    if findSkipConfirmation(items):return 'story_skip_confirmation'
     if flags.get('ap_empty'):return 'ap_empty'
     if flags.get('defeated'):return 'battle_defeated'
     if flags.get('friend_request'):return 'friend_request'
@@ -146,6 +147,11 @@ def findSkipButton(items):
 
 def findSkipConfirmation(items):
     text=' '.join(_text(item) for item in items if _reliable(item))
+    if '是否跳过该段剧情' in text:
+        yes=[i for i in items if _reliable(i) and _text(i)=='是' and 650<_center(i)[0]<1000 and 480<_center(i)[1]<620]
+        no=[i for i in items if _reliable(i) and _text(i)=='否' and 250<_center(i)[0]<600 and 480<_center(i)[1]<620]
+        if len(yes)==len(no)==1:return _center(yes[0])
+        return None
     if not any(token in text for token in ('跳过剧情','跳过故事','skipstory')):return None
     if not any(token in text for token in ('取消','cancel')):return None
     candidates=[item for item in items if _text(item) in ('确认','确定','ok','confirm')]
