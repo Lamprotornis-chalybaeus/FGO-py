@@ -36,7 +36,7 @@ party review page. These are retained historical diagnostics, not successful
 main-node gates. Each repair has synthetic regressions; private raw frames and
 trace files are not published or included in CI artifacts.
 
-The current offline suite passes 688 cases, with the original three explicitly
+The current offline suite passes 715 cases, with the original three explicitly
 local integration skips. Full event battle, three-node and ten-node acceptance
 must be reported from actual local runs. A general Mission-to-Free-Quest mapping,
 real AP-item selector validation remain incomplete. Completed non-choice Mission claims have initial live evidence,
@@ -111,3 +111,29 @@ receipt may lead to the observed unlock tutorial; its close still requires a
 three-frame real counter increment under the same bounded parent deadline.
 The second story-only episode returned to a positive map through recovery with
 no new battle entry and unchanged AP. It is not a clean story gate.
+
+
+## Locked Mission lookup and information pages
+
+A locked main card is not a selectable next node. Its unique numbered lock and
+real activity-reward entry are confirmed in three fresh observations before one
+menu touch. Only that proved origin may fade during a bounded read-only entry
+wait. Mission lists use their actual scrollbar endpoint; claimed/new rows can
+reorder, so position never proves an identity. Approximate neighbour scrolling
+only changes position. A full numbered card, actionable complete condition,
+exclusion text and numeric progress must then agree in three fresh frames.
+An opening date alone or a truncated parenthesized exclusion is rejected.
+
+Weak outlined counters, wrapped condition tails and information controls may
+be recovered only with matching two-scale local OCR at the unchanged 0.85
+threshold and independent page structure. Real button-rim crop contamination
+was diagnosed locally. Passive reward-material descriptions and quest
+information have separate producers; neither a claim nor a quest start is
+permitted by those producers. An incomplete foreground information page only
+permits bounded read-only waiting, never selection of a background locked card.
+A stable locked map may end settlement only with a real menu/HUD and AP proof.
+
+The actual Mission condition and unknown enemy inventory are private evidence.
+A generic Mission-to-quest mapping is still not established. An explicitly
+authorized bounded live battle experiment is kept separate from an automatically
+selected, positively mapped Mission route; it cannot certify a generic solver.

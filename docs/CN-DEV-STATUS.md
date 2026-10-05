@@ -70,8 +70,16 @@ The battle-cycle state machine was merged into `cn-dev` by fast-forward to `5e6b
 
 ## Event reward / Mission diagnostics (unmerged candidate)
 
-The event feature has 688 passing offline cases (three existing local integration
+The event feature has 715 passing offline cases (three existing local integration
 skips). Observed CE receipts/details, event tutorials and one completed non-choice
 Mission reward have dedicated producers. Interruptions and recoveries remain
 diagnostic evidence, not clean event gates. Main-quest Mission/FQ mapping and
 real AP-item selection remain open. See [EVENT-PROGRESS.md](EVENT-PROGRESS.md).
+
+
+The unmerged event candidate now has bounded numbered-Mission lookup, physical
+scrollbar/top proof, complete-condition integrity checks, and positive passive
+material/quest-information producers. Unknown enemy information is not treated
+as a Mission mapping. All private snapshots, OCR output and ledgers remain
+local. A user-authorized limited Free Quest experiment is diagnostic evidence,
+not proof of a generic Mission solver or uninterrupted main-node gates.

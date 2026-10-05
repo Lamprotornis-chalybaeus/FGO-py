@@ -304,8 +304,81 @@ def storySignature(items):
     if not lines:return None
     return hashlib.sha256('|'.join(v[2] for v in lines).encode('utf-8')).hexdigest()
 
+def missionProgressItems(d,items):
+    if not event._missionListConfirmed(items):return items
+    import cv2
+    result=list(items)
+    headers=[i for i in items if i.score>=.85 and re.fullmatch(r'编号\d+',event._text(i)) and i.center[0]>1100 and 270<i.center[1]<540]
+    for header in headers:
+        y=header.center[1]
+        label=[i for i in items if i.score>=.85 and event._text(i)=='目标进行度' and 590<i.center[0]<800 and y+60<i.center[1]<y+130]
+        weak=[i for i in items if re.fullmatch(r'\d+/\d+',event._text(i)) and 580<i.center[0]<1000 and y+95<i.center[1]<y+150]
+        if len(label)!=1 or len(weak)!=1 or weak[0].score>=.85:continue
+        rect=(weak[0].box[0]-3,weak[0].box[1]-3,weak[0].box[2]+3,weak[0].box[3]+3)
+        crop=d._crop(rect);a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
+        text=event.normalizeText(a)
+        if min(float(sa),float(sb))<.85 or text!=event.normalizeText(b) or not re.fullmatch(r'\d+/\d+',text):continue
+        current,total=map(int,text.split('/'))
+        if not 0<=current<=total or total<=0:continue
+        result.remove(weak[0]);result.append(event.OcrItem(a,rect,min(float(sa),float(sb))))
+    return result
+
+def missionConditionItems(d,items):
+    """Recover a wrapped condition tail only under a proved numbered card.
+
+    Preserve the complete exclusion; never synthesize missing words.
+    """
+    if not event._missionListConfirmed(items):return items
+    import cv2
+    result=list(items)
+    headers=[i for i in items if i.score>=.85 and re.fullmatch(r'编号\d+',event._text(i)) and i.center[0]>1100 and 270<i.center[1]<540]
+    for header in headers:
+        y=header.center[1]
+        opening=[i for i in items if i.score>=.85 and 590<i.center[0]<1080 and y+5<i.center[1]<y+50 and '(' in event._text(i) and ')' not in event._text(i) and re.search(r'(击败|收集|通关)',event._text(i))]
+        if len(opening)!=1:continue
+        tails=[i for i in items if i.score<.85 and 590<i.center[0]<1080 and opening[0].center[1]<i.center[1]<y+70 and ')' in event._text(i)]
+        if len(tails)!=1:continue
+        tail=tails[0];crop=d._crop(tail.box)
+        a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
+        text=event.normalizeText(a)
+        if min(float(sa),float(sb))<.85 or text!=event.normalizeText(b) or text!=event._text(tail):continue
+        result.remove(tail);result.append(event.OcrItem(a,tail.box,min(float(sa),float(sb))))
+    return result
+
+
+def missionInfoItems(d,items):
+    if not event.missionItemInfoProof(items):return items
+    import cv2
+    candidates=[i for i in items if event._text(i)=='关闭' and 500<i.center[0]<800 and 480<i.center[1]<550]
+    if len(candidates)!=1:return items
+    # Vertical padding includes the button rim and reduces real OCR confidence.
+    # Keep the observed text height; horizontal context prevents tight glyph crops.
+    i=candidates[0];rect=(max(0,i.box[0]-14),i.box[1],min(1280,i.box[2]+14),i.box[3])
+    crop=d._crop(rect);a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
+    if min(float(sa),float(sb))<.85 or event.normalizeText(a)!=event.normalizeText(b) or event.normalizeText(a)!='关闭':return items
+    return [j for j in items if j is not i]+[event.OcrItem(a,rect,min(float(sa),float(sb)))]
+
+def questInfoItems(d,items):
+    if not event.eventQuestInfoProof(items):return items
+    import cv2
+    result=list(items)
+    groups=(
+        ('关闭',[i for i in items if event._text(i)=='关闭' and 250<i.center[0]<400 and 630<i.center[1]<700]),
+        ('敌人',[i for i in items if event._text(i) in ('敌人','敌入') and 400<i.center[0]<500 and 150<i.center[1]<210]))
+    for expected,candidates in groups:
+        if len(candidates)!=1:continue
+        i=candidates[0]
+        if i.score>=.85 and event._text(i)==expected:continue
+        rect=(i.box[0]-14,i.box[1],i.box[2]+14,i.box[3]) if expected=='关闭' else (i.box[0]-8,i.box[1]+3,i.box[2]+8,i.box[3]-3)
+        crop=d._crop(rect);a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
+        if min(float(sa),float(sb))<.85 or event.normalizeText(a)!=event.normalizeText(b) or event.normalizeText(a)!=expected:continue
+        result.remove(i);result.append(event.OcrItem(a,rect,min(float(sa),float(sb))))
+    return result
+
+
 def enrichedEventItems(d):
     items=itemDetailItems(d,itemReceiptItems(d,startConfirmationItems(d,mainTitleItems(d,worldMapItems(d,skipConfirmationItems(d,storyItems(d,nav.labels(d))))))))
+    items=questInfoItems(d,missionInfoItems(d,missionConditionItems(d,missionProgressItems(d,items))))
     if event.eventTutorialCloseProof(items):
         import cv2
         rect=(1219,7,1273,61);crop=d._crop(rect)
@@ -402,6 +475,16 @@ class EventMain(kernel.Main):
         flow.fail(FlowTimeout,'TIMEOUT event formation start',{S.TURN_BEGIN},180)
 
 
+def missionScrollThumb(image):
+    import cv2,numpy
+    if image.shape[:2]!=(720,1280):raise ScriptStop('Mission scrollbar needs 1280x720')
+    hsv=cv2.cvtColor(image[266:585,1255:1268],cv2.COLOR_BGR2HSV)
+    white=numpy.mean((hsv[...,1]<45)&(hsv[...,2]>220),axis=1)>.65
+    edges=numpy.flatnonzero(numpy.diff(numpy.r_[False,white,False]))
+    runs=[(int(a+266),int(b+266)) for a,b in zip(edges[::2],edges[1::2]) if 10<=b-a<=50]
+    if len(runs)!=1:raise ScriptStop('Mission scrollbar not unique; no scroll input')
+    return runs[0]
+
 class EventRunner:
     def __init__(self,policy,*,friendPolicy='first',friendMaxRefresh=2,storyMode='skip',autoClaim=False,ledger=None,reader=None,clock=time.monotonic):
         if not isinstance(policy,EventResourcePolicy):raise TypeError('Explicit EventResourcePolicy required')
@@ -423,20 +506,21 @@ class EventRunner:
         state=event.classifyEventState(items,{**event._detectFlags(d),'main_interface':d.isMainInterface()})
         self.last=(d,items,state)
         return self.last
-    def wait(self,states,*,timeout=30,exclude=(),deadline=None,accept=None):
+    def wait(self,states,*,timeout=30,exclude=(),deadline=None,accept=None,blockedIntermediate=None):
         end=min(self.clock()+timeout,deadline or float('inf'))
         mapFrames=0
         while self.clock()<end:
             d,items,state=self.read()
-            if state in states and state not in exclude and (accept is None or accept(d,items,state)):
-                if state in ('event_map','event_world_map'):
+            accepted=state in states and state not in exclude and (accept is None or accept(d,items,state))
+            if accepted:
+                if state in ('event_map','event_world_map') or state=='mission_gate' and event.findLockedEventMission(items):
                     # A fading old map after start is not a completion edge.
                     # Require the menu template and HUD on three acquisitions.
                     mapFrames=mapFrames+1 if d.isMainInterface() and self.ap(d) is not None else 0
                     if mapFrames>=3:return d,items,state
                 else:return d,items,state
             else:mapFrames=0
-            if state in ('battle_defeated','unsafe_modal','mission_gate'):
+            if state in ('battle_defeated','unsafe_modal','mission_gate') and not accepted and not (state=='mission_gate' and blockedIntermediate is not None and blockedIntermediate(d,items,state)):
                 raise ScriptStop('Event transition blocked: '+state)
             # Fresh captures after a verified action are read-only; no retry.
             schedule.sleep(.2)
@@ -477,11 +561,11 @@ class EventRunner:
                 schedule.sleep(.2);d,items,state=self.read()
                 if state!='unknown' or startupInfoClose(d,items) or nav.safeMenuPageCN(d,items)!='UNKNOWN':break
             else:raise ScriptStop('Unknown event entry after bounded fresh reads; no navigation input')
-        if state in ('event_map','event_world_map'):return d,items,state
+        if state in ('event_map','event_world_map') or state=='mission_gate' and event.findLockedEventMission(items):return d,items,state
         if state in ('formation_settings','formation_review') and self.policy.allowTemporaryAutoFormation:return d,items,state
         if state in ('formation_blocked','formation_settings','formation_review'):
             raise ScriptStop('Event special party requires configuration: '+state+'; no automatic replacement')
-        if state in ('story','story_skip_confirmation','start_confirmation','support','special_formation_offer','formation','battle','battle_result','ap_empty','reward_receipt','item_receipt','item_detail','event_tutorial','mission_list','mission_reward_receipt'):
+        if state in ('story','story_skip_confirmation','start_confirmation','support','special_formation_offer','formation','battle','battle_result','ap_empty','reward_receipt','item_receipt','item_detail','event_tutorial','mission_list','mission_reward_receipt','item_information','quest_information'):
             return d,items,state # Resume actual state, never ledger-driven.
         dismissed=set()
         for _ in range(8):
@@ -809,6 +893,93 @@ class EventRunner:
         if countResumedClaim:self.claimed+=1
         self.ledger.append('mission_reward_receipt',reward=proof['reward'],consumed=False,beforeCount=before,afterCount=event.missionCompletedCount(outcome[1]),resumedClaim=countResumedClaim)
         return outcome
+    def openMissionRequirements(self,d,items):
+        proof=event.findLockedEventMission(items)
+        if proof is None:raise ScriptStop('Locked event quest requirement unproved; no menu input')
+        previous=None;stable=0;end=self.clock()+15
+        while self.clock()<end:
+            d,items,state=self.read();current=event.findLockedEventMission(items)
+            if current is None or state!='mission_gate':
+                if state not in ('unknown','event_map','mission_gate'):raise ScriptStop('Locked quest foreground changed; no menu input')
+                stable=0;previous=None;schedule.sleep(.2);continue
+            if current['mission']!=proof['mission']:raise ScriptStop('Locked Mission changed; no menu input')
+            same=previous is not None and max(abs(a-b) for a,b in zip(current['position'],previous))<=6
+            stable=stable+1 if same else 1;previous=current['position']
+            if stable>=3:proof=current;break
+            schedule.sleep(.2)
+        else:raise ScriptStop('Locked quest requirement transient; no menu input')
+        self.touch(items,proof['position'],'open_locked_quest_mission_requirements')
+        self.ledger.append('mission_requirement',mission=proof['mission'],condition=proof['condition'],questSelected=False)
+        def fadingOrigin(d,labels,state):
+            current=event.findLockedEventMission(labels)
+            return state=='mission_gate' and current is not None and current['mission']==proof['mission'] and max(abs(a-b) for a,b in zip(current['position'],proof['position']))<=6
+        return self.wait({'mission_list'},timeout=30,blockedIntermediate=fadingOrigin)
+
+    def missionListTop(self):
+        end=self.clock()+60;lastThumb=None
+        for attempt in range(3):
+            previous=None;stable=0;sampleEnd=min(end,self.clock()+15)
+            while self.clock()<sampleEnd:
+                d,items,state=self.read()
+                allFilter=[i for i in items if i.score>=.85 and event._text(i)=='全部' and i.center[0]>1100 and 220<i.center[1]<270]
+                if state!='mission_list' or len(allFilter)!=1:
+                    if state not in ('unknown','mission_list'):raise ScriptStop('Mission list foreground changed; no scroll')
+                    stable=0;previous=None;schedule.sleep(.2);continue
+                thumb=missionScrollThumb(d.im)
+                stable=stable+1 if previous is not None and max(abs(a-b) for a,b in zip(thumb,previous))<=3 else 1;previous=thumb
+                if stable>=3:break
+                schedule.sleep(.2)
+            else:raise ScriptStop('Mission list scrollbar transient; no scroll')
+            # Claimed/new missions can reorder; top is a physical endpoint,
+            # never an assumed first mission number.
+            if thumb[0]<=274:
+                self.ledger.append('mission_top',thumb=thumb,firstNumbers=[event._text(i) for i in items if i.score>=.85 and re.fullmatch(r'编号\d+',event._text(i)) and 260<i.center[1]<650])
+                return d,items,state
+            if lastThumb is not None and thumb[0]>=lastThumb[0]-2:
+                raise ScriptStop('Mission scrollbar did not progress; no repeated drag')
+            lastThumb=thumb
+            self.ledger.append('input_intent',action='mission_scrollbar_top')
+            daily._menuSwipe((1261,round(sum(thumb)/2)),(1261,266))
+            self.ledger.append('input',action='mission_scrollbar_top')
+        raise ScriptStop('Mission top correction budget exhausted; no more scroll input')
+
+    def seekMission(self,number):
+        previous=None;stable=0;lastThumb=None;end=self.clock()+90;drags=0
+        while self.clock()<end:
+            d,items,state=self.read()
+            if state not in ('unknown','mission_list'):raise ScriptStop('Mission lookup foreground changed; no input')
+            if state!='mission_list':previous=None;stable=0;schedule.sleep(.2);continue
+            card=event.findMissionCard(items,number)
+            if card:
+                identity=(card['mission'],event.normalizeText(card['condition']),card['progress'])
+                stable=stable+1 if identity==previous else 1;previous=identity
+                if stable>=3:
+                    self.ledger.append('mission_observed',mission=card['mission'],condition=card['condition'],progress=card['progress'])
+                    return d,items,state,card
+                schedule.sleep(.2);continue
+            previous=None;stable=0
+            numbers=[int(re.search(r'\d+',event._text(i))[0]) for i in items if i.score>=.85 and re.fullmatch(r'编号\d+',event._text(i)) and i.center[0]>1100 and 270<i.center[1]<540]
+            if not numbers:raise ScriptStop('No positive Mission anchors; no scroll')
+            if int(number) in numbers:raise ScriptStop('Target Mission text incomplete; no inferred condition')
+            thumb=missionScrollThumb(d.im)
+            if lastThumb is not None and max(abs(a-b) for a,b in zip(thumb,lastThumb))<=2:raise ScriptStop('Mission lookup scrollbar stalled; no repeated input')
+            if drags>=4:raise ScriptStop('Mission lookup correction budget exhausted')
+            first=min(numbers);delta=max(-80,min(80,round((int(number)-first)*3.5)))
+            center=round(sum(thumb)/2);endpoint=max(280,min(570,center+delta))
+            fine=abs(delta)<10
+            if not fine and abs(endpoint-center)<3:raise ScriptStop('Mission lookup reached physical boundary without target')
+            # Approximation chooses only a scroll position, never a quest or
+            # Mission identity. Small scrollbar deltas can be below drag slop:
+            # align the content using the observed neighbouring numbered row.
+            action='mission_align_scroll' if fine else 'mission_seek_scroll'
+            self.ledger.append('input_intent',action=action,target=int(number))
+            if fine:daily._menuSwipe((1000,400),(1000,550 if int(number)<first else 300))
+            else:daily._menuSwipe((1261,center),(1261,endpoint))
+            self.ledger.append('input',action=action,target=int(number))
+            lastThumb=thumb;drags+=1
+            self.wait({'mission_list'},timeout=15,accept=lambda d,i,s:event.findMissionCard(i,number) is not None or max(abs(a-b) for a,b in zip(missionScrollThumb(d.im),lastThumb))>2)
+        raise ScriptStop('Mission lookup deadline expired; no inferred condition')
+
     def returnFromMissions(self,d,items):
         if not event._missionListConfirmed(items):raise ScriptStop('Mission list unconfirmed')
         position=event._missionReturnButton(items)
@@ -817,7 +988,33 @@ class EventRunner:
             d,items,state=self.read()
             if state!='mission_list' or event._missionReturnButton(items)!=position:raise ScriptStop('Mission return transient; no input')
         self.touch(items,position,'return_from_event_missions')
-        return self.wait({'event_map','event_world_map'},timeout=30)
+        return self.wait({'event_map','event_world_map','mission_gate'},timeout=30,accept=lambda d,i,s:s!='mission_gate' or event.findLockedEventMission(i) is not None)
+    def closeQuestInformation(self,d,items):
+        position=event.findEventQuestInfoClose(items)
+        if position is None:raise ScriptStop('Quest information close unproved')
+        previous=None;stable=0;end=self.clock()+15
+        while self.clock()<end:
+            d,items,state=self.read();current=event.findEventQuestInfoClose(items)
+            if state!='quest_information' or current is None:
+                if state!='unknown':raise ScriptStop('Quest information foreground changed; no input')
+                previous=None;stable=0;schedule.sleep(.2);continue
+            same=previous is not None and max(abs(a-b) for a,b in zip(current,previous))<=6
+            stable=stable+1 if same else 1;previous=current
+            if stable>=3:position=current;break
+            schedule.sleep(.2)
+        else:raise ScriptStop('Quest information close transient; no input')
+        self.touch(items,position,'close_event_quest_information')
+        return self.wait({'event_map','mission_gate'},timeout=30,accept=lambda d,i,s:s!='mission_gate' or event.findLockedEventMission(i) is not None)
+
+    def closeMissionItemInfo(self,d,items):
+        position=event.findMissionItemInfoClose(items)
+        if position is None:raise ScriptStop('Mission material information close unproved')
+        for _ in range(2):
+            d,items,state=self.read()
+            if state!='item_information' or event.findMissionItemInfoClose(items)!=position:raise ScriptStop('Material information close transient; no input')
+        self.touch(items,position,'close_mission_material_information')
+        return self.wait({'mission_list'},timeout=30)
+
     def restoreAp(self):
         if not self.policy.allowApples:raise ScriptStop('Apple policy disabled')
         d,items,state=self.read()
@@ -858,9 +1055,9 @@ class EventRunner:
                 cycle.settleBattleResult(boundary=self.eventBoundary)
                 if flow.observation.state==S.CONTINUE:
                     flow.action('decline_event_repeat',lambda:main.press('F'))
-                    outcome=self.wait({'event_map','event_world_map','story'},timeout=30)
+                    outcome=self.wait({'event_map','event_world_map','story','mission_gate'},timeout=30,accept=lambda d,i,s:s!='mission_gate' or event.findLockedEventMission(i) is not None)
                 else:outcome=self.read()
-                if outcome[2] not in ('event_map','event_world_map','story','reward_receipt','item_receipt','item_detail'):raise ScriptStop('Resumed result has no positive event boundary')
+                if outcome[2] not in ('event_map','event_world_map','mission_gate','story','reward_receipt','item_receipt','item_detail'):raise ScriptStop('Resumed result has no positive event boundary')
                 self.settledResumes+=1
                 self.ledger.append('settlement_resume',nextState=outcome[2],newBattleEntry=False)
                 return outcome
@@ -881,7 +1078,7 @@ class EventRunner:
             finally:main.emitCompleted(won,battle.result)
             if flow.observation.state==S.CONTINUE:
                 flow.action('decline_event_repeat',lambda:main.press('F'))
-                return self.wait({'event_map','event_world_map','story'},timeout=30)
+                return self.wait({'event_map','event_world_map','story','mission_gate'},timeout=30,accept=lambda d,i,s:s!='mission_gate' or event.findLockedEventMission(i) is not None)
             return self.read()
         except (ConnectionError,StopIteration) as error:
             flow.trace.failure('CAPTURE_ERROR',(),0,(type(error).__name__,))
@@ -892,6 +1089,9 @@ class EventRunner:
     def eventBoundary(self,d):
         items=enrichedEventItems(d)
         state=event.classifyEventState(items,{**event._detectFlags(d),'main_interface':d.isMainInterface()})
+        if state in ('event_map','event_world_map','mission_gate'):
+            if not d.isMainInterface() or self.ap(d) is None:return False
+            if state=='mission_gate':return event.findLockedEventMission(items) is not None
         return state in ('event_map','event_world_map','story','reward_receipt','item_receipt') and not event._unsafeEventOverlay(items)
     def run(self,maxNodes=1,*,mapSmoke=False):
         with automationOwner.claim():
@@ -943,6 +1143,10 @@ class EventRunner:
                         d,items,state=self.closeItemDetail(d,items)
                     elif state=='event_tutorial':
                         d,items,state=self.advanceTutorial(d,items)
+                    elif state=='quest_information':
+                        d,items,state=self.closeQuestInformation(d,items)
+                    elif state=='item_information':
+                        d,items,state=self.closeMissionItemInfo(d,items)
                     elif state=='mission_reward_receipt':
                         d,items,state=self.closeMissionRewardReceipt(d,items,countResumedClaim=True)
                     elif state=='ap_empty':

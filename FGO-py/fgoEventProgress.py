@@ -82,6 +82,7 @@ def findNextMainQuest(items):
         positiveItems=[item for item in rowItems if _reliable(item)]
         titleItems=[item for item in positiveItems if _isMainTitle(_text(item))]
         if not titleItems:continue
+        if any(re.search(r'完成任务no[.．]?\d+后开放',_text(i)) for i in rowItems):continue
         if any(token in rowText for token in ('已完成','通关','clear','complete')):continue
         positiveText=' '.join(_text(item) for item in positiveItems)
         isNew=any(token in positiveText for token in ('new','新!','新！'))
@@ -107,6 +108,14 @@ def findMissionGate(items):
         if '任务' not in compact or '任务进度' in compact or '任务进行度' in compact:continue
         if any(normalizeText(word) in compact for word in verbs):result.append(text)
     return result
+
+def findLockedEventMission(items):
+    if _unsafeEventOverlay(items) or not _eventMap(items):return None
+    locks=[i for i in items if float(i.score)>=.85 and re.fullmatch(r'完成任务no[.．]?\d+后开放',_text(i)) and 750<_center(i)[0]<1100 and 100<_center(i)[1]<250]
+    entry=[i for i in items if float(i.score)>=.85 and _text(i)=='活动报酬' and _center(i)[0]>1100 and _center(i)[1]<100]
+    if len(locks)!=1 or len(entry)!=1:return None
+    number=int(re.search(r'\d+',_text(locks[0]))[0])
+    return {'mission':number,'condition':str(locks[0].text),'position':_center(entry[0])}
 
 def _isStory(items,flags=None):
     flags=flags or {}
@@ -333,6 +342,9 @@ def classifyEventState(items,flags=None):
     if flags.get('friend_request'):return 'friend_request'
     if _unsafeEventOverlay(items):return 'unsafe_modal'
     if missionRewardReceipt(items):return 'mission_reward_receipt'
+    if findMissionItemInfoClose(items):return 'item_information'
+    if findEventQuestInfoClose(items):return 'quest_information'
+    if eventQuestInfoContext(items):return 'unknown'
     if isEventFormationBlocked(items):return 'formation_blocked'
     if isEventAutoFormationSettings(items):return 'formation_settings'
     if findTemporaryPartyDecision(items):return 'formation_review'
@@ -348,6 +360,7 @@ def classifyEventState(items,flags=None):
     if _isStory(items,flags):return 'story'
     if flags.get('main_interface') and findNextEventArea(items):return 'event_world_map'
     if any(_text(item)=='每日任务' and _center(item)[0]>=900 and _center(item)[1]<95 for item in items):return 'daily_quest'
+    if flags.get('main_interface') and findLockedEventMission(items):return 'mission_gate'
     if _eventMap(items):return 'event_map'
     if _missionListConfirmed(items):return 'mission_list'
     if _eventAnchor(items):return 'home'
@@ -431,6 +444,61 @@ def _missionListConfirmed(items):
     progress=[i for i in strong if _text(i)=='目标进行度' and 580<_center(i)[0]<800 and _center(i)[1]>280]
     structure=len(heading)==1 or len(filters)==1 and bool(numbers and progress)
     return len(tab)==len(exchange)==len(completed)==len(close)==1 and structure and count is not None
+
+def eventQuestInfoContext(items):
+    return any(float(i.score)>=.85 and _text(i)=='关卡情报' and 250<_center(i)[0]<400 and 90<_center(i)[1]<145 for i in items)
+
+
+def eventQuestInfoProof(items):
+    if _unsafeEventOverlay(items):return False
+    strong=[i for i in items if float(i.score)>=.85]
+    title=[i for i in strong if _text(i)=='关卡情报' and 250<_center(i)[0]<400 and 90<_center(i)[1]<145]
+    instruction=[i for i in strong if '可点击' in _text(i) and '战利品' in _text(i) and '敌人' in _text(i) and '切换' in _text(i) and 200<_center(i)[0]<700 and _center(i)[1]<80]
+    body=[i for i in strong if _text(i) in ('之前在该关卡中获得的战利品一览。','此为过去在此关卡中所遇到过的敌人一览') and 100<_center(i)[0]<550 and 210<_center(i)[1]<255]
+    tab=[i for i in strong if _text(i)=='战利品' and 100<_center(i)[0]<300 and 150<_center(i)[1]<210]
+    return len(title)==1 and (len(instruction)==1 or len(body)==len(tab)==1)
+
+
+def findEventQuestInfoClose(items):
+    if not eventQuestInfoProof(items):return None
+    close=[i for i in items if float(i.score)>=.85 and _text(i)=='关闭' and 250<_center(i)[0]<400 and 630<_center(i)[1]<700]
+    return _center(close[0]) if len(close)==1 else None
+
+
+def findEventQuestEnemyTab(items):
+    if findEventQuestInfoClose(items) is None:return None
+    tabs=[i for i in items if float(i.score)>=.85 and _text(i)=='敌人' and 400<_center(i)[0]<500 and 150<_center(i)[1]<210]
+    return _center(tabs[0]) if len(tabs)==1 else None
+
+
+def missionItemInfoProof(items):
+    if _unsafeEventOverlay(items) or not _missionListContext(items):return False
+    strong=[i for i in items if float(i.score)>=.85]
+    kind=[i for i in strong if _text(i).strip('【】[]')=='灵基再临素材' and 400<_center(i)[0]<900 and 270<_center(i)[1]<335]
+    origin=[i for i in strong if re.fullmatch(r'获得的.+[。.]',_text(i)) and 400<_center(i)[0]<900 and 335<_center(i)[1]<400]
+    passive=[i for i in strong if _text(i).rstrip('。.')=='构造保密' and 400<_center(i)[0]<900 and 380<_center(i)[1]<440]
+    return len(kind)==len(origin)==len(passive)==1
+
+
+def findMissionItemInfoClose(items):
+    if not missionItemInfoProof(items):return None
+    close=[i for i in items if float(i.score)>=.85 and _text(i)=='关闭' and 500<_center(i)[0]<800 and 480<_center(i)[1]<550]
+    return _center(close[0]) if len(close)==1 else None
+
+def findMissionCard(items,number):
+    if not _missionListConfirmed(items):return None
+    headers=[i for i in items if float(i.score)>=.85 and _text(i)==f'编号{int(number)}' and _center(i)[0]>1100 and 270<_center(i)[1]<540]
+    if len(headers)!=1:return None
+    y=_center(headers[0])[1]
+    conditions=[i for i in items if float(i.score)>=.85 and 590<_center(i)[0]<1080 and y+5<_center(i)[1]<y+80 and _text(i) not in ('目标进行度','达成报酬') and '后开放下一个主线关卡' not in _text(i) and not re.fullmatch(r'[?？]+',_text(i))]
+    progress=[i for i in items if float(i.score)>=.85 and _text(i)=='目标进行度' and 590<_center(i)[0]<800 and y+60<_center(i)[1]<y+130]
+    count=[i for i in items if float(i.score)>=.85 and re.fullmatch(r'\d+/\d+',_text(i)) and 580<_center(i)[0]<1000 and y+95<_center(i)[1]<y+150]
+    if not conditions or len(progress)!=1 or len(count)!=1:return None
+    condition=' '.join(str(i.text) for i in sorted(conditions,key=lambda i:(_center(i)[1],_center(i)[0])))
+    compact=normalizeText(condition)
+    if not re.search(r'(?:击败|收集|通关|完成|达到|获得|使用|装备|编入|进行)',compact):return None
+    if compact.count('(')!=compact.count(')'):return None
+    return {'mission':int(number),'condition':condition,'progress':_text(count[0]),'position':_center(headers[0])}
 
 def missionCompletedCount(items):
     counts=[i for i in items if float(i.score)>=.85 and re.fullmatch(r'\d+/\d+',_text(i)) and 800<_center(i)[0]<950 and 220<_center(i)[1]<270]
