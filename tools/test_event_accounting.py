@@ -317,3 +317,12 @@ class ZoomedWorldMapTests(unittest.TestCase):
         self.assertIsNone(event.findNextEventArea(labels+[item('别的区域',758,275,w=82)]))
         self.assertIsNone(event.findNextEventArea([marker]))
         self.assertIsNone(event.findNextEventArea(self.labels()+[item('下一个',744,80,w=114,h=46,score=.84)]))
+    def test_search_near_top_never_sends_empty_out_of_bounds_crop_to_ocr(self):
+        labels=self.labels()[:-1]+[item('京都城区',757,206,w=84,h=27)]
+        frame=Mock();frame.isMainInterface.return_value=True
+        def crop(rect):
+            x,y,r,b=rect;self.assertGreaterEqual(y,0);self.assertLessEqual(b,720)
+            return __import__('numpy').zeros((b-y,r-x,3),dtype='uint8')
+        frame._crop.side_effect=crop
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('',float('nan'))):self.assertEqual(ec.worldMapItems(frame,labels),labels)
+        self.assertGreater(frame._crop.call_count,0)

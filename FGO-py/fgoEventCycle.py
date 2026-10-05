@@ -218,6 +218,7 @@ def worldMapItems(d,items):
         # cover its observed range; every candidate still needs two reads.
         for offset in (233,243,223,253,213,193,183,173):
             rect=(x-55,y-offset,x+59,y-offset+46)
+            if rect[0]<0 or rect[1]<0 or rect[2]>1280 or rect[3]>720:continue
             crop=d._crop(rect)
             a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
             if min(float(sa),float(sb))>=.85 and event.normalizeText(a)==event.normalizeText(b)=='下一个':
