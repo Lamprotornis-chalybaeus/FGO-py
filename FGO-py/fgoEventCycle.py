@@ -334,6 +334,17 @@ def storySignature(items):
     if not lines:return None
     return hashlib.sha256('|'.join(v[2] for v in lines).encode('utf-8')).hexdigest()
 
+def partyReviewItems(d,items):
+    """Read a weak decision glyph only inside the independently proved review."""
+    if event.findTemporaryPartyDecision(items) is not None or event.findTemporaryPartyDecision(items,readContext=True) is None:return items
+    candidates=[i for i in items if event._text(i)=='决定' and i.center[0]>1050 and i.center[1]>640]
+    if len(candidates)!=1:return items
+    import cv2
+    candidate=candidates[0];crop=d._crop(candidate.box)
+    a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
+    if min(float(sa),float(sb))<.85 or event.normalizeText(a)!=event.normalizeText(b) or event.normalizeText(a)!='决定':return items
+    return [i for i in items if i is not candidate]+[event.OcrItem(a,candidate.box,min(float(sa),float(sb)))]
+
 def missionHeaderItems(d,items):
     """Re-read the actual weak list counter heading, retaining the threshold."""
     import cv2
@@ -437,7 +448,7 @@ def questInfoItems(d,items):
 
 def enrichedEventItems(d):
     items=itemDetailItems(d,itemReceiptItems(d,startConfirmationItems(d,mainTitleItems(d,worldMapItems(d,skipConfirmationItems(d,storyItems(d,nav.labels(d))))))))
-    items=missionHeaderItems(d,items)
+    items=partyReviewItems(d,missionHeaderItems(d,items))
     items=questInfoItems(d,missionInfoItems(d,missionConditionItems(d,missionProgressItems(d,items))))
     items=earnedReceiptItems(d,items)
     if event.eventTutorialCloseProof(items):

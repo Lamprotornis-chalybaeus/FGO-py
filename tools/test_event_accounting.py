@@ -258,3 +258,14 @@ class ConstrainedPartyReviewTests(unittest.TestCase):
         runner.read=Mock(return_value=(Mock(),labels,'formation_review'));runner.touch=Mock();runner.wait=Mock(return_value=(Mock(),[],'formation'))
         runner.confirmTemporaryParty(None,labels)
         runner.touch.assert_called_once();self.assertEqual(runner.touch.call_args.args[2],'confirm_temporary_event_party')
+    def test_weak_decision_only_recovers_after_two_matching_strong_local_reads(self):
+        labels=[i for i in self.labels() if i.text!='决定']+[item('决定',1131,651,w=73,h=40,score=.82)]
+        frame=Mock();frame._crop.return_value=__import__('numpy').zeros((40,73,3),dtype='uint8')
+        self.assertIsNone(event.findTemporaryPartyDecision(labels))
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('决定',.95)):
+            verified=ec.partyReviewItems(frame,labels)
+        self.assertIsNotNone(event.findTemporaryPartyDecision(verified))
+        for readings in ([('决定',.95),('决定',.84)],[('决定',.95),('开始',.95)]):
+            with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=readings):self.assertEqual(ec.partyReviewItems(frame,labels),labels)
+        with patch.object(ec.OCR.ZHS,'ocr_single_line') as ocr:
+            self.assertEqual(ec.partyReviewItems(frame,labels[1:]),labels[1:]);ocr.assert_not_called()

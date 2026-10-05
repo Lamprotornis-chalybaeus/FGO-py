@@ -187,7 +187,7 @@ def isEventIncompleteFormation(items):
     empty=[i for i in items if float(i.score)>=.85 and _text(i)=='选择' and 250<_center(i)[0]<630 and 260<_center(i)[1]<340]
     return len(restricted)==1 and bool(empty)
 
-def findTemporaryPartyDecision(items):
+def findTemporaryPartyDecision(items,*,readContext=False):
     positive=[i for i in items if float(i.score)>=.85]
     title=[i for i in positive if _text(i)=='队伍编制' and _center(i)[0]>1000 and _center(i)[1]<100]
     restricted=[i for i in positive if _text(i)=='受限' and _center(i)[1]<100]
@@ -198,7 +198,7 @@ def findTemporaryPartyDecision(items):
         if len(heading)==len(condition)==len(fixed)==1:restricted=heading
     instruction=[i for i in positive if _text(i).rstrip('。.')=='拖动修改从者配置' and 600<_center(i)[1]<660]
     cancel=[i for i in positive if _text(i)=='取消' and _center(i)[0]<250 and _center(i)[1]>640]
-    decision=[i for i in positive if _text(i)=='决定' and _center(i)[0]>1050 and _center(i)[1]>640]
+    decision=[i for i in (items if readContext else positive) if _text(i)=='决定' and (not readContext or i.score>=.65) and _center(i)[0]>1050 and _center(i)[1]>640]
     return _center(decision[0]) if len(title)==len(restricted)==len(instruction)==len(cancel)==len(decision)==1 and not isEventIncompleteFormation(items) else None
 
 def findEventRewardReceipt(items):
