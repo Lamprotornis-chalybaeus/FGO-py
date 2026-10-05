@@ -219,6 +219,18 @@ def mainTitleItems(d,items):
             result.remove(i);result.append(event.OcrItem(a,rect,min(float(sa),float(sb))))
     return result
 
+def startConfirmationItems(d,items):
+    # Actual story-only start modal has a weak cancel glyph in whole-frame OCR.
+    message=[i for i in items if i.score>=.85 and event._text(i).rstrip('?？')=='是否开始任务' and 450<i.center[1]<530]
+    story=[i for i in items if i.score>=.85 and event._text(i)=='该任务没有战斗' and 250<i.center[1]<380]
+    cancel=[i for i in items if event._text(i)=='取消' and 300<i.center[0]<600 and 530<i.center[1]<620]
+    if len(message)!=1 or len(story)!=1 or len(cancel)>1:return items
+    import cv2
+    rect=(404,540,489,588);crop=d._crop(rect)
+    a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
+    if min(float(sa),float(sb))<.85 or event.normalizeText(a)!=event.normalizeText(b) or event.normalizeText(a)!='取消':return items
+    return [i for i in items if not cancel or i is not cancel[0]]+[event.OcrItem('取消',rect,min(float(sa),float(sb)))]
+
 
 def skipConfirmationItems(d,items):
     import cv2
@@ -320,7 +332,7 @@ class EventRunner:
         except (ConnectionError,StopIteration) as error:
             raise EventCaptureError('Event capture transport lost: '+type(error).__name__+'; no automatic restart or input') from error
         if d.im.shape[:2]!=(720,1280) or XDetect.region!='CN':raise ScriptStop('Event requires CN 1280x720')
-        items=mainTitleItems(d,worldMapItems(d,skipConfirmationItems(d,storyItems(d,nav.labels(d)))))
+        items=startConfirmationItems(d,mainTitleItems(d,worldMapItems(d,skipConfirmationItems(d,storyItems(d,nav.labels(d))))))
         state=event.classifyEventState(items,{**event._detectFlags(d),'main_interface':d.isMainInterface()})
         self.last=(d,items,state)
         return self.last
@@ -421,12 +433,17 @@ class EventRunner:
         previous=None;count=0;end=self.clock()+15
         while self.clock()<end:
             d,items,state=self.read();QuartzGuard.check(items)
+            if state=='unknown':
+                previous=None;count=0;schedule.sleep(.2);continue
             if state!='event_map':raise ScriptStop('Event map lost during node confirmation')
             node=event.findNextMainQuest(items)
-            if not node:raise ScriptStop('No verified unfinished main node; mission evidence needed')
+            if not node:
+                previous=None;count=0;schedule.sleep(.2);continue
             identity=(event.normalizeText(node['title']),node['position'])
-            count=count+1 if identity==previous else 1;previous=identity
+            same=previous is not None and identity[0]==previous[0] and max(abs(a-b) for a,b in zip(identity[1],previous[1]))<=6
+            count=count+1 if same else 1;previous=identity
             if count>=3:return d,items,node
+            schedule.sleep(.2)
         raise ScriptStop('Main node transient; no selection')
     def openNextArea(self):
         previous=None;count=0;end=self.clock()+15
@@ -435,7 +452,8 @@ class EventRunner:
             area=event.findNextEventArea(items) if state=='event_world_map' else None
             if area is None:raise ScriptStop('No unique next event area; no world map input')
             identity=(event.normalizeText(area['title']),area['position'])
-            count=count+1 if identity==previous else 1;previous=identity
+            same=previous is not None and identity[0]==previous[0] and max(abs(a-b) for a,b in zip(identity[1],previous[1]))<=6
+            count=count+1 if same else 1;previous=identity
             if count>=3:
                 self.touch(items,area['position'],'open_next_event_area')
                 self.ledger.append('area',title=area['title'],AP=self.ap(d))
@@ -454,9 +472,9 @@ class EventRunner:
             self.storySegments+=1;self.ledger.append('story_skip_complete',nextState=outcome[2])
             return outcome
         if state=='start_confirmation':
-            if not event._isStartQuestConfirmation(items):raise ScriptStop('Unverified start confirmation')
-            target=next(i for i in items if event._reliable(i) and event._text(i)=='开始')
-            self.touch(items,event._center(target),'confirm_event_start')
+            position=event.findStartQuestConfirmation(items)
+            if position is None:raise ScriptStop('Unverified start confirmation')
+            self.touch(items,position,'confirm_event_start')
             return self.wait({'story','support','formation','battle','ap_empty'},deadline=deadline)
         if state=='story':
             d,items,reference=self.stableStory()

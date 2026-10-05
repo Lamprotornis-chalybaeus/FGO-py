@@ -36,7 +36,7 @@ party review page. These are retained historical diagnostics, not successful
 main-node gates. Each repair has synthetic regressions; private raw frames and
 trace files are not published or included in CI artifacts.
 
-The current offline suite passes 652 cases, with the original three explicitly
+The current offline suite passes 656 cases, with the original three explicitly
 local integration skips. Full event battle, three-node and ten-node acceptance
 must be reported from actual local runs. A general Mission-to-Free-Quest mapping,
 real AP-item selector validation and reward-claim live coverage remain incomplete.
@@ -66,3 +66,8 @@ and bounces the next-area marker. Navigation requires three fresh stable
 marker/area proofs and a single area touch. Numbered 話/话 cards are supported.
 The prologue was recovered to the world map with one actual entry and one win;
 it remains diagnostic evidence, not an uninterrupted clean acceptance gate.
+
+Transient UNKNOWN frames during decorated-card confirmation reset the positive
+count and permit only bounded rereading. A missing title never authorizes a
+selection. The actual story-only start confirmation uses 是否开始任务/任务开始
+and has its own joint producer, including a two-scale cancel check.

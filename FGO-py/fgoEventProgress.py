@@ -117,9 +117,20 @@ def _isStory(items,flags=None):
     return bool(controls and dialogue)
 
 def _isStartQuestConfirmation(items):
+    return findStartQuestConfirmation(items) is not None
+
+def findStartQuestConfirmation(items):
     positive=[item for item in items if _reliable(item)]
     text=' '.join(_text(item) for item in positive)
-    return '是否开始关卡' in text and sum(1 for item in positive if _text(item)=='开始')==1 and sum(1 for item in positive if _text(item)=='取消')==1
+    oldStart=[i for i in positive if _text(i)=='开始']
+    if '是否开始关卡' in text and len(oldStart)==1 and sum(1 for item in positive if _text(item)=='取消')==1:return _center(oldStart[0])
+    strong=[i for i in items if float(i.score)>=.85]
+    title=[i for i in strong if _isMainTitle(i.text) and 300<_center(i)[0]<1000 and 80<_center(i)[1]<180]
+    message=[i for i in strong if _text(i).rstrip('?？')=='是否开始任务' and 400<_center(i)[0]<900 and 450<_center(i)[1]<530]
+    story=[i for i in strong if _text(i)=='该任务没有战斗' and 400<_center(i)[0]<900 and 250<_center(i)[1]<380]
+    start=[i for i in strong if _text(i)=='任务开始' and 700<_center(i)[0]<1000 and 530<_center(i)[1]<620]
+    cancel=[i for i in strong if _text(i)=='取消' and 300<_center(i)[0]<600 and 530<_center(i)[1]<620]
+    return _center(start[0]) if len(title)==len(message)==len(story)==len(start)==len(cancel)==1 else None
 
 def findSpecialFormationDecline(items):
     positive=[i for i in items if float(i.score)>=.85]
@@ -313,7 +324,15 @@ def _eventMap(items):
     hasMapHeader=any('关卡举办时间' in _text(item) for item in items)
     hasEventControls=any(token in text for token in ('活动奖励','活动报酬')) and any(token in text for token in ('任务进行度','任务进度'))
     hasNode=findNextMainQuest(items) is not None
-    return bool(hasMapHeader and (hasNode or hasEventControls))
+    positive=[i for i in items if float(i.score)>=.85]
+    close=[i for i in positive if _text(i)=='关闭' and _center(i)[0]<220 and _center(i)[1]<100]
+    reward=[i for i in positive if _text(i)=='活动报酬' and _center(i)[0]>1100 and _center(i)[1]<100]
+    ap=[i for i in positive if re.fullmatch(r'ap[0-9o]+',_text(i)) and 750<_center(i)[0]<1000 and 180<_center(i)[1]<600]
+    story=[i for i in positive if _text(i)=='无战斗' and _center(i)[0]>1100 and 100<_center(i)[1]<600]
+    # This identifies the area list even when its decorated title momentarily
+    # disappears from OCR. It does not authorize selecting any absent title.
+    areaList=len(close)==len(reward)==1 and bool(ap and story)
+    return bool(hasMapHeader and (hasNode or hasEventControls or areaList))
 
 def _openEventMap(detect,items):
     import fgoNavigation

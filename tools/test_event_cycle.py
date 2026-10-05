@@ -117,6 +117,34 @@ class SharedEventCycleTests(unittest.TestCase):
 
 
 class EventContractTests(unittest.TestCase):
+    def storyStart(self):
+        return [item('第一话「她是人斩」',472,115,w=328),item('该任务没有战斗',532,300,w=217),item('是否开始任务？',511,475,w=248),item('取消',405,543,w=82,score=.75),item('任务开始',764,544,w=151)]
+    def test_story_start_modal_requires_all_joint_evidence(self):
+        labels=self.storyStart();d=Mock();d._crop.return_value=__import__('numpy').zeros((48,85,3),dtype='uint8')
+        self.assertFalse(event._isStartQuestConfirmation(labels))
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',return_value=('取消',.98)):
+            verified=ec.startConfirmationItems(d,labels)
+        self.assertEqual(event.classifyEventState(verified),'start_confirmation')
+        self.assertEqual(event.findStartQuestConfirmation(verified),(839,556))
+        for index in range(len(verified)):
+            self.assertIsNone(event.findStartQuestConfirmation(verified[:index]+verified[index+1:]))
+    def test_story_start_modal_cannot_promote_weak_or_disagreeing_cancel(self):
+        labels=self.storyStart();d=Mock();d._crop.return_value=__import__('numpy').zeros((48,85,3),dtype='uint8')
+        for output in ([('取消',.98),('取消',.84)],[('取消',.98),('确定',.98)]):
+            with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=output):self.assertFalse(event._isStartQuestConfirmation(ec.startConfirmationItems(d,labels)))
+    def test_event_area_list_without_title_stays_context_only_not_node(self):
+        labels=[item('关闭',70,25,w=80),item('活动报酬',1127,16),item('APO',783,204),item('无战斗',1139,125),item('关卡举办时间剩余10日',965,236,w=250)]
+        self.assertEqual(event.classifyEventState(labels),'event_map')
+        self.assertIsNone(event.findNextMainQuest(labels))
+        for index in range(len(labels)):
+            self.assertNotEqual(event.classifyEventState(labels[:index]+labels[index+1:]),'event_map')
+    def test_node_transient_unknown_resets_confirmation_without_input(self):
+        labels=[item('第一话「她是人斩」',777,131,w=170),item('关卡举办时间剩余10日',965,236,w=250)]
+        clock=Clock();runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock(),clock=clock)
+        runner.read=Mock(side_effect=[(Mock(),labels,'event_map'),(Mock(),[],'unknown')]+[(Mock(),labels,'event_map')]*3)
+        with patch.object(ec,'schedule',clock),patch.object(ec.fgoDevice.device,'touch') as touch:
+            self.assertIn('第一话',runner.stableNode()[2]['title']);touch.assert_not_called()
+        self.assertEqual(runner.read.call_count,5)
     def test_numbered_event_episode_with_no_battle_is_a_main_node(self):
         labels=[item('第一话「她是人斩」',777,131,w=170),item('无战斗',1139,125),item('AP0',783,204),item('关卡举办时间剩余10日',965,236,w=250)]
         self.assertEqual(event.classifyEventState(labels),'event_map')
