@@ -124,10 +124,28 @@ when the progress heading is misread. The lock still cannot be selected.
 Two-scale foreground-separated numeric OCR now verifies an actual slash; it
 rejects low scores, disagreement, non-fractions and invalid ranges. Local real
 frames verify BOND, the previous fraction and the locked map, but remain private.
-The latest whole suite passes 735 tests (732 executed, three existing integration
+At this historical diagnostic checkpoint the suite passed 735 tests (732 executed, three existing integration
 skips), including AI strategy AST preservation. Compileall and diff check pass.
 Mission progress was confirmed complete after the two authorized experiments.
 No restoration or revival was used. There were five experimental FlowTimeouts
 including recovery attempts; historical failures remain in the local report.
 Clean event story/battle/three-node/ten-node gates are still pending. The event
 candidate remains unmerged, and generic Mission-to-quest mapping stays open.
+
+## Latest event review checkpoint (2026-10-05)
+
+791 offline tests pass (three existing integration skips); compileall, diff check
+and baseline AI strategy AST preservation pass. The 735-case baseline is retained.
+Public apples default is false; local experiments explicitly opt in. Quartz
+consumption remains prohibited. Entry-linked normal/recovered outcomes are
+durable and distinct; recovered completion adds no entry or invented time/turns.
+
+Mission11 claim and third-episode unlock are proved. A third-episode battle won,
+but its full node required recovery. Fourth-episode story receipts/instructions
+also required recovery. These do not pass clean acceptance. The fifth episode
+is naturally locked by Mission23, freshly read in full at 0/4. No positively
+evidenced mapping exists; further battle entries stopped without random farming.
+Clean single / continuous3 / continuous10 and event completion remain pending.
+No restoration or revival was used. See EVENT-PROGRESS.md for producers and
+transition rules. This branch remains unmerged; the existing battle P0 status
+is unchanged: mitigated / awaiting longer-term observation.

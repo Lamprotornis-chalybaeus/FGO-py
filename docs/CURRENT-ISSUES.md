@@ -152,10 +152,30 @@ when the progress heading is misread. The lock still cannot be selected.
 Two-scale foreground-separated numeric OCR now verifies an actual slash; it
 rejects low scores, disagreement, non-fractions and invalid ranges. Local real
 frames verify BOND, the previous fraction and the locked map, but remain private.
-The latest whole suite passes 735 tests (732 executed, three existing integration
+At this historical diagnostic checkpoint the suite passed 735 tests (732 executed, three existing integration
 skips), including AI strategy AST preservation. Compileall and diff check pass.
 Mission progress was confirmed complete after the two authorized experiments.
 No restoration or revival was used. There were five experimental FlowTimeouts
 including recovery attempts; historical failures remain in the local report.
 Clean event story/battle/three-node/ten-node gates are still pending. The event
 candidate remains unmerged, and generic Mission-to-quest mapping stays open.
+
+## Current event blockers after outcome review (2026-10-05)
+
+- Offline coverage is now 791 tests with three existing integration skips; the
+  original 735 cases and AI strategy AST preservation remain. Compileall and
+  diff check pass. Private evidence stays local.
+- Mission11 is claimed and the third episode unlocked. One new linked battle
+  won normally; the main node and later fourth-episode story required recovery.
+  Historical failures remain valid, and no recovered node counts as clean.
+- Fifth episode is locked by Mission23 (0/4, four Evil-attribute enemies,
+  summoned enemies excluded). Complete condition/progress was proved in three
+  fresh reads. There is no proven quest mapping; no random Free Quest follows.
+- Clean single / continuous3 / continuous10 gates remain pending. Event
+  completion and live AP-item consumption remain unverified. Natural AP has
+  been sufficient; no apples, quartz, restoration or revival were used.
+- Specific receipt/tutorial/world-map/wrapped-condition producers were repaired
+  from real local evidence, without blanket timeout extensions or OCR threshold
+  reductions. This does not certify general event stability.
+- Event changes remain on feat/cn-event-progress, unmerged. Existing battle P0
+  remains mitigated / awaiting longer-term observation, not permanently fixed.

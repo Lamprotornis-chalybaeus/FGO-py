@@ -178,7 +178,7 @@ when the progress heading is misread. The lock still cannot be selected.
 Two-scale foreground-separated numeric OCR now verifies an actual slash; it
 rejects low scores, disagreement, non-fractions and invalid ranges. Local real
 frames verify BOND, the previous fraction and the locked map, but remain private.
-The latest whole suite passes 735 tests (732 executed, three existing integration
+At this historical diagnostic checkpoint the suite passed 735 tests (732 executed, three existing integration
 skips), including AI strategy AST preservation. Compileall and diff check pass.
 Mission progress was confirmed complete after the two authorized experiments.
 No restoration or revival was used. There were five experimental FlowTimeouts
@@ -254,3 +254,51 @@ once; an unchanged notice cannot be reclosed. The event support exit keeps its
 existing parent budget. Notice dismissal does not choose a servant or authorize
 the background battle-start button. This diagnostic node is recovered evidence,
 not a clean acceptance gate.
+
+## 2026-10-05 outcome review and later main-node diagnostics
+
+Latest offline checkpoint: 791 tests pass (788 executed, three existing local
+integration skips), including unchanged AI strategy AST checks. Compileall and
+diff whitespace checks pass. The original 735-case baseline is retained.
+
+Mission11 was claimed once after full-condition/completed-fraction proof. Its
+receipt auto-returned to the map; three fresh task-list frames then proved the
+completed-count increment. The third episode's full title/AP and absence of its
+lock were independently proved. One new linked battle finished normally and won;
+the surrounding main node required preparation/receipt recovery. This is a
+normal battle outcome inside a recovered node, not a clean full-node gate.
+Three older unlinked battle diagnostics remain historical evidence and are not
+invented into the new entry-linked counters.
+
+Fourth-episode story/reward handling also required recovery. Observed passive
+awarded-uniform and newly-unlocked-area instructions now have distinct producers
+and episode keys. They require complete fixed wording, a unique close control
+and three fresh proofs. Dismissal never changes equipment or claims a choice.
+Constrained automatic-party review retains the isolated-autoformation parent
+intent. Weak decision/awarded-amount text requires matching two-scale reads at
+the unchanged threshold. Battle/skill/card strategy is unchanged.
+
+World-map zoom changes use a finite set of real next-marker text bands. Invalid
+out-of-screen crops are rejected before OCR; no plaque-only navigation is
+authorized. Entering a new area may legitimately expose a numbered Mission lock.
+The area transition accepts that boundary only with the independent locked-map
+proof and routes to exact requirement lookup rather than selecting the lock.
+
+Completion-receipt text containing “task completed” is not a Mission blocker:
+generic blockers must state an access prerequisite. Wrapped Mission exclusions
+cannot silently lose their tail. Matching two-scale local reads may restore
+actually observed punctuation at a bounded alternate pixel boundary, preserving
+all condition words/counts; missing parentheses/tails are never synthesized.
+Visible but incomplete target cards allow at most three fresh observations,
+without a scroll or selection retry, then stop.
+
+The current natural blocker is Mission23, progress 0/4: defeat four Evil-attribute
+enemies, excluding enemies summoned during battle. Three fresh full-card proofs
+were obtained. No empirical mapping exists for this requirement; Mission11's
+specific Heavenly-attribute mapping does not authorize it. No random Free Quest
+was started. Fifth episode remains locked, event completion is unproved, and
+clean single / continuous3 / continuous10 acceptance remains pending. Historical
+timeouts and diagnostic stops are retained; they are not relabeled as clean.
+Natural AP remained sufficient: no apple, quartz, restoration or revival was
+used. The event candidate is still unmerged; battle P0 remains mitigated /
+awaiting longer-term observation, which is not permanent proof of correctness.
