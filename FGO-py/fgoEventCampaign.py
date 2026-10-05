@@ -86,7 +86,11 @@ class EventCampaignRunner:
     def battleQuest(self,quest):
         self.phase(CampaignState.FREE_QUEST,quest=quest.key)
         fresh=self.locator.locate(quest)
-        outcome=self.runner.wait({'start_confirmation','story','support','formation','ap_empty'},timeout=30)
+        originLock=event.findLockedEventMission(self.runner.last[1]) if self.runner.last else None
+        def fadingOrigin(d,items,state):
+            current=event.findLockedEventMission(items)
+            return originLock is not None and current is not None and current['mission']==originLock['mission']
+        outcome=self.runner.wait({'start_confirmation','story','support','formation','ap_empty'},timeout=30,blockedIntermediate=fadingOrigin)
         start=self.runner.newBattleEntries;end=self.runner.clock()+240
         while self.runner.clock()<end:
             d,items,state=outcome

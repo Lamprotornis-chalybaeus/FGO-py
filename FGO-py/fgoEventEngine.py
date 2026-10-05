@@ -9,6 +9,10 @@ from pathlib import Path
 import hashlib,json,math,time,unicodedata,re
 
 def textKey(text):return re.sub(r'\s+','',unicodedata.normalize('NFKC',str(text))).casefold()
+def conditionKey(text):
+    # OCR can read the same ornamental quotation mark as a square bracket.
+    # Keep counts, words, comparison operators and exclusion parentheses.
+    return textKey(text).translate(str.maketrans('','','「」『』【】[]“”‘’"'))
 def digest(value):return hashlib.sha256(json.dumps(value,ensure_ascii=False,sort_keys=True).encode()).hexdigest()[:24]
 def saveLocal(path,payload):
     path=Path(path);path.parent.mkdir(parents=True,exist_ok=True)
@@ -112,7 +116,7 @@ class MissionEvidenceDB:
         for number in sorted(set(before)&set(after)):
             a,b=before[number],after[number]
             av,at=missionValue(a);bv,bt=missionValue(b)
-            if textKey(a['condition'])!=textKey(b['condition']) or at!=bt or bv<av:raise ValueError('Mission changed/reset; no mapping')
+            if conditionKey(a['condition'])!=conditionKey(b['condition']) or at!=bt or bv<av:raise ValueError('Mission changed/reset; no mapping')
             if av==at:continue # A capped Mission cannot establish a negative.
             vector[str(number)]={'condition':a['condition'],'before':av,'after':bv,'total':at,'delta':bv-av}
         row={'entryId':entryId,'quest':quest.key,'before':before,'after':after,'deltaVector':vector,'source':source,'time':time.time()}
@@ -122,7 +126,7 @@ class MissionEvidenceDB:
         effects={}
         for row in self.data['experiments']:
             effect=row['deltaVector'].get(str(mission))
-            if effect is None or textKey(effect['condition'])!=textKey(condition):continue
+            if effect is None or conditionKey(effect['condition'])!=conditionKey(condition):continue
             values=effects.setdefault(row['quest'],[]);values.append(effect['delta'])
         return {key:{'samples':len(v),'positiveSamples':sum(x>0 for x in v),'negativeSamples':sum(x==0 for x in v),'averageDelta':sum(v)/len(v)} for key,v in effects.items()}
     def rank(self,quests,requirement):

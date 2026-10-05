@@ -211,6 +211,20 @@ class MissionHeaderReadTests(unittest.TestCase):
                 self.assertEqual(ec.missionHeaderItems(Mock(),labels),labels);ocr.assert_not_called()
 
 class FormationRestrictionNoticeTests(unittest.TestCase):
+    def uniformLabels(self):
+        return [item('该关卡的魔术礼装会固定为',416,287,w=447,h=37),item('持有的『测试队服』。',433,327,w=371,h=36),item('队伍确认',1045,6,w=226,h=58),item('关闭',600,541,w=81,h=44)]
+    def test_fixed_uniform_is_passive_notice_not_skill_failure_or_party_change(self):
+        labels=self.uniformLabels()
+        self.assertEqual(event.classifyEventState(labels,{'formation':True}),'formation_restriction_notice')
+        self.assertEqual(event.findFormationRestrictionNotice(labels)['position'],(640,563))
+        for j in range(len(labels)):
+            self.assertIsNone(event.findFormationRestrictionNotice(labels[:j]+labels[j+1:]))
+    def test_fixed_uniform_notice_closes_once_only_after_three_fresh_proofs(self):
+        labels=self.uniformLabels();runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger());runner.touch=Mock()
+        runner.read=Mock(return_value=(Mock(),labels,'formation_restriction_notice'));runner.wait=Mock(return_value=(Mock(),[],'formation'))
+        runner.closeFormationRestrictionNotice(None,labels)
+        runner.touch.assert_called_once_with(labels,(640,563),'close_formation_restriction_notice')
+        self.assertEqual(runner.newBattleEntries,0)
     def labels(self):
         return [item('编制限制',564,77,w=155,h=40),item('请将河上彦斋',528,211,w=224,h=36),item('设置为首发队员。',489,251,w=282,h=42),item('关闭',601,581,w=79,h=40),item('战斗开始',1108,651,w=120,h=41)]
     def test_actual_joint_notice_overrides_background_formation_and_start(self):
@@ -431,6 +445,15 @@ class WrappedMissionFreshReadTests(unittest.TestCase):
         for final,expected in (([(full,.92)]*2,True), ([(full,.92),(missing,.92)],False), ([(full.replace('20','21'),.99)]*2,False)):
             with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[(missing,.91)]*4+final+[('外)',.91)]*2):
                 card=event.findMissionCard(ec.missionConditionItems(d,self.labels()),11)
+            self.assertEqual(card is not None,expected)
+    def test_wrapped_pixel_join_proves_full_exclusion_without_inventing_words(self):
+        import numpy
+        labels=cycleTests.MissionConditionCropTests().labels()
+        d=Mock(im=numpy.zeros((720,1280,3),dtype='uint8'),_crop=Mock(return_value=numpy.zeros((20,40,3),dtype='uint8')))
+        full='击败20个敌人（召唤出来的敌人除外）'
+        for text,expected in ((full,True),(full.replace('20','21'),False),(full.replace('除外','之外'),False)):
+            with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[('外)',.75)]*2+[(text,.92)]*2):
+                card=event.findMissionCard(ec.missionConditionItems(d,labels),11)
             self.assertEqual(card is not None,expected)
     def test_three_incomplete_frames_stop_without_scroll(self):
         runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger());runner.read=Mock(return_value=(Mock(),self.labels(),'mission_list'))

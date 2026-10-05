@@ -150,6 +150,12 @@ def findStartQuestConfirmation(items):
 def findFormationRestrictionNotice(items):
     if _unsafeEventOverlay(items):return None
     strong=[i for i in items if i.score>=.85]
+    uniform=[i for i in strong if _text(i)=='该关卡的魔术礼装会固定为' and 400<_center(i)[0]<900 and 270<_center(i)[1]<330]
+    held=[i for i in strong if re.fullmatch(r'持有的[『「【].+[』」】][。.]?',_text(i)) and 400<_center(i)[0]<900 and 325<_center(i)[1]<380]
+    formation=[i for i in strong if _text(i)=='队伍确认' and _center(i)[0]>1000 and _center(i)[1]<90]
+    noticeClose=[i for i in strong if _text(i)=='关闭' and 500<_center(i)[0]<800 and 520<_center(i)[1]<610]
+    if len(uniform)==len(held)==len(formation)==len(noticeClose)==1:
+        return {'position':_center(noticeClose[0]),'requirement':str(uniform[0].text)+' '+str(held[0].text)}
     heading=[i for i in strong if _text(i)=='编制限制' and 500<_center(i)[0]<800 and 60<_center(i)[1]<140]
     required=[i for i in strong if re.fullmatch(r'请将[\u4e00-\u9fff]{2,12}',_text(i)) and 400<_center(i)[0]<900 and 180<_center(i)[1]<250]
     instruction=[i for i in strong if _text(i).rstrip('。.')=='设置为首发队员' and 400<_center(i)[0]<900 and 250<_center(i)[1]<310]

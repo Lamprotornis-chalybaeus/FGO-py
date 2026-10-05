@@ -81,6 +81,11 @@ class LearningTests(unittest.TestCase):
     def test_missing_after_card_not_negative(self):
         db=engine.MissionEvidenceDB('event');row=db.record(entry(),'one',{'23':card()},{},won=True,source='observed')
         self.assertEqual(row['deltaVector'],{})
+    def test_quotation_ocr_variation_does_not_change_condition_semantics(self):
+        db=engine.MissionEvidenceDB('event')
+        row=db.record(entry(),'one',{'23':card(condition='击败4个「恶」敌人（召唤除外）')},{'23':card(cur=3,condition='击败4个【恶」敌人（召唤除外）')},won=True,source='observed')
+        self.assertEqual(row['deltaVector']['23']['delta'],3)
+        self.assertNotEqual(engine.conditionKey('大于≥4'),engine.conditionKey('小于≤4'))
     def test_won_unique_outcome_required(self):
         db=engine.MissionEvidenceDB('event')
         for kwargs in ({'entryId':'','won':True},{'entryId':'one','won':False}):
@@ -112,9 +117,9 @@ class LocatorTests(unittest.TestCase):
     def test_map_requires_adapter_and_fresh_proof_no_cached_touch(self):
         runner=self.runner();index=engine.EventQuestIndex('event')
         with self.assertRaises(ScriptStop):quest.EventQuestLocator(runner,index).locate(entry(mode='MAP'))
-        adapter=Mock(return_value=entry(mode='MAP'))
-        quest.EventQuestLocator(runner,index,mapNavigator=adapter).locate(entry(mode='MAP'))
-        adapter.assert_called_once_with(entry(mode='MAP'),maxPans=4);runner.touch.assert_not_called()
+        cached=entry(mode='MAP');adapter=Mock(return_value=cached)
+        quest.EventQuestLocator(runner,index,mapNavigator=adapter).locate(cached)
+        adapter.assert_called_once_with(cached,maxPans=4);runner.touch.assert_not_called()
     def test_map_wrong_fresh_identity_stops(self):
         with self.assertRaises(ScriptStop):quest.EventQuestLocator(self.runner(),engine.EventQuestIndex('event'),mapNavigator=Mock(return_value=entry(title='错误',mode='MAP'))).locate(entry(mode='MAP'))
     def test_actual_scrollbar_and_signature(self):
@@ -152,6 +157,18 @@ class LocatorTests(unittest.TestCase):
             self.assertEqual(quest.verifiedTitle('actual',5,'area','f'*64,[proof],image=image,box=(778,299,982,326),proofRoot=root),'actual')
 
 class CampaignTests(unittest.TestCase):
+    def test_selected_free_quest_only_allows_its_old_lock_as_read_only_fading_frame(self):
+        runner=Mock();runner.newBattleEntries=0;runner.last=(Mock(),['origin'],'mission_gate');runner.wait.side_effect=ScriptStop('end observation')
+        c=campaign.EventCampaignRunner(runner,engine.EventQuestIndex('event'),engine.MissionEvidenceDB('event'),engine.EventProfile('event','heading'))
+        c.locator.locate=Mock(return_value=entry())
+        def proof(items):return {'mission':23} if items==['origin'] else {'mission':24} if items==['different'] else None
+        with patch.object(campaign.event,'findLockedEventMission',side_effect=proof),self.assertRaises(ScriptStop):c.battleQuest(entry())
+        accepted=runner.wait.call_args.kwargs['blockedIntermediate']
+        with patch.object(campaign.event,'findLockedEventMission',side_effect=proof):
+            self.assertTrue(accepted(Mock(),['origin'],'mission_gate'))
+            self.assertFalse(accepted(Mock(),['different'],'mission_gate'))
+            self.assertFalse(accepted(Mock(),[],'unknown'))
+        self.assertEqual(runner.wait.call_args.kwargs['timeout'],30);runner.touch.assert_not_called()
     def test_no_next_node_or_ledger_never_proves_completion(self):
         self.assertIsNone(campaign.completeProof([]));self.assertIsNone(campaign.completeProof([item('终幕',500,300)]))
         self.assertEqual(campaign.completeProof([item('活动主线已通关',500,300)]),'活动主线已通关')

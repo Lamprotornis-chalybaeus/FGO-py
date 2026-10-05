@@ -446,7 +446,22 @@ def missionConditionItems(d,items):
         tail=tails[0];crop=d._crop(tail.box)
         a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
         text=event.normalizeText(a)
-        if min(float(sa),float(sb))<.85 or text!=event.normalizeText(b) or text!=event._text(tail):continue
+        if min(float(sa),float(sb))<.85 or text!=event.normalizeText(b) or text!=event._text(tail):
+            # A two-character wrapped tail has little OCR context. Join only
+            # the actual line pixels (no fabricated text) and prove the full
+            # condition at two scales. Preserve words, numbers and exclusion.
+            import numpy
+            if not isinstance(getattr(d,'im',None),numpy.ndarray):continue
+            first=d._crop(opening[0].box);height=max(first.shape[0],crop.shape[0]);width=first.shape[1]+crop.shape[1]+3
+            joined=numpy.full((height+4,width,3),200,dtype='uint8')
+            joined[2:2+first.shape[0],:first.shape[1]]=first
+            joined[2:2+crop.shape[0],first.shape[1]+3:]=crop
+            a,sa=OCR.ZHS.ocr_single_line(joined);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(joined,None,fx=2,fy=2));text=event.normalizeText(a)
+            words=lambda v:''.join(re.findall(r'[\w]',event.normalizeText(v)))
+            if min(float(sa),float(sb))<.85 or text!=event.normalizeText(b) or words(text)!=words(opening[0].text+tail.text) or text.count('(')!=1 or text.count(')')!=1:continue
+            result.remove(opening[0]);result.remove(tail)
+            result.append(event.OcrItem(a,opening[0].box,min(float(sa),float(sb))))
+            continue
         result.remove(tail);result.append(event.OcrItem(a,tail.box,min(float(sa),float(sb))))
     return result
 
@@ -540,8 +555,10 @@ class EventMain(kernel.Main):
         expected={S.FORMATION}|({S.TURN_BEGIN} if directBattle else set())
         def accept(d):
             items=nav.labels(d)
+            if flow.observation.state==S.SKILL_CAST_FAILED and event.findFormationRestrictionNotice(items) is None:
+                raise ScriptStop('Unrecognized support exit modal; no background formation input')
             return flow.observation.state in expected or event.findSpecialFormationDecline(items) is not None or event.findFormationRestrictionNotice(items) is not None
-        observation=flow.waitForFlowState(expected|{S.UNKNOWN},timeout=max(0,deadline-flow.clock()),transition_name='event friend exit',allowed_intermediate={S.FRIEND,S.LOADING},accept=accept)
+        observation=flow.waitForFlowState(expected|{S.UNKNOWN,S.SKILL_CAST_FAILED},timeout=max(0,deadline-flow.clock()),transition_name='event friend exit',allowed_intermediate={S.FRIEND,S.LOADING},accept=accept)
         items=nav.labels(flow.detect)
         for _ in range(3):
             if not event.findFormationRestrictionNotice(items):break
@@ -1294,6 +1311,10 @@ class EventRunner:
         token=INPUT_OBSERVER.set(flow.deviceInput)
         try:
             d,items,state=self.read();QuartzGuard.check(items)
+            for _ in range(3):
+                if state!='formation_restriction_notice':break
+                d,items,state=self.closeFormationRestrictionNotice(d,items,deadline=flow.deadline)
+            else:raise ScriptStop('Formation notice recovery budget exhausted')
             if state in ('battle_result','friend_request','continue'):
                 if state=='battle_result':self.recoverBattleOutcome()
                 elif len(self.pendingBattleEntries())>1:raise ScriptStop('Ambiguous unresolved event battles; no settlement input')
