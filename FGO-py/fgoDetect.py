@@ -252,6 +252,17 @@ class XDetectCN(XDetectBase):
                     and label((630,275,1100,345)) in {'与从者的牵绊加深了','与从者的牵纤加深了'}):page='BOND_LEVEL_UP'
                 elif label((75,160,420,215)) in {'与从者的牵','与从者的牵绊'}:page='BOND'
                 elif label((635,175,860,245))=='获得经验值':page='MASTER_EXP'
+        # Observed CN level-up layout: the tight ordinary footer and second
+        # overlay label can clip glyph context. Keep the old path unchanged,
+        # then require four independent fixed labels in the verified wider
+        # bands. This fallback cannot authorize ordinary BOND/MASTER_EXP.
+        # Exact alternate glyphs below were observed at both native and 2x
+        # scale; no score threshold or repeated-overlay guard is relaxed.
+        if page is None and label((490,20,775,110))=='战斗结果':
+            if (label((395,605,820,670))=='请点击游戏界面'
+                and label((460,90,1260,225)) in {'牵绊等级提升','牵纤等级提升'}
+                and label((630,270,1190,325)) in {'与从者的牵绊加深了','与从者的牵线加深了'}):
+                page='BOND_LEVEL_UP'
         self._cnResultPage=page
         return page
     def isBattleFinished(self):return self.getBattleResultPage() is not None
