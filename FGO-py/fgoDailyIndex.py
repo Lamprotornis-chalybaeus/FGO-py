@@ -28,6 +28,14 @@ class DailyObservation:
     frame_index:int
 
 @dataclass(frozen=True)
+class DailyContinuityResult:
+    accepted:bool
+    reason:str
+    shared_keys:tuple[str,...]=()
+    predicted_gap:float|None=None
+    card_pitch:float|None=None
+
+@dataclass(frozen=True)
 class MissingPositionCandidate:
     before_key:str
     after_key:str
@@ -49,6 +57,11 @@ class DailyScanMetrics:
     recoveredNoProgress:int=0
     contentFallbacks:int=0
     endpointRecoveries:int=0
+    bootstrapFrames:int=0
+    bootstrapOverlapSamples:int=0
+    bootstrapOverlapRecoveries:int=0
+    calibratedFrames:int=0
+    continuityRecoveries:int=0
     fallbacks:int=0
     elapsedSeconds:float=0
 
@@ -106,7 +119,8 @@ class DailyScanAccumulator:
     def __init__(self,key):
         self.key=key;self.observations_by_title={};self.entries={};self.frame_order=[]
         self.thumb_positions=[];self.overlap_edges=[];self.unresolved_ap_rows=[];self.scroll_scale=None
-        self.absolute={};self.card_pitch=None
+        self.absolute={};self.card_pitch=None;self.scroll_scale_samples=[];self.scroll_scale_sample_keys=set()
+        self.card_pitch_samples=[]
         self.edge_rechecks=set()
     def add_frame(self,entries,thumb,frame_index,ap_rows=None,forward=False):
         if not 95<=thumb[0]<thumb[1]<=585 or not 30<=thumb[1]-thumb[0]<=490:raise DailyIndexError('invalid scrollbar geometry')
@@ -137,20 +151,59 @@ class DailyScanAccumulator:
         samples=[];sample_keys=set()
         for key,values in self.observations_by_title.items():
             for a,b in zip(values,values[1:]):
+                if a.frame_index==b.frame_index:continue
                 dt=b.thumb_top-a.thumb_top;dy=b.local_y-a.local_y
                 if abs(dt)>=3 and abs(dy)>=20:
                     scale=-dy/dt
                     if 1<=scale<=150:samples.append(scale);sample_keys.add(key)
+        self.scroll_scale_samples=samples;self.scroll_scale_sample_keys=sample_keys
         if len(samples)>=5 and len(sample_keys)>=3:
             center=median(samples);good=[s for s in samples if abs(s-center)<=center*.25]
             if len(good)>=5:self.scroll_scale=float(median(good))
+        by_frame={}
+        for key,values in self.observations_by_title.items():
+            for observation in values:by_frame.setdefault(observation.frame_index,[]).append((observation.local_y,key))
+        pitch_samples=[]
+        for observations in by_frame.values():
+            observations.sort()
+            for (ya,_),(yb,_) in zip(observations,observations[1:]):
+                pitch=yb-ya
+                if 115<=pitch<=240:pitch_samples.append(float(pitch))
+        self.card_pitch_samples=pitch_samples
         if self.scroll_scale:
-            self.absolute={k:float(median(o.local_y+self.scroll_scale*o.thumb_top for o in values)) for k,values in self.observations_by_title.items()}
-            for k,values in self.observations_by_title.items():
-                if len(values)>1 and max(abs(o.local_y+self.scroll_scale*o.thumb_top-self.absolute[k]) for o in values)>70:
-                    raise DailyIndexError('same-title absolute position conflict')
-            positions=sorted(self.absolute.values());distances=[b-a for a,b in zip(positions,positions[1:]) if 115<=b-a<=240]
-            if len(distances)>=3:self.card_pitch=float(median(distances))
+            self.applyScale(self.scroll_scale)
+
+    def applyScale(self,scale):
+        """Rebuild absolute coordinates from observations using a verified scale."""
+        self.scroll_scale=float(scale)
+        self.absolute={k:float(median(o.local_y+self.scroll_scale*o.thumb_top for o in values))
+                       for k,values in self.observations_by_title.items()}
+        for k,values in self.observations_by_title.items():
+            if len(values)>1 and max(abs(o.local_y+self.scroll_scale*o.thumb_top-self.absolute[k]) for o in values)>70:
+                raise DailyIndexError('same-title absolute position conflict')
+        positions=sorted(self.absolute.values());distances=[b-a for a,b in zip(positions,positions[1:]) if 115<=b-a<=240]
+        if len(distances)>=3:self.card_pitch=float(median(distances))
+
+    def bootstrapStatus(self):
+        """Return readiness and robust live calibration dispersion for scan handoff."""
+        repeated=sum(1 for values in self.observations_by_title.values()
+                    if len({o.frame_index for o in values})>=2)
+        scales=self.scroll_scale_samples
+        scale_center=median(scales) if scales else None
+        scale_dispersion=(median(abs(s-scale_center) for s in scales)/scale_center
+                          if scales and scale_center else None)
+        pitches=self.card_pitch_samples
+        pitch_center=median(pitches) if pitches else None
+        pitch_dispersion=(median(abs(p-pitch_center) for p in pitches)/pitch_center
+                          if pitches and pitch_center else None)
+        ready=(len(self.frame_order)>=3 and repeated>=3 and self.scroll_scale is not None and
+               self.card_pitch is not None and len(self.scroll_scale_sample_keys)>=3 and
+               len(scales)>=5 and scale_dispersion is not None and scale_dispersion<=.10 and
+               len(pitches)>=3 and pitch_dispersion is not None and pitch_dispersion<=.12)
+        return {'ready':ready,'frames':len(self.frame_order),'repeated_titles':repeated,
+                'overlap_samples':len(self.overlap_edges),'scroll_scale':self.scroll_scale,
+                'card_pitch':self.card_pitch,'scale_dispersion':scale_dispersion,
+                'pitch_dispersion':pitch_dispersion}
     def verified(self,key):
         values=self.observations_by_title[key]
         return key in self.edge_rechecks or any(a.frame_index!=b.frame_index and abs(a.thumb_top-b.thumb_top)>=.5 and (abs(a.thumb_top-b.thumb_top)>=3 or abs(a.local_y-b.local_y)>=20)

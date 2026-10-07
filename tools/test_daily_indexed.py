@@ -65,7 +65,8 @@ class AccumulatorTests(unittest.TestCase):
 class ScanTests(unittest.TestCase):
     def test_forward_complete_and_restore_top(self):
         with World().patched() as w:
-            result=indexed.scan();self.assertEqual(len(result['entries']),w.n);self.assertTrue(result['complete']);self.assertEqual(w.top,99);self.assertFalse(any(w.swipes));w.touch.assert_not_called()
+            result=indexed.scan();self.assertEqual(len(result['entries']),w.n);self.assertTrue(result['complete']);self.assertEqual(w.top,99)
+            self.assertGreaterEqual(result['metrics']['bootstrapFrames'],3);self.assertGreater(len(w.swipes),0);w.touch.assert_not_called()
     def test_scan_recovers_single_swallowed_input_without_outer_stall_counter(self):
         with World().patched() as w:
             original=q._swipe_input_only;calls=[]
@@ -102,7 +103,7 @@ class ScanTests(unittest.TestCase):
     def test_stalled_forward_scan_refuses_partial(self):
         with World().patched() as w:
             w.stalled=True
-            with self.assertRaisesRegex(q.ScriptStop,'连续三次无进展且未到列表末端'):indexed.scan()
+            with self.assertRaisesRegex(q.ScriptStop,'bootstrap内容滑动连续两次无进展'):indexed.scan()
             self.assertEqual(len(w.swipes),2)
     def test_reuses_only_calibration_not_cached_observations(self):
         with World().patched() as w:
@@ -254,6 +255,31 @@ class PhysicalGeometryTests(unittest.TestCase):
         with World().patched() as w:
             w.top=98;d,result=indexed.seekEndpoint('top',time.monotonic()+10)
             self.assertIsNotNone(d);self.assertLessEqual(d.top,101);self.assertEqual(w.drags,[])
+    def test_top_endpoint_uses_bounded_content_nudge_after_track_drag_stalls_short(self):
+        w=World();w.top=300.;calls=[]
+        def stop_short(start,end):
+            calls.append((start,end));w.drags.append((start,end))
+            w.top=max(104.,min(535.,w.top+(end[1]-start[1])))
+        w.drag=stop_short
+        with w.patched() as world:
+            d,result=indexed.seekEndpoint('top',time.monotonic()+10)
+            self.assertLessEqual(d.top,101)
+            self.assertEqual(world.swipes,[(True,80)])
+            self.assertTrue(result.reached_endpoint)
+            self.assertEqual(result.mode,'endpoint:top-content-nudge')
+            self.assertLessEqual(len(calls),3)
+            world.touch.assert_not_called()
+    def test_top_endpoint_still_fails_closed_after_bounded_nudges(self):
+        w=World();w.top=300.;calls=[]
+        def stop_short(start,end):
+            calls.append((start,end));w.drags.append((start,end));w.top=104.
+        def swallow_swipe(d,to_top,distance=180):w.swipes.append((to_top,distance))
+        w.drag=stop_short
+        with w.patched() as world,patch.object(q,'_swipe_input_only',side_effect=swallow_swipe):
+            with self.assertRaisesRegex(q.ScriptStop,'顶部端点未能正向确认'):
+                indexed.seekEndpoint('top',time.monotonic()+10)
+            self.assertEqual(world.swipes,[(True,80),(True,100)])
+            world.touch.assert_not_called()
     def test_held_scrollbar_gesture_is_one_input_and_stays_in_track(self):
         from airtest.core.android.android import Android as AirAndroid
         android=Mock(spec=q.fgoDevice.Android);android.name='device';android.display_info={'orientation':0}

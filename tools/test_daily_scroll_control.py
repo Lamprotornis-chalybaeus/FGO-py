@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch,PropertyMock
 
 from daily_index_test_support import World,q,indexed
-from fgoDailyIndex import DailyScrollResult,DailyScanMetrics
+from fgoDailyIndex import DailyScrollResult,DailyScanMetrics,DailyContinuityResult,DailyScanAccumulator
 
 
 class AdvanceScanTests(unittest.TestCase):
@@ -99,12 +99,13 @@ class AdvanceScanTests(unittest.TestCase):
     def test_content_fallback_must_still_pass_continuity_or_recover(self):
         w=World();acc=w.calibrated();calls=[]
         with w.patched() as world,patch.object(q,'_menuScrollbarDrag',side_effect=lambda *a:calls.append(a)),\
-             patch.object(indexed,'_continuous',return_value=False) as continuity:
+             patch.object(indexed,'verifyScanContinuity',return_value=DailyContinuityResult(False,'FAILED')) as continuity:
             d=world.capture();entries=world.entries(d)
             with self.assertRaisesRegex(q.ScriptStop,'相邻屏连续覆盖未恢复'):
                 indexed.advanceScan(d,entries,acc,time.monotonic()+10,100,target_thumb=112)
-            self.assertGreaterEqual(continuity.call_count,2)
-            self.assertGreaterEqual(len(calls),2);self.assertEqual(len(world.swipes),1);world.touch.assert_not_called()
+            self.assertGreaterEqual(continuity.call_count,3)
+            self.assertGreaterEqual(len(calls),2)
+            self.assertEqual(world.swipes[-2:],[(True,80),(True,100)]);world.touch.assert_not_called()
 
     def test_no_progress_retries_read_and_publish_one_candidate_frame(self):
         w=World();acc=w.calibrated();calls=[];reads=[]
@@ -121,20 +122,61 @@ class AdvanceScanTests(unittest.TestCase):
             self.assertEqual(len(reads),1);self.assertEqual(reads[0][1],100)
             self.assertEqual(result[2].attempts,2);world.touch.assert_not_called()
 
-    def test_large_skip_recovers_to_last_verified_card(self):
+    def test_large_discontinuity_only_uses_two_small_reverse_swipes(self):
         w=World();acc=w.calibrated();calls=[]
-        def skip_then_recover(start,end):
-            w.drags.append((start,end));calls.append(1)
-            requested=w.top+(end[1]-start[1])
-            w.top=299. if len(calls)==1 else max(99.,min(535.,requested))
-        w.drag=skip_then_recover
+        def skip(start,end):
+            w.drags.append((start,end));calls.append(1);w.top=299.
+        w.drag=skip
         with w.patched() as world:
-            d=world.capture();entries=world.entries(d);metrics=DailyScanMetrics()
-            with indexed.measuring(metrics):
-                d,new,result=indexed.advanceScan(d,entries,acc,time.monotonic()+10,100,target_thumb=299)
-            self.assertEqual(result.mode,'scan-recovery');self.assertTrue(result.continuity)
-            self.assertEqual(result.corrections,1);self.assertEqual(metrics.scrollRecoveries,1)
-            self.assertEqual(len(world.drags),2);world.touch.assert_not_called()
+            d=world.capture();entries=world.entries(d)
+            with self.assertRaisesRegex(q.ScriptStop,'相邻屏连续覆盖未恢复'):
+                indexed.advanceScan(d,entries,acc,time.monotonic()+10,100,target_thumb=299)
+            self.assertEqual(len(world.drags),1)
+            self.assertEqual(world.swipes,[(True,80),(True,100)])
+            world.touch.assert_not_called()
+
+    def test_bootstrap_frame_three_recovers_transient_title_miss_by_small_reverse_swipe(self):
+        w=World();acc=DailyScanAccumulator(q._title_key)
+        frames=[
+            [w.entry(i,y) for i,y in enumerate((150,330,510))],
+            [w.entry(i,y) for i,y in ((1,150),(2,240),(3,330),(4,420),(5,510))],
+            [w.entry(i,y) for i,y in enumerate((140,225,310,395,480,565))],
+        ]
+        frame_tops=(99.,120.,141.)
+        for idx,(frame,top) in enumerate(zip(frames,frame_tops)):
+            ap={q._title_key(e.title):e.discovered_position[2]+75 for e in frame}
+            acc.add_frame(frame,(top,top+40),idx,ap,forward=idx>0)
+        self.assertEqual([len(frame) for frame in frames],[3,5,6])
+        self.assertTrue(indexed.verifyScanContinuity(frames[0],frames[1],(99,139),(120,160),acc,phase='bootstrap').accepted)
+        self.assertTrue(indexed.verifyScanContinuity(frames[1],frames[2],(120,160),(141,181),acc,phase='bootstrap').accepted)
+        # Even with an apparent model present, bootstrap itself is title-overlap only.
+        acc.scroll_scale=10.;acc.card_pitch=180.
+        acc.absolute={q._title_key(e.title):e.discovered_position[2]+99 for e in frames[2]}
+        with w.patched() as world,patch.object(indexed,'seekApprox',side_effect=AssertionError('bootstrap must not seek by absolute position')):
+            # The actual old screen contains three items. Include the six OCR
+            # observations from frame 3 as its old key set to model the report.
+            world.top=99.;d=world.capture();world.entries(d);old_entries=frames[2]
+            old_keys={q._title_key(e.title) for e in old_entries}
+            # Frame 1 OCR misses the true shared boundary title once. The fresh
+            # read after the small reverse content swipe sees it again.
+            world.hide_once=set(old_keys)
+            metrics=DailyScanMetrics()
+            d,new_entries,result=indexed.advanceScan(d,old_entries,acc,time.monotonic()+10,3,
+                phase='bootstrap',distance=220,metrics=metrics)
+            self.assertTrue(result.continuity);self.assertEqual(result.mode,'scan-recovery')
+            self.assertEqual(metrics.bootstrapOverlapRecoveries,1);self.assertEqual(metrics.continuityRecoveries,1)
+            self.assertTrue(any(q._title_key(e.title) in old_keys for e in new_entries))
+            self.assertEqual(world.swipes[0][0],False);self.assertEqual(world.swipes[1],(True,80))
+            self.assertEqual(world.drags,[]);world.touch.assert_not_called()
+
+    def test_bootstrap_uses_title_overlap_even_when_absolute_model_exists(self):
+        w=World();acc=w.calibrated()
+        old=[w.entry(0,250),w.entry(1,437)]
+        new=[w.entry(2,250),w.entry(3,437)]
+        result=indexed.verifyScanContinuity(old,new,(120.,160.),(140.,180.),acc,phase='bootstrap')
+        self.assertFalse(result.accepted);self.assertEqual(result.reason,'FAILED')
+        calibrated=indexed.verifyScanContinuity(old,new,(120.,160.),(140.,180.),acc,phase='calibrated')
+        self.assertIn(calibrated.reason,('ABSOLUTE_ADJACENCY','FAILED'))
 
     def test_page_leaving_daily_after_move_stops(self):
         w=World();acc=w.calibrated()

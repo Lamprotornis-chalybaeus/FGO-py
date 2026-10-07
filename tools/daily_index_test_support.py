@@ -15,7 +15,7 @@ from fgoDailyIndex import DailyScanAccumulator
 class World:
     def __init__(self,n=25):
         self.n=n;self.top=99.;self.height=40.;self.scale=(n-1)*187/(535-99)
-        self.frames={};self.missing=set();self.local_missing=set();self.stalled=False;self.drags=[];self.swipes=[];self.full_calls=0
+        self.frames={};self.missing=set();self.local_missing=set();self.hide_once=set();self.stalled=False;self.drags=[];self.swipes=[];self.full_calls=0
     def absolute(self,i):return 140+self.scale*99+i*187
     def entry(self,i,y):return q.DailyQuestEntry(f'未来每日挑战{i:02d} 特级','unknown','unknown','',(0,947,round(y)))
     def capture(self,*args,**kwargs):
@@ -25,6 +25,9 @@ class World:
         self.full_calls+=1
         result=[self.entry(i,self.absolute(i)-self.scale*d.top) for i in range(self.n)
                 if i not in self.missing and 130<=self.absolute(i)-self.scale*d.top<=580]
+        if self.hide_once:
+            result=[e for e in result if q._title_key(e.title) not in self.hide_once]
+            self.hide_once.clear()
         d._dailyVerifiedAP={q._title_key(e.title):e.discovered_position[2]+75 for e in result}
         return result
     def observe(self,d,n):return d,self.entries(d,n)
@@ -34,7 +37,7 @@ class World:
         d._dailyVerifiedAP={**getattr(d,'_dailyVerifiedAP',{}),**{q._title_key(e.title):e.discovered_position[2]+75 for e in result}}
         return result
     def swipe(self,d,up,distance=180):
-        self.swipes.append(up)
+        self.swipes.append((up,distance))
         if not self.stalled:self.top=max(99,min(535,self.top+(-distance if up else distance)/self.scale))
     def drag(self,start,end):
         self.drags.append((start,end))
