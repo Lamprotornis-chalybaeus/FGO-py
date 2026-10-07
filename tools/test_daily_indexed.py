@@ -81,7 +81,7 @@ class ScanTests(unittest.TestCase):
         with World().patched() as w:
             w.stalled=True
             with self.assertRaisesRegex(q.ScriptStop,'未向末端'):indexed.scan()
-            self.assertEqual(len(w.swipes),3)
+            self.assertEqual(len(w.swipes),1)
     def test_reuses_only_calibration_not_cached_observations(self):
         with World().patched() as w:
             first=indexed.scan();second=indexed.scan();self.assertTrue(second['reusedCalibration']);self.assertEqual(len(second['entries']),w.n)
@@ -136,10 +136,11 @@ class LocateTests(unittest.TestCase):
             with patch.object(q,'confirmedDailyPageCN',return_value=False):
                 with self.assertRaises(q.ScriptStop):indexed.safe(w.capture())
             self.assertIsNotNone(indexed._cached);w.touch.assert_not_called()
-    def test_scrollbar_corrections_are_bounded(self):
+    def test_approximate_seek_does_not_chase_unreachable_thumb(self):
         with World().patched() as w,patch.object(q,'_menuScrollbarDrag') as swipe:
-            with self.assertRaisesRegex(q.ScriptStop,'有限校正'):indexed.dragTo(300,time.monotonic()+10)
-            self.assertEqual(swipe.call_count,3)
+            d,result=indexed.seekApprox(300,time.monotonic()+10)
+            self.assertEqual(swipe.call_count,1);self.assertEqual(result.mode,'seek')
+            self.assertEqual(result.actual_thumb,d.top);self.assertGreater(abs(result.error),2)
     def test_changed_page_never_drags(self):
         with World().patched() as w,patch.object(q,'_dailyLocatorFrameCN',side_effect=q.ScriptStop('modal')):
             with self.assertRaises(q.ScriptStop):indexed.dragTo(300,time.monotonic()+10)
@@ -217,8 +218,9 @@ class PhysicalGeometryTests(unittest.TestCase):
             w.drags.append((a,b));w.top=max(99,min(535,w.top+(b[1]-a[1])*.93))
         w.drag=reduced
         with w.patched():
-            d=indexed.dragTo(300,time.monotonic()+10)
-            self.assertLessEqual(abs(d.top-300),1.5);self.assertLessEqual(len(w.drags),3)
+            d,result=indexed.seekApprox(300,time.monotonic()+10)
+            self.assertAlmostEqual(result.moved,201*.93,delta=1.5);self.assertEqual(len(w.drags),1)
+            self.assertGreater(abs(result.error),2)
     def test_thumb_geometry_change_stops_after_one_input(self):
         w=World()
         def changed(a,b):w.drags.append((a,b));w.top=300;w.height=80
@@ -228,7 +230,8 @@ class PhysicalGeometryTests(unittest.TestCase):
             self.assertEqual(len(w.drags),1)
     def test_top_pixel_quantization_is_accepted_only_at_boundary(self):
         with World().patched() as w:
-            w.top=98;self.assertIsNotNone(indexed.dragTo(99,time.monotonic()+10));self.assertEqual(w.drags,[])
+            w.top=98;d,result=indexed.seekEndpoint('top',time.monotonic()+10)
+            self.assertIsNotNone(d);self.assertLessEqual(d.top,101);self.assertEqual(w.drags,[])
     def test_held_scrollbar_gesture_is_one_input_and_stays_in_track(self):
         from airtest.core.android.android import Android as AirAndroid
         android=Mock(spec=q.fgoDevice.Android);android.name='device';android.display_info={'orientation':0}
@@ -316,12 +319,12 @@ class QuantizedHandleTests(unittest.TestCase):
             self.assertEqual(d.top,300);self.assertEqual(w.drags,[]);w.touch.assert_not_called()
     def test_bottom_endpoint_requires_positive_bottom_even_within_two_pixels(self):
         with World().patched() as w:
-            w.top=533;d=indexed.dragTo(535,time.monotonic()+10)
+            w.top=533;d,_=indexed.seekEndpoint('bottom',time.monotonic()+10)
             self.assertEqual(d.top,535);self.assertEqual(len(w.drags),1)
-    def test_three_pixel_error_still_requires_correction(self):
+    def test_three_pixel_ordinary_error_is_accepted_as_observed_position(self):
         with World().patched() as w:
-            w.top=300;d=indexed.dragTo(303,time.monotonic()+10)
-            self.assertEqual(d.top,303);self.assertEqual(len(w.drags),1)
+            w.top=300;d,result=indexed.seekApprox(303,time.monotonic()+10)
+            self.assertEqual(d.top,303);self.assertEqual(len(w.drags),1);self.assertEqual(result.error,0)
 
 class LocalAnchorAPTests(unittest.TestCase):
     def fixture(self):
@@ -402,7 +405,7 @@ class NearHeaderCropTests(unittest.TestCase):
         w=World();acc=DailyScanAccumulator(q._title_key);e=w.entry(0,117)
         acc.add_frame([e],(120,160),1,{q._title_key(e.title):192})
         self.assertFalse(acc.verified(q._title_key(e.title)))
-        self.assertIn('125<=',inspect.getsource(indexed.locate))
+        self.assertIn('125<=',inspect.getsource(indexed.alignTarget))
 
 class ForwardVerificationStrideTests(unittest.TestCase):
     def test_unverified_middle_card_is_kept_in_next_overlap(self):

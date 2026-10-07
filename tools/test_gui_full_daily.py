@@ -116,7 +116,7 @@ class FullDailyTests(unittest.TestCase):
         with World().patched() as w:
             w.stalled=True
             with self.assertRaises(daily.ScriptStop):daily.scanDailyQuestsCN()
-        self.assertEqual(len(w.swipes),3)
+        self.assertEqual(len(w.swipes),1)
 
     def test_selected_quest_must_cover_kernel_first_quest_coordinate(self):
         entry=daily.DailyQuestEntry('剑之修炼场 极级','training','极级','sig',(0,880,160))

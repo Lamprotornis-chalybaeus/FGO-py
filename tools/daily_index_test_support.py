@@ -49,6 +49,8 @@ class World:
                 (q,'_menuSwipe',self.drag),(q,'_menuScrollbarDrag',self.drag),(q,'openDailyPageCN',lambda:None),(q.schedule,'sleep',lambda *a:None),
                 (indexed,'localEntries',self.local),(indexed,'cachePath',lambda:Path(temp)/'daily-index.json'),
                 (indexed,'_cached',None),(indexed,'_invalid',False),(indexed,'_anchors',{}),(indexed,'_dragGain',1.),(indexed,'_dragSamples',[])]
+            objects.append((indexed,'_thumbTargetHistory',{}))
+            objects.append((indexed,'_thumbHistoryGeometry',None))
             for obj,key,value in objects:stack.enter_context(patch.object(obj,key,value))
             self.touch=stack.enter_context(patch.object(q.fgoDevice.device,'touch'))
             yield self

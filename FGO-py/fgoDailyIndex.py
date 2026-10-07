@@ -43,8 +43,21 @@ class DailyScanMetrics:
     targetedRechecks:int=0
     gapRecoveries:int=0
     microAdjustments:int=0
+    quantizedAccepts:int=0
+    scrollRecoveries:int=0
     fallbacks:int=0
     elapsedSeconds:float=0
+
+@dataclass(frozen=True)
+class DailyScrollResult:
+    requested_thumb:float
+    actual_thumb:float
+    error:float
+    moved:float
+    mode:str
+    continuity:bool|None=None
+    quantized:bool=False
+    corrections:int=0
 
 @dataclass(frozen=True)
 class DailyIndexRecord:
