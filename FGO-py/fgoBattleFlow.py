@@ -238,7 +238,14 @@ class BattleCycle:
                 observation=self.flow.waitForFlowState(expected,timeout=min(30,max(0,deadline-self.flow.clock())),transition_name='result dismissal',allowed_intermediate={S.BATTLE_RESULT},accept=lambda d:nextResultInstance(d,page))
             elif state==S.ADD_FRIEND:
                 self.flow.action('close_add_friend',lambda:self.main.press('X'))
-                observation=self.flow.waitForFlowState({S.CONTINUE,S.QUEST_READY,S.BATTLE_RESULT},timeout=20,transition_name='friend request close',allowed_intermediate={S.ADD_FRIEND})
+                # Observed result-to-list dark load lasted 24s. The former
+                # 20s sub-wait expired despite a valid eventual QUEST_READY.
+                # Allow bounded positive loading within the existing overall
+                # settlement deadline; no extra dismissal input is sent.
+                observation=self.flow.waitForFlowState({S.CONTINUE,S.QUEST_READY,S.BATTLE_RESULT},
+                    timeout=min(45,max(0,deadline-self.flow.clock())),stall_timeout=30,
+                    transition_name='friend request close',allowed_intermediate={S.ADD_FRIEND,S.LOADING},
+                    progress_signature=lambda d:getattr(d,'getLoadingProgressSignature',lambda:None)())
             elif state==S.SPECIAL_MODAL:
                 self.main.checkSpecialModal()
                 self.flow.action('close_special_modal',lambda:self.main.press('\x1B'))

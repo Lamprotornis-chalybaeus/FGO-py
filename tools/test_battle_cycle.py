@@ -118,6 +118,27 @@ class CycleTests(unittest.TestCase):
         resumed,resumeFlow,error=self.runScenario(s)
         self.assertIsNone(error);self.assertCounters(resumed,1,1,1,0)
         self.assertFalse(any(state in ('QUEST_READY','FRIEND','FORMATION') for state,key in s.actions[before:]))
+    def test_friend_request_return_load_twenty_four_seconds_is_bounded(self):
+        class ReturnScenario(Scenario):
+            def press(self,key,**kwargs):
+                if self.state=='ADD_FRIEND' and key=='X':
+                    self.actions.append((self.state,key));self.to('QUEST_READY',24);return
+                return super().press(key,**kwargs)
+        scenario=ReturnScenario();run,flow,error=self.runScenario(scenario)
+        self.assertIsNone(error);self.assertCounters(run,1,1,1,0)
+        self.assertEqual(scenario.actions.count(('ADD_FRIEND','X')),1)
+        self.assertEqual(scenario.state,'QUEST_READY')
+    def test_friend_request_static_load_stops_without_repeat_input(self):
+        class StuckScenario(Scenario):
+            def press(self,key,**kwargs):
+                if self.state=='ADD_FRIEND' and key=='X':
+                    self.actions.append((self.state,key));self.state='LOADING';return
+                return super().press(key,**kwargs)
+        scenario=StuckScenario();run,flow,error=self.runScenario(scenario)
+        self.assertIsInstance(error,FlowTimeout)
+        self.assertIn('STALL friend request close',str(error))
+        self.assertEqual(scenario.actions.count(('ADD_FRIEND','X')),1)
+        self.assertLess(scenario.now,100)
     def test_first_full_cycle(self):
         s=Scenario();run,flow,error=self.runScenario(s)
         self.assertIsNone(error);self.assertCounters(run,1,1,1,0)
