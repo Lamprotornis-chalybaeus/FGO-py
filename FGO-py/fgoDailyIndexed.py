@@ -395,6 +395,17 @@ def advanceScan(d,entries,acc,deadline,frame_index,*,phase='calibrated',target_t
     d,result,old_thumb,new_thumb=performScanMove(d,entries,acc,deadline,phase=phase,
         target_thumb=target_thumb,target_absolute_y=target_absolute_y,target_local_y=target_local_y,distance=distance)
     d,new_entries=_readPage(d,frame_index);new_thumb=q._scrollbar(d.im)
+    # Title recovery may move the content backwards after the motion controller
+    # reached its target. Re-establish forward overlap before accepting a frame;
+    # endpoint evidence must come from the recovered capture, never the old one.
+    if new_thumb[0]<old_thumb[0]-2:
+        for retry_distance in (80,100):
+            _checkDeadline(deadline);safe(d)
+            q._swipe_input_only(d,False,retry_distance);d=capture();safe(d)
+            d,new_entries=_readPage(d,frame_index);new_thumb=q._scrollbar(d.im)
+            if new_thumb[0]>=old_thumb[0]-.5:break
+        else:raise ScriptStop('每日任务标题复核后未恢复前向位置，未发布列表')
+        metrics.continuityRecoveries+=1
     continuity=verifyScanContinuity(entries,new_entries,old_thumb,new_thumb,acc,phase=phase)
     if continuity.accepted:
         if phase=='bootstrap':metrics.bootstrapOverlapSamples+=1

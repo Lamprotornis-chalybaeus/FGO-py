@@ -103,13 +103,13 @@ class ScanLeadingEdgeTests(unittest.TestCase):
             w.top=100
             d,entries=indexed._readScanTop(w.capture(),0,float('inf'))
             self.assertEqual(entries[0].title,w.entry(0,140).title)
-            self.assertEqual(w.swipes,[True]);w.touch.assert_not_called()
+            self.assertEqual(w.swipes,[(True,100)]);w.touch.assert_not_called()
     def test_missing_leading_title_never_publishes_complete_second_card_as_first(self):
         with World(75).patched() as w:
             w.missing.add(0)
             with self.assertRaisesRegex(q.ScriptStop,'第一张完整卡片'):
                 indexed._readScanTop(w.capture(),0,float('inf'))
-            self.assertEqual(w.swipes,[True,True]);self.assertIsNone(indexed.currentIndex())
+            self.assertEqual(w.swipes,[(True,100),(True,100)]);self.assertIsNone(indexed.currentIndex())
     def test_visible_first_card_needs_no_extra_top_input(self):
         with World(75).patched() as w:
             _,entries=indexed._readScanTop(w.capture(),0,float('inf'))

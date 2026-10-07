@@ -95,7 +95,10 @@ class DailyQuestTests(unittest.TestCase):
             result=daily.scanDailyQuestsCN()
         self.assertGreater(len(w.swipes)+len(w.drags),10)
         self.assertTrue(result['reachedEnd']);self.assertTrue(result['complete'])
-        self.assertEqual(len(result['entries']),40);self.assertFalse(any(w.swipes))
+        self.assertEqual(len(result['entries']),40)
+        # Bootstrap now uses bounded overlapping content steps before the
+        # calibrated scrollbar path; no early reverse/full-list rescan.
+        self.assertTrue(w.swipes);self.assertTrue(all(not up and 120<=distance<=220 for up,distance in w.swipes))
 
     def test_scroll_to_top_uses_thumb_boundary_despite_animation(self):
         detect=FakeDetect()
