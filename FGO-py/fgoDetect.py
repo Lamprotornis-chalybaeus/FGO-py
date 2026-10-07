@@ -224,6 +224,18 @@ class XDetectCN(XDetectBase):
             mask=cv2.cvtColor(mask,cv2.COLOR_GRAY2BGR)
             reads=[OCR.EN.ocr_single_line(cv2.resize(mask,None,fx=s,fy=s,interpolation=cv2.INTER_CUBIC)) for s in (2,3)]
             parsed=[re.fullmatch(r'([0-9]{1,5})\s*/\s*([0-9]{1,3})',str(text).strip()) for text,_ in reads]
+            if not all(parsed) and min(float(score) for _,score in reads)>=.85:
+                # World-map gold HUD adds tiny bright ornaments at the right
+                # edge. Both full-width reads must already contain the same
+                # complete fraction, followed only by decorative punctuation.
+                # Two strict reads of a bounded inset must reproduce it; never
+                # infer a slash or accept truncated maximum digits.
+                edged=[re.fullmatch(r'([0-9]{1,5})/([0-9]{1,3})[\*:\"\']+',str(text).strip()) for text,_ in reads]
+                if all(edged) and edged[0].groups()==edged[1].groups():
+                    inset=mask[1:-1,:-10]
+                    tighter=[OCR.EN.ocr_single_line(cv2.resize(inset,None,fx=n,fy=n,interpolation=cv2.INTER_LINEAR)) for n in (2,3)]
+                    strict=[re.fullmatch(r'([0-9]{1,5})/([0-9]{1,3})',str(text).strip()) for text,_ in tighter]
+                    if min(float(score) for _,score in tighter)>=.85 and all(strict) and all(m.groups()==edged[0].groups() for m in strict):reads=tighter;parsed=strict
         if min(float(score) for _,score in reads)<.85 or not all(parsed):raise ScriptStop('CN AP识别失败：未确认当前AP/上限，已停止')
         values=[tuple(map(int,match.groups())) for match in parsed]
         if values[0]!=values[1] or values[0][1]<=0:raise ScriptStop('CN AP识别失败：两次读数不一致或上限无效，已停止')

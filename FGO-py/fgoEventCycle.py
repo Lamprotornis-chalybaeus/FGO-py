@@ -437,6 +437,27 @@ def missionProgressItems(d,items):
         result.remove(weak[0]);result.append(event.OcrItem(a,rect,min(float(sa),float(sb))))
     return result
 
+def _wrappedMissionWordsAgree(observed,source):
+    words=lambda value:''.join(re.findall(r'[\w]',event.normalizeText(value)))
+    actual=words(observed);expected=words(source)
+    if actual==expected:return True
+    if len(expected)<24 or len(actual)!=len(expected):return False
+    numbers=lambda value:re.findall(r'\d+',value)
+    if not numbers(expected) or numbers(actual)!=numbers(expected):return False
+    action=lambda value:re.match(r'(击败|收集|通关|完成|达到|获得|使用|装备|编入|进行)',value)
+    expectedAction=action(expected);actualAction=action(actual)
+    if not expectedAction or not actualAction or expectedAction.group(1)!=actualAction.group(1):return False
+    # Only tolerate one uncertain descriptive glyph when both independent
+    # joined-line OCR scales agree. Keep task action, every numeric target and
+    # the complete exclusion literal exact.
+    if not expected.endswith('除外') or not actual.endswith('除外'):return False
+    differences=[index for index,(left,right) in enumerate(zip(expected,actual)) if left!=right]
+    if len(differences)!=1:return False
+    index=differences[0]
+    if index<expectedAction.end() or index>=len(expected)-2:return False
+    if expected[index].isdigit() or actual[index].isdigit():return False
+    return True
+
 def missionConditionItems(d,items):
     """Recover a wrapped condition tail only under a proved numbered card.
 
@@ -449,7 +470,7 @@ def missionConditionItems(d,items):
     headers=[i for i in items if i.score>=.85 and re.fullmatch(r'编号\d+',event._text(i)) and i.center[0]>1100 and 270<i.center[1]<540]
     for header in headers:
         y=header.center[1]
-        wrapped=[i for i in items if i.score>=.85 and 590<i.center[0]<1080 and y+5<i.center[1]<y+50 and event._text(i).endswith('除') and '(' not in event._text(i) and re.search(r'(击败|收集|通关)',event._text(i))]
+        wrapped=[i for i in items if i.score>=.85 and 590<i.center[0]<1080 and y-15<i.center[1]<y+50 and event._text(i).endswith('除') and '(' not in event._text(i) and re.search(r'(击败|收集|通关)',event._text(i))]
         if len(wrapped)==1:
             openingLine=wrapped[0];crop=d._crop(openingLine.box)
             a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2))
@@ -475,7 +496,7 @@ def missionConditionItems(d,items):
                 replacement=event.OcrItem(a,openingLine.box,min(float(sa),float(sb)))
                 result.remove(openingLine);result.append(replacement)
                 items=[replacement if i is openingLine else i for i in items]
-        opening=[i for i in items if i.score>=.85 and 590<i.center[0]<1080 and y+5<i.center[1]<y+50 and '(' in event._text(i) and ')' not in event._text(i) and re.search(r'(击败|收集|通关)',event._text(i))]
+        opening=[i for i in items if i.score>=.85 and 590<i.center[0]<1080 and y-15<i.center[1]<y+50 and '(' in event._text(i) and ')' not in event._text(i) and re.search(r'(击败|收集|通关)',event._text(i))]
         if len(opening)!=1:continue
         tails=[i for i in items if i.score<.85 and 590<i.center[0]<1080 and opening[0].center[1]<i.center[1]<y+70 and ')' in event._text(i)]
         if len(tails)!=1:continue
@@ -493,8 +514,7 @@ def missionConditionItems(d,items):
             joined[2:2+first.shape[0],:first.shape[1]]=first
             joined[2:2+crop.shape[0],first.shape[1]+3:]=crop
             a,sa=OCR.ZHS.ocr_single_line(joined);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(joined,None,fx=2,fy=2));text=event.normalizeText(a)
-            words=lambda v:''.join(re.findall(r'[\w]',event.normalizeText(v)))
-            if min(float(sa),float(sb))<.85 or conditionKey(text)!=conditionKey(b) or words(text)!=words(opening[0].text+tail.text) or text.count('(')!=1 or text.count(')')!=1:continue
+            if min(float(sa),float(sb))<.85 or conditionKey(text)!=conditionKey(b) or not _wrappedMissionWordsAgree(text,opening[0].text+tail.text) or text.count('(')!=1 or text.count(')')!=1:continue
             result.remove(opening[0]);result.remove(tail)
             result.append(event.OcrItem(a,opening[0].box,min(float(sa),float(sb))))
             continue
@@ -537,6 +557,7 @@ def enrichedEventItems(d):
     items=partyReviewItems(d,missionCounterItems(d,missionHeaderItems(d,items)))
     items=questInfoItems(d,missionInfoItems(d,missionConditionItems(d,missionProgressItems(d,items))))
     items=missionReceiptItems(d,earnedReceiptItems(d,items))
+    items=event.formationCueItems(d,items)
     if event.eventTutorialCloseProof(items):
         import cv2
         rect=(1219,7,1273,61);crop=d._crop(rect)
@@ -590,18 +611,18 @@ class EventMain(kernel.Main):
         deadline=min(flow.deadline or float('inf'),flow.clock()+30)
         expected={S.FORMATION}|({S.TURN_BEGIN} if directBattle else set())
         def accept(d):
-            items=nav.labels(d)
+            items=event.formationCueItems(d,nav.labels(d))
             if flow.observation.state==S.SKILL_CAST_FAILED and event.findFormationRestrictionNotice(items) is None:
                 raise ScriptStop('Unrecognized support exit modal; no background formation input')
             return flow.observation.state in expected or event.findSpecialFormationDecline(items) is not None or event.findFormationRestrictionNotice(items) is not None
         observation=flow.waitForFlowState(expected|{S.UNKNOWN,S.SKILL_CAST_FAILED},timeout=max(0,deadline-flow.clock()),transition_name='event friend exit',allowed_intermediate={S.FRIEND,S.LOADING},accept=accept)
-        items=nav.labels(flow.detect)
+        items=event.formationCueItems(flow.detect,nav.labels(flow.detect))
         for _ in range(3):
             if not event.findFormationRestrictionNotice(items):break
             d,items,state=self.runner.closeFormationRestrictionNotice(flow.detect,items,deadline=deadline)
             if state=='formation_restriction_notice':continue
             observation=flow.waitForFlowState(expected,timeout=max(0,deadline-flow.clock()),transition_name='formation restriction notice exit',allowed_intermediate={S.UNKNOWN,S.LOADING})
-            items=nav.labels(flow.detect)
+            items=event.formationCueItems(flow.detect,nav.labels(flow.detect))
         else:raise ScriptStop('Event formation restriction notice budget exhausted')
         if event.findSpecialFormationDecline(items):
             self.runner.configureSpecialFormation(flow.detect,items,flow=flow,deadline=deadline)
@@ -609,12 +630,21 @@ class EventMain(kernel.Main):
         if observation.state not in expected:raise ScriptStop('Event support did not reach a legal formation')
         return FriendSelectionResult(True,template,refreshes,observation.state)
     def prepareFormation(self,flow):
-        items=nav.labels(flow.detect)
+        items=event.formationCueItems(flow.detect,nav.labels(flow.detect))
         QuartzGuard.check(items)
         if event.isEventFormationBlocked(items):
             raise ScriptStop('Event formation blocked: three starting members required; party unchanged')
-        if event.isEventAutoFormationSettings(items) or event.isEventIncompleteFormation(items):
-            raise ScriptStop('Event special party requires configuration; no background start or automatic replacement')
+        if event.isEventAutoFormationSettings(items):raise ScriptStop('Temporary party settings unexpectedly open; no background start')
+        pending=self.runner.pendingTemporaryPartyRequirement(items)
+        if event.isEventIncompleteFormation(items) or pending:
+            if not self.runner.policy.allowTemporaryAutoFormation:
+                raise ScriptStop('Event special party requires configuration; party unchanged')
+            self.runner.configureTemporaryParty(flow.detect,items,'formation',deadline=flow.deadline)
+            observation=flow.observe()
+            if observation.state!=S.FORMATION:raise ScriptStop('Temporary event formation did not return to confirmed formation; no start input')
+            items=event.formationCueItems(flow.detect,nav.labels(flow.detect))
+            QuartzGuard.check(items)
+            if event.isEventIncompleteFormation(items):raise ScriptStop('Temporary event formation still has an empty required starting slot')
         if not event.findEventBattleStart(items):
             raise ScriptStop('Event formation has no unique active start label; party unchanged')
         return super().prepareFormation(flow)
@@ -939,7 +969,7 @@ class EventRunner:
             d,items,state=self.read();fresh=event.findFormationRestrictionNotice(items)
             if state!='formation_restriction_notice' or fresh is None or fresh['requirement']!=proof['requirement'] or max(abs(a-b) for a,b in zip(fresh['position'],proof['position']))>6:raise ScriptStop('Formation restriction notice transient; no close')
             proof=fresh
-        self.ledger.append('formation_restriction_notice',requirement=proof['requirement'],partyChanged=False)
+        self.ledger.append('formation_restriction_notice',requirement=proof['requirement'],partyChanged=False,temporaryParty=bool(proof.get('temporaryParty')))
         seen.add(proof['requirement']);self.closedFormationNotices=seen
         self.touch(items,proof['position'],'close_formation_restriction_notice')
         return self.wait({'formation','special_formation_offer','formation_review','formation_restriction_notice'},deadline=deadline,accept=lambda d,i,s:s!='formation_restriction_notice' or event.findFormationRestrictionNotice(i)['requirement']!=proof['requirement'])
@@ -976,21 +1006,80 @@ class EventRunner:
         callback()
         d,items,state=self.wait({'formation','formation_review'},timeout=30,deadline=deadline,accept=lambda d,i,s:bool(event.findTemporaryPartyDecision(i) or event.findEventBattleStart(i)))
         return self.confirmTemporaryParty(d,items,deadline=deadline) if state=='formation_review' else (d,items,state)
-    def configureTemporaryParty(self,d,items,state):
+    def pendingTemporaryPartyRequirement(self,items):
+        # A positive Battle Start control plus repeated one-servant sortie
+        # labels means the game has accepted this restricted party. Earlier
+        # notices must not reopen auto-formation on that confirmed page.
+        if event.findEventBattleStart(items) is not None and event.hasEventSingleServantSortieProof(items):return False
+        if not event.isEventLimitedParty(items) and event.findEventTemporaryPartyCancelConfirmation(items) is None:return False
+        notices=[r for r in self.records() if r.get('kind')=='formation_restriction_notice' and r.get('temporaryParty')]
+        if not notices:return False
+        noticeTime=notices[-1].get('time',0)
+        intents=[r for r in self.records() if r.get('kind')=='temporary_party_prepare_intent' and r.get('time',0)>=noticeTime]
+        verified={r.get('prepareTime') for r in self.records() if r.get('kind')=='temporary_party_prepare_satisfied'}
+        # Old ledger entries could mark the requirement satisfied merely after
+        # dismissing a review. Only a preparation intent followed by the
+        # caller's verified slot-count check proves this requirement complete.
+        return not any(r.get('time') in verified for r in intents)
+    def configureTemporaryParty(self,d,items,state,*,deadline=None):
         if not self.policy.allowTemporaryAutoFormation:
             raise ScriptStop('Temporary auto formation permission disabled')
-        def restricted(labels):return sum(i.score>=.85 and event._text(i)=='受限' and i.center[1]<100 for i in labels)==1
+        def restricted(labels):return sum(i.score>=.85 and event._text(i)=='受限' and i.center[1]<100 for i in labels)==1 or event.isEventLimitedParty(labels)
         if not restricted(items):raise ScriptStop('Not a positively restricted event party; no changes')
         if state=='formation':
-            if not event.isEventIncompleteFormation(items):raise ScriptStop('No evidenced missing starting member')
-            auto=[i for i in items if i.score>=.85 and event._text(i)=='自动' and 260<i.center[0]<330 and 640<i.center[1]<685]
-            party=[i for i in items if i.score>=.85 and event._text(i)=='编队' and 260<i.center[0]<330 and 675<i.center[1]<715]
-            if len(auto)!=len(party) or len(auto)!=1:raise ScriptStop('Temporary auto settings entry ambiguous')
-            fresh,labels,current=self.read()
-            if current!='formation' or not restricted(labels) or not event.isEventIncompleteFormation(labels):
-                raise ScriptStop('Temporary party changed before settings; no input')
-            self.touch(labels,auto[0].center,'open_temporary_auto_settings')
-            d,items,state=self.wait({'formation_settings'},timeout=15)
+            if not event.isEventIncompleteFormation(items) and not self.pendingTemporaryPartyRequirement(items):raise ScriptStop('No evidenced missing starting member')
+            initialEmptyCount=len(event.eventStartingEmptySlots(items))
+            if initialEmptyCount<1:raise ScriptStop('Required front-row empty slot not positively visible; no auto formation')
+            previous=None;stable=0;target=None;labels=items;end=min(self.clock()+45,deadline or float('inf'))
+            for _ in range(8):
+                if self.clock()>=end:break
+                fresh,labels,current=self.read()
+                if current!='formation' or not restricted(labels) or (not event.isEventIncompleteFormation(labels) and not self.pendingTemporaryPartyRequirement(labels)):
+                    raise ScriptStop('Temporary formation context changed before settings; no input')
+                auto=[i for i in labels if i.score>=.85 and event._text(i)=='自动' and 260<i.center[0]<330 and 640<i.center[1]<685]
+                party=[i for i in labels if i.score>=.85 and event._text(i)=='编队' and 260<i.center[0]<330 and 675<i.center[1]<715]
+                pair=(auto[0].center,party[0].center) if len(auto)==len(party)==1 else None
+                stable=stable+1 if pair is not None and pair==previous else 1 if pair is not None else 0
+                previous=pair
+                if stable>=3:
+                    target=pair[0];break
+                schedule.sleep(.2)
+            if target is None:raise ScriptStop('Temporary auto formation controls not stable; no input')
+            initialEmptyCount=len(event.eventStartingEmptySlots(labels))
+            if initialEmptyCount<1:raise ScriptStop('Required front-row empty slot not positively visible; no auto formation')
+            self.ledger.append('temporary_party_prepare_intent',emptyStartingSlots=initialEmptyCount,formalPartyChanged=False)
+            self.touch(labels,target,'open_temporary_auto_settings')
+            def accepted(d,labels,current):
+                if current=='formation_settings':return restricted(labels) and event.isEventAutoFormationSettings(labels)
+                if current=='formation_review':return event.findTemporaryPartyDecision(labels) is not None
+                return current=='formation' and len(event.eventStartingEmptySlots(labels))<initialEmptyCount and event.findEventBattleStart(labels) is not None
+            d,items,state=self.wait({'formation_settings','formation','formation_review'},timeout=30,deadline=deadline,accept=accepted)
+            if state=='formation':
+                if event.isEventIncompleteFormation(items) or len(event.eventStartingEmptySlots(items))>=initialEmptyCount:
+                    raise ScriptStop('Automatic formation did not fill a previously empty front-row slot; no start input')
+                self.ledger.append('temporary_party_ready',formalPartyChanged=False)
+                self._recordTemporaryPartyRequirementSatisfied()
+                intents=[r for r in self.records() if r.get('kind')=='temporary_party_prepare_intent']
+                if intents:self.ledger.append('temporary_party_prepare_satisfied',prepareTime=intents[-1].get('time'),formalPartyChanged=False)
+                return d,items,state
+            if state=='formation_review':
+                d,items,state=self.confirmTemporaryParty(d,items,deadline=deadline)
+                if event.isEventIncompleteFormation(items) or len(event.eventStartingEmptySlots(items))>=initialEmptyCount or event.findEventBattleStart(items) is None:
+                    raise ScriptStop('Temporary party review did not prove a filled front-row slot; no start input')
+                self.ledger.append('temporary_party_ready',formalPartyChanged=False)
+                self._recordTemporaryPartyRequirementSatisfied()
+                intents=[r for r in self.records() if r.get('kind')=='temporary_party_prepare_intent']
+                if intents:self.ledger.append('temporary_party_prepare_satisfied',prepareTime=intents[-1].get('time'),formalPartyChanged=False)
+                return d,items,state
+        elif state=='formation_settings':
+            intents=[r for r in self.records() if r.get('kind')=='temporary_party_prepare_intent']
+            completed={r.get('prepareTime') for r in self.records() if r.get('kind')=='temporary_party_prepare_satisfied'}
+            intents=[r for r in intents if r.get('time') not in completed]
+            if not intents or not restricted(items) or not event.isEventAutoFormationSettings(items):
+                raise ScriptStop('Resumed temporary settings lack their event-only preparation proof')
+            initialEmptyCount=int(intents[-1].get('emptyStartingSlots',0))
+            if initialEmptyCount<1:raise ScriptStop('Resumed temporary settings lack a measured front-row baseline')
+        else:raise ScriptStop('Temporary auto formation requires a confirmed formation or its proved settings screen')
         if state!='formation_settings' or not restricted(items) or not event.isEventAutoFormationSettings(items):
             raise ScriptStop('Temporary auto formation settings not confirmed')
         fresh,labels,current=self.read()
@@ -998,16 +1087,26 @@ class EventRunner:
         if current!='formation_settings' or not restricted(labels) or not event.isEventAutoFormationSettings(labels) or len(target)!=1:
             raise ScriptStop('Temporary auto formation confirmation unstable; no input')
         self.touch(labels,target[0].center,'auto_form_isolated_event_party')
-        d,items,state=self.wait({'formation','formation_review'},timeout=30,accept=lambda d,i,s:bool(event.findTemporaryPartyDecision(i) or event.findEventBattleStart(i)))
-        if state=='formation_review':return self.confirmTemporaryParty(d,items)
-        if event.isEventIncompleteFormation(items):raise ScriptStop('Game automatic formation still has missing starting members; no retry')
+        d,items,state=self.wait({'formation','formation_review'},timeout=30,deadline=deadline,accept=lambda d,i,s:event.findTemporaryPartyDecision(i) is not None if s=='formation_review' else len(event.eventStartingEmptySlots(i))<initialEmptyCount and event.findEventBattleStart(i) is not None)
+        if state=='formation_review':d,items,state=self.confirmTemporaryParty(d,items,deadline=deadline)
+        if event.isEventIncompleteFormation(items) or len(event.eventStartingEmptySlots(items))>=initialEmptyCount or event.findEventBattleStart(items) is None:
+            raise ScriptStop('Game automatic formation still has missing starting members; no retry')
         self.ledger.append('temporary_party_ready',formalPartyChanged=False)
+        self._recordTemporaryPartyRequirementSatisfied()
+        intents=[r for r in self.records() if r.get('kind')=='temporary_party_prepare_intent']
+        if intents and not any(r.get('kind')=='temporary_party_prepare_satisfied' and r.get('prepareTime')==intents[-1].get('time') for r in self.records()):
+            self.ledger.append('temporary_party_prepare_satisfied',prepareTime=intents[-1].get('time'),formalPartyChanged=False)
         return d,items,state
+    def _recordTemporaryPartyRequirementSatisfied(self):
+        notices=[r for r in self.records() if r.get('kind')=='formation_restriction_notice' and r.get('temporaryParty')]
+        if notices and not any(r.get('kind')=='formation_requirement_satisfied' and r.get('noticeTime')==notices[-1].get('time') for r in self.records()):self.ledger.append('formation_requirement_satisfied',noticeTime=notices[-1].get('time'),formalPartyChanged=False)
     def confirmTemporaryParty(self,d,items,*,deadline=None):
         if not self.policy.allowTemporaryAutoFormation:raise ScriptStop('Temporary party confirmation permission disabled')
         position=event.findTemporaryPartyDecision(items)
         if position is None:raise ScriptStop('Restricted temporary party review unproven')
-        if not any(i.score>=.85 and event._text(i)=='受限' and i.center[1]<100 for i in items):
+        if len(event.eventStartingEmptySlots(items))>=2 and not event.hasEventSingleServantSortieProof(items):
+            raise ScriptStop('Multiple empty starting slots lack positive limited-sortie rule labels; no decision input')
+        if not any(i.score>=.85 and event._text(i)=='受限' and i.center[1]<100 for i in items) and not event.isEventLimitedParty(items):
             sent=[r for r in self.records() if r.get('kind')=='input']
             if not sent or sent[-1].get('action')!='auto_form_isolated_event_party':raise ScriptStop('Restricted review has no isolated auto-formation input context; no decision')
         for _ in range(2):
@@ -1024,14 +1123,41 @@ class EventRunner:
             previous=position
             return stable>=3
         d,items,state=self.wait({'formation'},timeout=30,deadline=deadline,accept=ready)
-        self.ledger.append('temporary_party_ready',formalPartyChanged=False)
         return d,items,state
+    def confirmTemporaryPartyCancellation(self,d,items,*,deadline=None):
+        """Confirm only the observed cancel-and-restore modal after our one review cancel."""
+        if not self.policy.allowTemporaryAutoFormation:
+            raise ScriptStop('Temporary party restoration permission disabled')
+        position=event.findEventTemporaryPartyCancelConfirmation(items)
+        actions=[r for r in self.records() if r.get('kind')=='input']
+        if position is None or not self.pendingTemporaryPartyRequirement(items):
+            raise ScriptStop('Temporary party cancel-and-restore dialog is not positively proven')
+        if not actions or actions[-1].get('action')!='cancel_unfilled_temporary_event_review':
+            raise ScriptStop('Cancel confirmation has no matching unfilled-review action; no input')
+        for _ in range(2):
+            d,items,state=self.read()
+            if state!='formation_cancel_confirmation' or event.findEventTemporaryPartyCancelConfirmation(items)!=position:
+                raise ScriptStop('Cancel-and-restore controls changed; no input')
+        self.touch(items,position,'confirm_temporary_party_cancel_restore')
+        end=min(self.clock()+20,deadline or float('inf'));previous=None;stable=0
+        while self.clock()<end:
+            d,items,state=self.read()
+            marker=any(i.score>=.85 and event._text(i) in ('编队限制','编队限定','编成限定','編隊限定') and i.center[0]<210 and 315<i.center[1]<390 for i in items)
+            if state in ('formation','formation_review','formation_blocked') and marker:
+                signature=(state,len(event.eventStartingEmptySlots(items)),event.findTemporaryPartyDecision(items))
+                stable=stable+1 if signature==previous else 1;previous=signature
+                if stable>=3:
+                    self.ledger.append('temporary_party_cancel_restored',screenState=state,emptyStartingSlots=len(event.eventStartingEmptySlots(items)))
+                    return d,items,state
+            else:stable=0;previous=None
+            schedule.sleep(.2)
+        raise FlowTimeout('Temporary party cancel-and-restore did not reach a stable formation page')
     def waitAfterSkip(self,reference,*,deadline=None):
         deadline=min(self.clock()+45,deadline or float('inf'))
         departure=False;previous=None;stable=0
         while self.clock()<deadline:
             d,items,state=self.read()
-            if state in ('support','formation','battle','start_confirmation','ap_empty','reward_receipt','item_receipt','item_detail','event_tutorial'):return d,items,state
+            if state in ('support','formation','formation_restriction_notice','battle','start_confirmation','ap_empty','reward_receipt','item_receipt','item_detail','event_tutorial'):return d,items,state
             if state in ('event_map','event_world_map'):return self.wait({'event_map','event_world_map'},deadline=deadline)
             if state=='story':
                 signature=storySignature(items)
@@ -1090,7 +1216,7 @@ class EventRunner:
         if deadline is not None and self.clock()>=deadline:raise FlowTimeout('Event tutorial parent deadline expired; no input')
         self.seenTutorials.add(key)
         self.touch(items,position,'advance_event_instructions')
-        return self.wait({'event_map','event_world_map','story','event_tutorial','mission_list','item_detail'},timeout=30,deadline=deadline,accept=lambda d,labels,state:state!='event_tutorial' or event.eventTutorialKey(labels)!=key)
+        return self.wait({'event_map','event_world_map','mission_gate','story','event_tutorial','mission_list','item_detail'},timeout=30,deadline=deadline,accept=lambda d,labels,state:state!='event_tutorial' or event.eventTutorialKey(labels)!=key)
     def claimCompletedMission(self,number=None):
         from fgoEventEngine import conditionKey
         if not self.autoClaim:raise ScriptStop('Completed Mission claim policy disabled')
@@ -1553,7 +1679,7 @@ class EventRunner:
                     elif state in ('start_confirmation','story','story_skip_confirmation'):
                         d,items,state=self.handleTransition(d,items,state)
                     elif state in ('support','formation','battle','battle_result','friend_request','continue','master_level_up'):
-                        if state=='formation' and event.isEventIncompleteFormation(items):
+                        if state=='formation' and (event.isEventIncompleteFormation(items) or self.pendingTemporaryPartyRequirement(items)):
                             d,items,state=self.configureTemporaryParty(d,items,state)
                         else:d,items,state=self.runBattle()
                     elif state=='special_formation_offer':

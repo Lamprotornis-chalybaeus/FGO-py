@@ -312,6 +312,156 @@ class ConstrainedPartyReviewTests(unittest.TestCase):
         labels=self.labels();self.assertIsNotNone(event.findTemporaryPartyDecision(labels))
         self.assertEqual(event.classifyEventState(labels,{'formation':True}),'formation_review')
         for index in (1,2,3):self.assertIsNone(event.findTemporaryPartyDecision(labels[:index]+labels[index+1:]))
+
+    def cancelConfirmationLabels(self):
+        return [item('\u53d6\u6d88\u961f\u4f0d\u7f16\u5236',527,52,w=226,h=40),item('\u662f\u5426\u53d6\u6d88\u5f53\u524d\u7f16\u5236\uff0c\u6062\u590d\u6210\u53d8\u66f4\u524d\u7684\u72b6\u6001\uff1f',287,139,w=694,h=34),item('\u5f53\u524d\u961f\u4f0d',200,192,w=106,h=35),item('\u53d8\u66f4\u524d\u961f\u4f0d',201,409,w=111,h=28),item('\u7f16\u961f\u9650\u5236',92,343,w=73,h=24),item('\u53d6\u6d88',100,659,w=73,h=44),item('\u51b3\u5b9a',797,613,w=83,h=46),item('\u51b3\u5b9a',1131,648,w=74,h=44)]
+    def test_cancel_restore_modal_uses_local_buttons_and_beats_background_decisions(self):
+        import numpy
+        labels=self.cancelConfirmationLabels();detect=Mock(_crop=Mock(return_value=numpy.zeros((61,260,3),dtype='uint8')))
+        reads=[('\u53d6\u6d88',.999),('\u53d6\u6d88',.999),('\u51b3\u5b9a',.946),('\u51b3\u5b9a',.945)]
+        with patch.object(event.OCR.ZHS,'ocr_single_line',side_effect=reads):enriched=event.formationCueItems(detect,labels)
+        self.assertEqual(event.findEventTemporaryPartyCancelConfirmation(enriched),(838,636))
+        self.assertEqual(event.classifyEventState(enriched,{'formation':True}),'formation_cancel_confirmation')
+        self.assertEqual(sum(event._text(i)=='\u51b3\u5b9a' and 707<=i.center[0]<=970 for i in enriched),1)
+        self.assertEqual(sum(event._text(i)=='\u51b3\u5b9a' and i.center[0]>1050 for i in enriched),1)
+    def test_cancel_restore_requires_full_dialog_context_and_stable_local_ocr(self):
+        import numpy
+        labels=self.cancelConfirmationLabels();detect=Mock(_crop=Mock(return_value=numpy.zeros((61,260,3),dtype='uint8')))
+        with patch.object(event.OCR.ZHS,'ocr_single_line',return_value=('\u51b3\u5b9a',.99)) as ocr:
+            self.assertIsNone(event.findEventTemporaryPartyCancelConfirmation(event.formationCueItems(detect,[i for i in labels if i.text!='\u7f16\u961f\u9650\u5236'])))
+            ocr.assert_not_called()
+        reads=[('\u53d6\u6d88',.99),('\u53d6\u6d88',.99),('\u51b3\u5b9a',.99),('\u8fd4\u56de',.99)]
+        with patch.object(event.OCR.ZHS,'ocr_single_line',side_effect=reads):enriched=event.formationCueItems(detect,labels)
+        self.assertIsNone(event.findEventTemporaryPartyCancelConfirmation(enriched))
+        self.assertEqual(event.classifyEventState(enriched,{'formation':True}),'unsafe_modal')
+    def test_restore_cancel_confirmation_once_only_after_matching_review_cancel(self):
+        modal=self.cancelConfirmationLabels()
+        import numpy
+        detect=Mock(_crop=Mock(return_value=numpy.zeros((61,260,3),dtype='uint8')))
+        reads=[('\u53d6\u6d88',.999),('\u53d6\u6d88',.999),('\u51b3\u5b9a',.946),('\u51b3\u5b9a',.945)]
+        with patch.object(event.OCR.ZHS,'ocr_single_line',side_effect=reads):modal=event.formationCueItems(detect,modal)
+        formation=[item('\u961f\u4f0d\u786e\u8ba4',1047,8,w=224,h=55),item('\u7f16\u961f\u9650\u5236',92,343,w=77,h=24),item('\u81ea\u52a8',279,656,w=44,h=25),item('\u7f16\u961f',274,673,w=52,h=34)]
+        ledger=Ledger([dict(kind='formation_restriction_notice',time=1,temporaryParty=True),dict(kind='temporary_party_prepare_intent',time=2,emptyStartingSlots=2),dict(kind='input',action='cancel_unfilled_temporary_event_review')])
+        runner=ec.EventRunner(ec.EventResourcePolicy(allowTemporaryAutoFormation=True),ledger=ledger);runner.touch=Mock();runner.read=Mock(side_effect=[(Mock(),modal,'formation_cancel_confirmation')]*2+[(Mock(),formation,'formation')]*3)
+        self.assertEqual(runner.confirmTemporaryPartyCancellation(None,modal)[2],'formation')
+        runner.touch.assert_called_once()
+        self.assertEqual(runner.touch.call_args.args[1],(838,636))
+        self.assertEqual(runner.touch.call_args.args[2],'confirm_temporary_party_cancel_restore')
+        self.assertEqual(runner.records()[-1]['kind'],'temporary_party_cancel_restored')
+    def test_restore_cancel_never_touches_without_matching_review_cancel(self):
+        labels=self.cancelConfirmationLabels();import numpy
+        detect=Mock(_crop=Mock(return_value=numpy.zeros((61,260,3),dtype='uint8')))
+        reads=[('\u53d6\u6d88',.99),('\u53d6\u6d88',.99),('\u51b3\u5b9a',.99),('\u51b3\u5b9a',.99)]
+        with patch.object(event.OCR.ZHS,'ocr_single_line',side_effect=reads):labels=event.formationCueItems(detect,labels)
+        ledger=Ledger([dict(kind='formation_restriction_notice',time=1,temporaryParty=True),dict(kind='temporary_party_prepare_intent',time=2,emptyStartingSlots=2)])
+        runner=ec.EventRunner(ec.EventResourcePolicy(allowTemporaryAutoFormation=True),ledger=ledger);runner.touch=Mock()
+        with self.assertRaisesRegex(ec.ScriptStop,'no input'):runner.confirmTemporaryPartyCancellation(None,labels)
+        runner.touch.assert_not_called()
+    def actualNoticeLabels(self):
+        return [item('编成条件',564,76,w=153,h=41),item('需要编人1骑从者。',479,373,w=305,h=47,score=.897),item('以伍确认',1043,0,w=231,h=67,score=.842)]
+    def test_cn_notice_two_scale_crops_recover_fullscreen_ocr_confusables(self):
+        import numpy
+        labels=self.actualNoticeLabels();detect=Mock(_crop=Mock(return_value=numpy.zeros((36,150,3),dtype='uint8')))
+        reads=[('编队限制',.99),('编队限制',.99),('队伍确认',.86),('队伍确认',.86),('需要编人1骑从者。',.95),('需要编人1骑从者。',.95),('关闭',.99),('关闭',.99)]
+        with patch.object(event.OCR.ZHS,'ocr_single_line',side_effect=reads):
+            enriched=event.formationCueItems(detect,labels)
+        proof=event.findFormationRestrictionNotice(enriched)
+        self.assertTrue(event.isEventLimitedParty(enriched))
+        self.assertEqual(proof['requirement'],'需要编人1骑从者')
+        self.assertTrue(proof['temporaryParty'])
+        self.assertEqual(event.classifyEventState(enriched,{'formation':True}),'formation_restriction_notice')
+    def test_disagreeing_requirement_crop_fails_closed(self):
+        import numpy
+        labels=self.actualNoticeLabels();detect=Mock(_crop=Mock(return_value=numpy.zeros((36,150,3),dtype='uint8')))
+        reads=[('编队限制',.99),('编队限制',.99),('队伍确认',.86),('队伍确认',.86),('需要编人1骑从者。',.95),('需要编入1骑从者。',.95)]
+        with patch.object(event.OCR.ZHS,'ocr_single_line',side_effect=reads):
+            self.assertIs(event.formationCueItems(detect,labels),labels)
+    def test_event_starting_empty_slots_count_only_first_row_placeholders(self):
+        labels=[item('出击',312,380,w=47,h=25),item('出击',513,380,w=44,h=25,score=.83),item('出击',727,380,w=47,h=25),item('出击',312,380,w=47,h=25,score=.79)]
+        self.assertEqual(event.eventStartingEmptySlots(labels),[(335,392),(535,392)])
+    def test_local_two_scale_auto_controls_recover_fullscreen_score_miss(self):
+        import numpy
+        labels=[item('队伍确认',1047,8,w=224,h=55),item('编队限制',92,343,w=77,h=24),item('自动',279,656,w=44,h=25,score=.829),item('编队',274,673,w=52,h=34,score=.995)]
+        detect=Mock(_crop=Mock(return_value=numpy.zeros((30,70,3),dtype='uint8')))
+        reads=[('自动',.996),('自动',.996),('编队',.995),('编队',.995)]
+        with patch.object(event.OCR.ZHS,'ocr_single_line',side_effect=reads):enriched=event.formationCueItems(detect,labels)
+        auto=[i for i in enriched if event._text(i)=='自动' and 260<i.center[0]<330 and 640<i.center[1]<685]
+        party=[i for i in enriched if event._text(i)=='编队' and 260<i.center[0]<330 and 675<i.center[1]<715]
+        self.assertEqual(len(auto),1);self.assertEqual(len(party),1)
+        self.assertEqual(auto[0].center,(300,665));self.assertEqual(party[0].center,(300,693))
+    def test_local_auto_control_disagreement_does_not_promote_or_reuse_global_label(self):
+        import numpy
+        labels=[item('队伍确认',1047,8,w=224,h=55),item('编队限制',92,343,w=77,h=24),item('自动',279,656,w=44,h=25,score=.995),item('编队',274,673,w=52,h=34,score=.995)]
+        detect=Mock(_crop=Mock(return_value=numpy.zeros((30,70,3),dtype='uint8')))
+        reads=[('自动',.996),('自动',.996),('编队',.995),('编成',.995)]
+        with patch.object(event.OCR.ZHS,'ocr_single_line',side_effect=reads):enriched=event.formationCueItems(detect,labels)
+        self.assertFalse(any(event._text(i)=='编队' and 260<i.center[0]<330 and 675<i.center[1]<715 for i in enriched))
+        self.assertTrue(any(event._text(i)=='自动' and i.center==(300,665) for i in enriched))
+    def test_temporary_auto_control_requires_three_stable_reads_and_verified_fill(self):
+        labels=[item('队伍确认',1047,8,w=224,h=55),item('编队限制',92,343,w=77,h=24),item('自动',279,656,w=44,h=25),item('编队',274,673,w=52,h=34),item('出击',312,380,w=47,h=25),item('出击',513,380,w=44,h=25,score=.83),item('战斗开始',1107,651,w=121,h=42)]
+        transient=[i for i in labels if i.text!='自动']
+        after=[i for i in labels if not(i.text=='出击' and i.center[0]==535)]
+        ledger=Ledger([dict(kind='formation_restriction_notice',time=4,requirement='需要编人1骑从者',temporaryParty=True)])
+        runner=ec.EventRunner(ec.EventResourcePolicy(allowTemporaryAutoFormation=True),ledger=ledger);runner.touch=Mock()
+        runner.read=Mock(side_effect=[(Mock(),transient,'formation')]+[(Mock(),labels,'formation')]*3)
+        runner.wait=Mock(return_value=(Mock(),after,'formation'))
+        self.assertEqual(runner.configureTemporaryParty(None,labels,'formation')[2],'formation')
+        self.assertEqual(runner.read.call_count,4)
+        runner.touch.assert_called_once()
+        self.assertEqual(runner.touch.call_args.args[2],'open_temporary_auto_settings')
+        self.assertTrue(any(r.get('kind')=='formation_requirement_satisfied' for r in ledger.data['records']))
+    def test_temporary_auto_control_instability_never_touches(self):
+        labels=[item('队伍确认',1047,8,w=224,h=55),item('编队限制',92,343,w=77,h=24),item('自动',279,656,w=44,h=25),item('编队',274,673,w=52,h=34),item('出击',312,380,w=47,h=25),item('战斗开始',1107,651,w=121,h=42)]
+        ledger=Ledger([dict(kind='formation_restriction_notice',time=4,requirement='需要编人1骑从者',temporaryParty=True)])
+        runner=ec.EventRunner(ec.EventResourcePolicy(allowTemporaryAutoFormation=True),ledger=ledger);runner.touch=Mock()
+        shifted=[item('队伍确认',1047,8,w=224,h=55),item('编队限制',92,343,w=77,h=24),item('自动',280,656,w=44,h=25),item('编队',274,673,w=52,h=34),item('出击',312,380,w=47,h=25),item('战斗开始',1107,651,w=121,h=42)]
+        runner.read=Mock(side_effect=[(Mock(),labels,'formation'),(Mock(),shifted,'formation')]*4)
+        with self.assertRaisesRegex(ec.ScriptStop,'controls not stable'):runner.configureTemporaryParty(None,labels,'formation')
+        runner.touch.assert_not_called()
+    def test_pending_requirement_ignores_unverified_legacy_satisfaction(self):
+        labels=[item('队伍确认',1047,8,w=224,h=55),item('编队限制',92,343,w=77,h=24)]
+        ledger=Ledger([dict(kind='formation_restriction_notice',time=1,temporaryParty=True),dict(kind='temporary_party_prepare_intent',time=2,emptyStartingSlots=2),dict(kind='formation_requirement_satisfied',time=3,noticeTime=1),dict(kind='temporary_party_ready',time=4,formalPartyChanged=False)])
+        runner=ec.EventRunner(ec.EventResourcePolicy(allowTemporaryAutoFormation=True),ledger=ledger)
+        self.assertTrue(runner.pendingTemporaryPartyRequirement(labels))
+        ledger.append('temporary_party_prepare_satisfied',prepareTime=2,formalPartyChanged=False)
+        self.assertFalse(runner.pendingTemporaryPartyRequirement(labels))
+    def test_confirmation_return_alone_does_not_mark_temporary_party_ready(self):
+        labels=self.labels();ledger=Ledger([dict(kind='input',action='auto_form_isolated_event_party')])
+        runner=ec.EventRunner(ec.EventResourcePolicy(allowTemporaryAutoFormation=True),ledger=ledger)
+        runner.read=Mock(return_value=(Mock(),labels,'formation_review'));runner.touch=Mock();runner.wait=Mock(return_value=(Mock(),[],'formation'))
+        runner.confirmTemporaryParty(None,labels)
+        self.assertFalse(any(r.get('kind')=='temporary_party_ready' for r in ledger.data['records']))
+        self.assertFalse(any(r.get('kind')=='formation_requirement_satisfied' for r in ledger.data['records']))
+    def test_unfilled_limited_review_never_clicks_decide(self):
+        labels=self.labels()+[item('队伍确认',1047,8,w=224,h=55),item('出击',312,380,w=47,h=25),item('出击',513,380,w=44,h=25)]
+        self.assertIsNotNone(event.findTemporaryPartyDecision(labels))
+        ledger=Ledger([dict(kind='input',action='auto_form_isolated_event_party')])
+        runner=ec.EventRunner(ec.EventResourcePolicy(allowTemporaryAutoFormation=True),ledger=ledger);runner.touch=Mock()
+        with self.assertRaisesRegex(ec.ScriptStop,'lack positive limited-sortie rule labels'):runner.confirmTemporaryParty(None,labels)
+        runner.touch.assert_not_called()
+    def test_explicit_limited_one_servant_slots_allow_decide_without_filling_them(self):
+        review=self.labels()+[item('队伍确认',1047,8,w=224,h=55)]
+        for x in (312,513,714):
+            review.extend([item('限定1骑',x,270,w=86,h=30),item('出击',x,300,w=48,h=26)])
+        review.extend([item('出击',312,380,w=47,h=25),item('出击',513,380,w=44,h=25)])
+        self.assertTrue(event.hasEventSingleServantSortieProof(review))
+        self.assertIsNotNone(event.findTemporaryPartyDecision(review))
+        ledger=Ledger([dict(kind='input',action='auto_form_isolated_event_party')])
+        runner=ec.EventRunner(ec.EventResourcePolicy(allowTemporaryAutoFormation=True),ledger=ledger)
+        runner.touch=Mock();runner.read=Mock(return_value=(Mock(),review,'formation_review'))
+        runner.wait=Mock(return_value=(Mock(),[],'formation'))
+        self.assertEqual(runner.confirmTemporaryParty(None,review)[2],'formation')
+        self.assertEqual(runner.touch.call_count,1)
+        self.assertEqual(runner.touch.call_args.args[2],'confirm_temporary_event_party')
+    def test_confirmed_limited_formation_button_supersedes_stale_prepare_intent(self):
+        labels=[item('队伍确认',1047,8,w=224,h=55),item('编队限制',92,343,w=77,h=24)]
+        for x in (310,510,710,910,1110):
+            labels.extend([item('限定1骑',x,270,w=86,h=30),item('出击',x,300,w=48,h=26)])
+        labels.append(item('战斗开始',1167,672,w=121,h=42))
+        self.assertIsNotNone(event.findEventBattleStart(labels))
+        ledger=Ledger([dict(kind='formation_restriction_notice',time=1,temporaryParty=True),dict(kind='temporary_party_prepare_intent',time=2,emptyStartingSlots=2)])
+        runner=ec.EventRunner(ec.EventResourcePolicy(allowTemporaryAutoFormation=True),ledger=ledger)
+        self.assertFalse(runner.pendingTemporaryPartyRequirement(labels))
     def test_review_without_sent_isolated_auto_formation_never_decides(self):
         runner=ec.EventRunner(ec.EventResourcePolicy(allowTemporaryAutoFormation=True),ledger=Ledger());runner.touch=Mock()
         with self.assertRaisesRegex(ec.ScriptStop,'isolated'):runner.confirmTemporaryParty(None,self.labels())
@@ -420,10 +570,23 @@ class NewShinsengumiNoticeTests(unittest.TestCase):
         labels=self.labels()
         for index in range(len(labels)):
             self.assertIsNone(event.findNewShinsengumiNoticeClose(labels[:index]+labels[index+1:]))
-        labels[0]=item('在「NEW新选组屯所」',430,233,w=400,h=32,score=.84)
+        labels[0]=item('在「NEW新选组屯所」',430,233,w=400,h=32,score=.79)
         self.assertIsNone(event.findNewShinsengumiNoticeClose(labels))
         for extra in (self.labels()[0],item('装备',600,500),item('领取',600,500)):
             self.assertIsNone(event.findNewShinsengumiNoticeClose(self.labels()+[extra]))
+    def test_variable_unlocked_location_matches_current_real_world_popup(self):
+        labels=self.labels();labels[0]=item('在「正面桥」',527,229,w=216,h=40,score=.83)
+        self.assertEqual(event.classifyEventState(labels,{'main_interface':True}),'event_tutorial')
+        self.assertEqual(event.eventTutorialKey(labels),'new-shinsengumi-unlock-info')
+        self.assertEqual(event.findNewShinsengumiNoticeClose(labels),(640,562))
+    def test_unlocked_free_quest_notice_can_return_to_mission_gate(self):
+        labels=self.labels();labels[0]=item('在「正面桥」',527,229,w=216,h=40,score=.83)
+        runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger());runner.touch=Mock()
+        runner.read=Mock(return_value=(Mock(),labels,'event_tutorial'))
+        mission=[item('完成任务No.62后开放',930,188,w=210,h=26)]
+        runner.wait=Mock(return_value=(Mock(),mission,'mission_gate'))
+        self.assertEqual(runner.advanceTutorial(None,labels)[2],'mission_gate')
+        runner.touch.assert_called_once_with(labels,(640,562),'advance_event_instructions')
     def test_three_fresh_frames_single_close_not_equipment(self):
         labels=self.labels();runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Ledger());runner.touch=Mock()
         runner.read=Mock(return_value=(Mock(),labels,'event_tutorial'));runner.wait=Mock(return_value=(Mock(),[],'event_world_map'))
@@ -457,7 +620,75 @@ class LockedAreaBoundaryTests(unittest.TestCase):
         self.assertEqual(result['nodes'],0);self.assertEqual(result['newBattleEntries'],0)
         runner.seekMission.assert_called_once_with(23);runner.stableNode.assert_not_called();runner.touch.assert_not_called()
 
+    def test_cn_main_story_lock_accepts_localized_ap_score_with_full_map_anchors(self):
+        labels=[item('关闭',79,25,w=61,h=36,score=.873),
+                item('活动报酬',1125,12,w=120,h=48,score=.995),
+                item('主线关卡第七话',780,131,w=139,h=26,score=.937),
+                item('完成任务No.62后开放',825,175,w=211,h=26,score=.924),
+                item('AP5',784,204,w=52,h=29,score=.825),
+                item('关卡举办时间 剩余9日',981,241,w=231,h=27,score=.998)]
+        self.assertTrue(event._eventMap(labels))
+        self.assertEqual(event.findLockedEventMission(labels),{'mission':62,'condition':'完成任务No.62后开放','position':(1185,36)})
+        self.assertEqual(event.classifyEventState(labels,{'main_interface':True}),'mission_gate')
+
+    def test_cn_main_story_lock_survives_missing_ap_ocr_with_full_positive_page_proof(self):
+        labels=[item('关闭',79,25,w=61,h=36,score=.99),
+                item('活动报酬',1125,12,w=120,h=48,score=.99),
+                item('主线关卡第七话',780,131,w=139,h=26,score=.946),
+                item('完成任务No.62后开放',825,175,w=211,h=26,score=.935),
+                item('关卡举办时间 剩余9日',981,241,w=231,h=27,score=.996)]
+        self.assertIsNotNone(event.findLockedEventMission(labels))
+        self.assertEqual(event.classifyEventState(labels,{'main_interface':True}),'mission_gate')
+
+    def test_cn_main_story_lock_still_fails_closed_without_map_anchors(self):
+        labels=[item('活动报酬',1125,12,w=120,h=48),
+                item('主线关卡第七话',780,131,w=139,h=26),
+                item('完成任务No.62后开放',825,175,w=211,h=26),
+                item('AP5',784,204,w=52,h=29,score=.79),
+                item('关卡举办时间 剩余9日',981,241,w=231,h=27)]
+        self.assertIsNone(event.findLockedEventMission(labels))
+
+    def test_cn_main_story_lock_still_fails_closed_if_chapter_or_timer_is_missing(self):
+        labels=[item('关闭',79,25,w=61,h=36),item('活动报酬',1125,12,w=120,h=48),
+                item('完成任务No.62后开放',825,175,w=211,h=26),item('关卡举办时间 剩余9日',981,241,w=231,h=27)]
+        self.assertIsNone(event.findLockedEventMission(labels))
+        labels.append(item('主线关卡第七话',780,131,w=139,h=26))
+        self.assertIsNotNone(event.findLockedEventMission(labels))
+        labels=[v for v in labels if '关卡举办时间' not in event._text(v)]
+        self.assertIsNone(event.findLockedEventMission(labels))
+
 class WrappedMissionFreshReadTests(unittest.TestCase):
+    def test_same_row_card_and_stable_join_allow_one_ambiguous_descriptive_glyph(self):
+        import numpy
+        labels=[i for i in cycleTests.MissionLookupTests().labels() if i.text not in ('编号11','击败20个敌人','目标进行度','0/20')]
+        labels += [item('新！',610,470,w=30),item('编号62',1178,483,w=65),
+                   item('击败20个身披甲胃的敌人(战斗中被召唤出来的敌人除',832,483,w=420),
+                   item('外)',622,505,w=29,h=20,score=.74),
+                   item('目标进行度',669,550,w=105),item('0/20',637,584,w=70)]
+        d=Mock(im=numpy.zeros((720,1280,3),dtype='uint8'),_crop=Mock(return_value=numpy.zeros((20,29,3),dtype='uint8')))
+        joined='击败20个身披甲宵的敌人(战斗中被召唤出来的敌人除外)'
+        with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[('外)',.80),('外)',.84),(joined,.91),(joined,.90)]):
+            enriched=ec.missionConditionItems(d,labels)
+        card=event.findMissionCard(enriched,62)
+        self.assertIsNotNone(card)
+        self.assertEqual(card['condition'],joined)
+        self.assertNotIn('新!',card['condition'])
+
+    def test_join_never_tolerates_changed_count_action_or_exclusion(self):
+        import numpy
+        labels=[i for i in cycleTests.MissionLookupTests().labels() if i.text not in ('编号11','击败20个敌人','目标进行度','0/20')]
+        labels += [item('编号62',1178,483,w=65),
+                   item('击败20个身披甲胃的敌人(战斗中被召唤出来的敌人除',832,483,w=420),
+                   item('外)',622,505,w=29,h=20,score=.74),
+                   item('目标进行度',669,550,w=105),item('0/20',637,584,w=70)]
+        d=Mock(im=numpy.zeros((720,1280,3),dtype='uint8'),_crop=Mock(return_value=numpy.zeros((20,29,3),dtype='uint8')))
+        for invalid in ('收集20个身披甲宵的敌人(战斗中被召唤出来的敌人除外)',
+                        '击败21个身披甲宵的敌人(战斗中被召唤出来的敌人除外)',
+                        '击败20个身披甲宵的敌人(战斗中被召唤出来的敌人除)'):
+            with patch.object(ec.OCR.ZHS,'ocr_single_line',side_effect=[('外)',.80),('外)',.84),(invalid,.91),(invalid,.90)]):
+                enriched=ec.missionConditionItems(d,labels)
+            self.assertIsNone(event.findMissionCard(enriched,62),invalid)
+
     def test_ornamental_quotes_may_vary_but_words_count_and_exclusion_must_agree(self):
         import numpy
         labels=self.labels()

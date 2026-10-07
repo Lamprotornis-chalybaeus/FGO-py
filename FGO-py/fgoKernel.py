@@ -550,7 +550,7 @@ class Battle:
         self.turn=0
         self.turnProc=turnClass()
     totalTimeout=30*60
-    unknownTimeout=60
+    unknownTimeout=180
     allowAnimationProgress=False
     animationHardTimeout=180
     def __call__(self):

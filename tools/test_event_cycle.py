@@ -435,9 +435,9 @@ class EventContractTests(unittest.TestCase):
             with self.assertRaises(ec.ScriptStop):runner.configureTemporaryParty(None,self.autoSettings(),'formation_settings')
             touch.assert_not_called()
     def test_allowed_temporary_auto_requires_restricted_settings_and_touches_once(self):
-        labels=self.autoSettings();runner=ec.EventRunner(ec.EventResourcePolicy(allowTemporaryAutoFormation=True),ledger=Mock())
+        labels=self.autoSettings();ledger=Mock();ledger.data={'records':[dict(kind='temporary_party_prepare_intent',time=1,emptyStartingSlots=2,formalPartyChanged=False)]};runner=ec.EventRunner(ec.EventResourcePolicy(allowTemporaryAutoFormation=True),ledger=ledger)
         runner.read=Mock(return_value=(Mock(),labels,'formation_settings'));runner.touch=Mock()
-        runner.wait=Mock(return_value=(Mock(),[labels[0]],'formation'))
+        runner.wait=Mock(return_value=(Mock(),[labels[0],item('战斗开始',1167,672,w=121,h=42)],'formation'))
         self.assertEqual(runner.configureTemporaryParty(None,labels,'formation_settings')[2],'formation')
         runner.touch.assert_called_once_with(labels,(930,556),'auto_form_isolated_event_party')
         with self.assertRaises(ec.ScriptStop):runner.configureTemporaryParty(None,labels[1:],'formation_settings')
@@ -804,6 +804,16 @@ class MissionLookupTests(unittest.TestCase):
         self.assertIsNone(event.findMissionCard(labels,12))
         self.assertIsNone(event.findMissionCard(labels+[item('编号11',1145,445)],11))
         self.assertIsNone(event.findMissionCard([i for i in labels if i.text!='0/20'],11))
+    def test_condition_can_share_vertical_row_with_target_number_badge(self):
+        labels=[i for i in self.labels() if i.text not in ('编号11','击败20个敌人','目标进行度','0/20')]
+        labels += [item('编号62',1145,485,w=65),
+                   item('击败20个身披甲胄的敌人(战斗中被召唤出来的敌人除',800,483,w=420),
+                   item('外)',800,510,w=35),
+                   item('目标进行度',650,550,w=105),item('0/20',670,584,w=70)]
+        card=event.findMissionCard(labels,62)
+        self.assertIsNotNone(card)
+        self.assertEqual(card['condition'],'击败20个身披甲胄的敌人(战斗中被召唤出来的敌人除 外)')
+        self.assertIsNone(event.findMissionCard(labels,61))
     def test_seek_existing_card_reads_three_fresh_frames_without_input(self):
         labels=self.labels();runner=ec.EventRunner(ec.EventResourcePolicy(),ledger=Mock())
         runner.read=Mock(return_value=(Mock(),labels,'mission_list'))
@@ -1131,5 +1141,5 @@ class LockedBattleMapProofTests(unittest.TestCase):
         labels=[i for i in LockedQuestMissionTests().labels() if i.text!='任务进行度']
         for token in ('关闭','活动报酬','主线关卡 第三话','关卡举办时间剩余10日','完成任务No.11后开放'):
             self.assertIsNone(event.findLockedEventMission([i for i in labels if i.text!=token]))
-        self.assertIsNone(event.findLockedEventMission([i for i in labels if not i.text.startswith('AP')]))
+        self.assertEqual(event.findLockedEventMission([i for i in labels if not i.text.startswith('AP')])['mission'],11)
         self.assertIsNone(event.findLockedEventMission(labels+[item('主线关卡 第四话',780,132,w=220)]))

@@ -115,10 +115,18 @@ def findMissionGate(items):
     return result
 
 def findLockedEventMission(items):
-    if _unsafeEventOverlay(items) or not _eventMap(items):return None
+    if _unsafeEventOverlay(items):return None
+    # On the CN world map, the selected main-story node itself can be the
+    # mission gate.  OCR sometimes drops its compact AP badge, so requiring
+    # the full generic event-map predicate loses a real gate and sends the
+    # navigator toward terminal home.  Keep a narrow positive proof instead:
+    # event timer + top map controls + one numbered lock + its main-story row.
+    timer=[i for i in items if float(i.score)>=.85 and '关卡举办时间' in _text(i)]
     locks=[i for i in items if float(i.score)>=.85 and re.fullmatch(r'完成任务no[.．]?\d+后开放',_text(i)) and 750<_center(i)[0]<1100 and 100<_center(i)[1]<250]
+    main=[i for i in items if float(i.score)>=.85 and re.fullmatch(r'主线关卡第[一二三四五六七八九十百0-9]+话',_text(i)) and 750<_center(i)[0]<1100 and 100<_center(i)[1]<180]
+    close=[i for i in items if float(i.score)>=.85 and _text(i)=='关闭' and _center(i)[0]<220 and _center(i)[1]<100]
     entry=[i for i in items if float(i.score)>=.85 and _text(i)=='活动报酬' and _center(i)[0]>1100 and _center(i)[1]<100]
-    if len(locks)!=1 or len(entry)!=1:return None
+    if not (len(timer)==len(locks)==len(main)==len(close)==len(entry)==1):return None
     number=int(re.search(r'\d+',_text(locks[0]))[0])
     return {'mission':number,'condition':str(locks[0].text),'position':_center(entry[0])}
 
@@ -147,6 +155,59 @@ def findStartQuestConfirmation(items):
     cancel=[i for i in strong if _text(i)=='取消' and 300<_center(i)[0]<600 and 530<_center(i)[1]<620]
     return _center(start[0]) if len(title)==len(message)==len(story)==len(start)==len(cancel)==1 else None
 
+def formationCueItems(d,items):
+    """Restore local OCR for the observed event-only formation UI."""
+    result=list(items)
+    strong=[i for i in items if float(i.score)>=.85]
+    heading=[i for i in strong if 550<_center(i)[0]<800 and 55<_center(i)[1]<145 and _text(i) in ('\u7f16\u6210\u6761\u4ef6','\u7de8\u6210\u689d\u4ef6')]
+    # Full-screen OCR confuses 入 with 人 on this CN overlay. The bounded
+    # two-scale crop below provides the exact second-stage confirmation.
+    countLine=[i for i in strong if 440<_center(i)[0]<830 and 350<_center(i)[1]<435 and any(token in _text(i) for token in ('\u7f16\u5165','\u7f16\u4eba')) and '\u4ece\u8005' in _text(i)]
+    pageHeader=[i for i in items if float(i.score)>=.70 and _center(i)[0]>1000 and _center(i)[1]<100]
+    import cv2
+    if heading and countLine and pageHeader:
+        checks=(('\u7f16\u961f\u9650\u5b9a',(77,339,191,369)),('\u961f\u4f0d\u786e\u8ba4',(1030,0,1280,78)),('\u9700\u8981\u7f16\u5165\u0031\u9a91\u4ece\u8005',(470,370,800,432)),('\u5173\u95ed',(590,573,690,630)))
+        variants={checks[0][0]:('\u7f16\u961f\u9650\u5b9a','\u7f16\u961f\u9650\u5236','\u7f16\u6210\u9650\u5b9a','\u7de8\u968a\u9650\u5b9a','\u7de8\u6210\u9650\u5b9a')}
+        variants[checks[1][0]]=('\u961f\u4f0d\u786e\u8ba4','\u968a\u4f0d\u78ba\u8a8d')
+        variants[checks[2][0]]=('\u9700\u8981\u7f16\u51651\u9a91\u4ece\u8005','\u9700\u8981\u7f16\u51651\u9a0e\u5f9e\u8005','\u9700\u8981\u7f16\u4eba1\u9a91\u4ece\u8005','\u9700\u8981\u7f16\u4eba1\u9a0e\u5f9e\u8005')
+        for expected,rect in checks:
+            crop=d._crop(rect);a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC))
+            clean=lambda value:re.sub(r'[\u3002.!！\s]','',normalizeText(value))
+            allowed=variants.get(expected,(expected,))
+            if min(float(sa),float(sb))<.85 or clean(a)!=clean(b) or clean(a) not in {clean(v) for v in allowed}:return items
+            result=[i for i in result if not(rect[0]<=_center(i)[0]<=rect[2] and rect[1]<=_center(i)[1]<=rect[3])]
+            result.append(OcrItem(clean(a),rect,min(float(sa),float(sb))))
+        return result
+
+    # The actual activity page wraps the single Auto-formation button label
+    # into two rows. Full-frame OCR intermittently misses the upper row at
+    # .829; use fixed local two-scale crops with the original .85 threshold.
+    # Canonical crop boxes also keep three-frame stability from being defeated
+    # by per-frame OCR box jitter.
+    if isEventLimitedParty(result):
+        for expected,rect in (('\u81ea\u52a8',(265,650,335,680)),('\u7f16\u961f',(265,678,335,708))):
+            result=[i for i in result if not(rect[0]<=_center(i)[0]<=rect[2] and rect[1]<=_center(i)[1]<=rect[3])]
+            crop=d._crop(rect);a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC))
+            cleanA=normalizeText(a);cleanB=normalizeText(b)
+            if min(float(sa),float(sb))<.85 or cleanA!=cleanB or cleanA!=expected:continue
+            result.append(OcrItem(expected,rect,min(float(sa),float(sb))))
+    # The cancel-and-restore dialog overlays event-party controls. Local crops
+    # isolate its buttons from unrelated background actions.
+    cancelTitle=[i for i in strong if _text(i)=='\u53d6\u6d88\u961f\u4f0d\u7f16\u5236' and 450<_center(i)[0]<830 and 30<_center(i)[1]<115]
+    cancelMessage=[i for i in strong if _text(i) in ('\u662f\u5426\u53d6\u6d88\u5f53\u524d\u7f16\u5236,\u6062\u590d\u6210\u53d8\u66f4\u524d\u7684\u72b6\u6001?','\u662f\u5426\u53d6\u6d88\u5f53\u524d\u7f16\u5236,\u6062\u590d\u6210\u53d8\u66f4\u524d\u7684\u72b6\u6001') and 240<_center(i)[0]<1040 and 120<_center(i)[1]<200]
+    currentParty=[i for i in strong if _text(i) in ('\u5f53\u524d\u961f\u4f0d','\u7576\u524d\u968a\u4f0d') and 180<_center(i)[0]<360 and 180<_center(i)[1]<250]
+    previousParty=[i for i in strong if _text(i) in ('\u53d8\u66f4\u524d\u961f\u4f0d','\u53d8\u66f4\u524d\u961f','\u8b8a\u66f4\u524d\u968a\u4f0d','\u8b8a\u66f4\u524d\u968a') and 180<_center(i)[0]<360 and 395<_center(i)[1]<470]
+    eventMarker=[i for i in strong if _text(i) in ('\u7f16\u961f\u9650\u5236','\u7f16\u961f\u9650\u5b9a','\u7f16\u6210\u9650\u5b9a','\u7de8\u968a\u9650\u5b9a') and _center(i)[0]<210 and 315<_center(i)[1]<390]
+    if len(cancelTitle)==len(cancelMessage)==len(currentParty)==len(previousParty)==len(eventMarker)==1:
+        for expected,rect in (('\u53d6\u6d88',(315,606,575,667)),('\u51b3\u5b9a',(707,606,970,667))):
+            # Never fall back to full-frame OCR if a local read is weak or disagrees.
+            result=[i for i in result if not(rect[0]<=_center(i)[0]<=rect[2] and rect[1]<=_center(i)[1]<=rect[3])]
+            crop=d._crop(rect);a,sa=OCR.ZHS.ocr_single_line(crop);b,sb=OCR.ZHS.ocr_single_line(cv2.resize(crop,None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC))
+            clean=lambda value:re.sub(r'[\u3002.!！?？\s]','',normalizeText(value))
+            if min(float(sa),float(sb))<.85 or clean(a)!=clean(b) or clean(a)!=normalizeText(expected):continue
+            result.append(OcrItem(normalizeText(expected),rect,min(float(sa),float(sb))))
+    return result
+
 def findFormationRestrictionNotice(items):
     if _unsafeEventOverlay(items):return None
     strong=[i for i in items if i.score>=.85]
@@ -156,10 +217,20 @@ def findFormationRestrictionNotice(items):
     noticeClose=[i for i in strong if _text(i)=='关闭' and 500<_center(i)[0]<800 and 520<_center(i)[1]<610]
     if len(uniform)==len(held)==len(formation)==len(noticeClose)==1:
         return {'position':_center(noticeClose[0]),'requirement':str(uniform[0].text)+' '+str(held[0].text)}
+    eventHeading=[i for i in strong if _text(i) in ('\u7f16\u6210\u6761\u4ef6','\u7de8\u6210\u689d\u4ef6') and 500<_center(i)[0]<800 and 60<_center(i)[1]<140]
+    current=[i for i in strong if _text(i) in ('\u9700\u8981\u7f16\u51651\u9a91\u4ece\u8005','\u9700\u8981\u7f16\u51651\u9a0e\u5f9e\u8005','\u9700\u8981\u7f16\u4eba1\u9a91\u4ece\u8005','\u9700\u8981\u7f16\u4eba1\u9a0e\u5f9e\u8005') and 440<_center(i)[0]<830 and 350<_center(i)[1]<435]
+    eventClose=[i for i in strong if _text(i) in ('\u5173\u95ed','\u95dc\u9589') and 550<_center(i)[0]<750 and 560<_center(i)[1]<640]
+    if len(eventHeading)==len(current)==len(eventClose)==1 and isEventLimitedParty(items):
+        return {'position':_center(eventClose[0]),'requirement':str(current[0].text),'temporaryParty':True}
     heading=[i for i in strong if _text(i)=='编制限制' and 500<_center(i)[0]<800 and 60<_center(i)[1]<140]
     required=[i for i in strong if re.fullmatch(r'请将[\u4e00-\u9fff]{2,12}',_text(i)) and 400<_center(i)[0]<900 and 180<_center(i)[1]<250]
     instruction=[i for i in strong if _text(i).rstrip('。.')=='设置为首发队员' and 400<_center(i)[0]<900 and 250<_center(i)[1]<310]
     close=[i for i in strong if _text(i)=='关闭' and 500<_center(i)[0]<800 and 560<_center(i)[1]<640]
+    if len(heading)==1 and len(close)==1:
+        current=next((i for i in strong if 440<_center(i)[0]<830 and 350<_center(i)[1]<435 and ('編入' in _text(i) or '编入' in _text(i)) and ('從者' in _text(i) or '从者' in _text(i))),None)
+        marker=[i for i in strong if 60<_center(i)[0]<210 and 315<_center(i)[1]<390 and ('編成限定' in _text(i) or '编成限定' in _text(i) or '編隊限定' in _text(i) or '编队限定' in _text(i))]
+        if current and len(marker)==1 and any(_text(i)=='隊伍確認' or _text(i)=='队伍确认' for i in strong):
+            return {'position':_center(close[0]),'requirement':str(current.text),'temporaryParty':True}
     if len(heading)!=1 or len(close)!=1:return None
     if len(required)==len(instruction)==1:
         return {'position':_center(close[0]),'requirement':str(required[0].text)+' '+str(instruction[0].text)}
@@ -196,7 +267,42 @@ def isEventIncompleteFormation(items):
     # starting members are required. This never chooses replacement servants.
     restricted=[i for i in items if float(i.score)>=.85 and _text(i)=='受限' and _center(i)[1]<100]
     empty=[i for i in items if float(i.score)>=.85 and _text(i)=='选择' and 250<_center(i)[0]<630 and 260<_center(i)[1]<340]
-    return len(restricted)==1 and bool(empty)
+    return len(restricted)==1 and bool(empty) or isEventLimitedParty(items) and bool(empty)
+
+def isEventLimitedParty(items):
+    markers=[i for i in items if float(i.score)>=.85 and _center(i)[0]<210 and 315<_center(i)[1]<390 and _text(i) in ('\u7f16\u961f\u9650\u5b9a','\u7f16\u961f\u9650\u5236','\u7f16\u6210\u9650\u5b9a','\u7de8\u968a\u9650\u5b9a','\u7de8\u6210\u9650\u5b9a')]
+    headers=[i for i in items if float(i.score)>=.85 and _text(i) in ('\u961f\u4f0d\u786e\u8ba4','\u968a\u4f0d\u78ba\u8a8d') and _center(i)[0]>1000 and _center(i)[1]<100]
+    return len(markers)==1 and len(headers)==1
+
+def eventStartingEmptySlots(items):
+    """Return empty first-row sortie slots on the observed formation layout."""
+    empty=[i for i in items if float(i.score)>=.8 and _text(i) in ('\u51fa\u51fb','\u51fa\u64ca') and 220<_center(i)[0]<640 and 340<_center(i)[1]<430]
+    centers=sorted(_center(i) for i in empty)
+    unique=[]
+    for point in centers:
+        if not any(max(abs(point[0]-old[0]),abs(point[1]-old[1]))<=12 for old in unique):unique.append(point)
+    return unique
+
+def hasEventSingleServantSortieProof(items):
+    """Prove the repeated one-servant sortie labels on a restricted event party.
+
+    Some event review pages intentionally leave the remaining positions empty
+    and label them "限定1骑 / 出击". Those are rule labels, not requests to
+    populate the user's party. Require several independently aligned labels
+    alongside the separate restricted-review detector before treating them as
+    intentional empty slots.
+    """
+    positive=[i for i in items if float(i.score)>=.85]
+    limited=('限定1骑','限定1騎','限定一骑','限定一騎','限定1骑出击','限定1騎出撃','限定一骑出击','限定一騎出撃')
+    limits=[i for i in positive if _text(i) in limited and 200<_center(i)[0]<1260 and 180<_center(i)[1]<390]
+    sorties=[i for i in positive if _text(i) in ('出击','出擊') and 200<_center(i)[0]<1260 and 180<_center(i)[1]<430]
+    pairs=[]
+    for label in limits:
+        matching=[button for button in sorties if abs(_center(label)[0]-_center(button)[0])<=85 and 0<_center(button)[1]-_center(label)[1]<=95]
+        if len(matching)==1:
+            point=_center(label)[0]
+            if not any(abs(point-old)<=12 for old in pairs):pairs.append(point)
+    return len(pairs)>=3
 
 def findTemporaryPartyDecision(items,*,readContext=False):
     positive=[i for i in items if float(i.score)>=.85]
@@ -211,6 +317,24 @@ def findTemporaryPartyDecision(items,*,readContext=False):
     cancel=[i for i in positive if _text(i)=='取消' and _center(i)[0]<250 and _center(i)[1]>640]
     decision=[i for i in (items if readContext else positive) if _text(i)=='决定' and (not readContext or i.score>=.65) and _center(i)[0]>1050 and _center(i)[1]>640]
     return _center(decision[0]) if len(title)==len(restricted)==len(instruction)==len(cancel)==len(decision)==1 and not isEventIncompleteFormation(items) else None
+
+def eventTemporaryPartyCancelPrompt(items):
+    """Identify the cancel-and-restore overlay without authorizing an input."""
+    strong=[i for i in items if float(i.score)>=.85]
+    title=[i for i in strong if _text(i)=='\u53d6\u6d88\u961f\u4f0d\u7f16\u5236' and 450<_center(i)[0]<830 and 30<_center(i)[1]<115]
+    message=[i for i in strong if _text(i) in ('\u662f\u5426\u53d6\u6d88\u5f53\u524d\u7f16\u5236,\u6062\u590d\u6210\u53d8\u66f4\u524d\u7684\u72b6\u6001?','\u662f\u5426\u53d6\u6d88\u5f53\u524d\u7f16\u5236,\u6062\u590d\u6210\u53d8\u66f4\u524d\u7684\u72b6\u6001') and 240<_center(i)[0]<1040 and 120<_center(i)[1]<200]
+    current=[i for i in strong if _text(i) in ('\u5f53\u524d\u961f\u4f0d','\u7576\u524d\u968a\u4f0d') and 180<_center(i)[0]<360 and 180<_center(i)[1]<250]
+    previous=[i for i in strong if _text(i) in ('\u53d8\u66f4\u524d\u961f\u4f0d','\u53d8\u66f4\u524d\u961f','\u8b8a\u66f4\u524d\u968a\u4f0d','\u8b8a\u66f4\u524d\u968a') and 180<_center(i)[0]<360 and 395<_center(i)[1]<470]
+    marker=[i for i in strong if _text(i) in ('\u7f16\u961f\u9650\u5236','\u7f16\u961f\u9650\u5b9a','\u7f16\u6210\u9650\u5b9a','\u7de8\u968a\u9650\u5b9a') and _center(i)[0]<210 and 315<_center(i)[1]<390]
+    return len(title)==len(message)==len(current)==len(previous)==len(marker)==1
+
+def findEventTemporaryPartyCancelConfirmation(items):
+    """Return the modal decision only when the cancel-and-restore dialog is proven."""
+    if not eventTemporaryPartyCancelPrompt(items):return None
+    strong=[i for i in items if float(i.score)>=.85]
+    cancel=[i for i in strong if _text(i)=='\u53d6\u6d88' and 315<=_center(i)[0]<=575 and 606<=_center(i)[1]<=667]
+    decision=[i for i in strong if _text(i)=='\u51b3\u5b9a' and 707<=_center(i)[0]<=970 and 606<=_center(i)[1]<=667]
+    return _center(decision[0]) if len(cancel)==len(decision)==1 else None
 
 def findEventRewardReceipt(items):
     # Observed automatic completion receipt, not a reward selection/claim list.
@@ -331,7 +455,13 @@ def findNewShinsengumiNoticeClose(items):
     """Observed unlocked-area instructions; close only, never equip/claim."""
     if _unsafeEventOverlay(items):return None
     strong=[i for i in items if i.score>=.85]
-    phrases=(('在「NEW新选组屯所」',(220,275)),('开放了NEW新选组关卡',(275,320)),('穿上『浅葱的队服',(335,385)),('保护京都的治安吧',(380,430)))
+    # The place name is different on each newly unlocked map node, and OCR
+    # often scores this decorative first line just below the normal threshold.
+    # Keep it variable, but require its quoted-location shape and combine it
+    # with the three high-confidence fixed instructions below.
+    location=[i for i in items if .8<=float(i.score) and re.fullmatch(r'在[「『"“]?[一-鿿A-Za-z0-9·・\-]{2,12}[」』"”]?',_text(i)) and 300<_center(i)[0]<1000 and 210<_center(i)[1]<290]
+    if len(location)!=1:return None
+    phrases=(('开放了NEW新选组关卡',(275,320)),('穿上『浅葱的队服',(335,385)),('保护京都的治安吧',(380,430)))
     for text,(lo,hi) in phrases:
         if sum(_text(i).rstrip('。.!！')==normalizeText(text) and 300<_center(i)[0]<1000 and lo<_center(i)[1]<hi for i in strong)!=1:return None
     close=[i for i in strong if _text(i)=='关闭' and 500<_center(i)[0]<800 and 520<_center(i)[1]<610]
@@ -404,6 +534,8 @@ def findMasterLevelUpAdvance(items):
 def classifyEventState(items,flags=None):
     flags=flags or {}
     # Confirmations can cover a still-recognizable support/formation background.
+    if eventTemporaryPartyCancelPrompt(items):
+        return 'formation_cancel_confirmation' if findEventTemporaryPartyCancelConfirmation(items) else 'unsafe_modal'
     if _isStartQuestConfirmation(items):return 'start_confirmation'
     if findSkipConfirmation(items):return 'story_skip_confirmation'
     if flags.get('ap_empty'):return 'ap_empty'
@@ -562,7 +694,10 @@ def findMissionCard(items,number):
     headers=[i for i in items if float(i.score)>=.85 and _text(i)==f'编号{int(number)}' and _center(i)[0]>1100 and 270<_center(i)[1]<540]
     if len(headers)!=1:return None
     y=_center(headers[0])[1]
-    conditions=[i for i in items if float(i.score)>=.85 and 590<_center(i)[0]<1080 and y+5<_center(i)[1]<y+80 and _text(i) not in ('目标进行度','达成报酬') and '后开放下一个主线关卡' not in _text(i) and not re.fullmatch(r'[?？]+',_text(i))]
+    # In the CN mission list, some long condition lines align with the
+    # right-side mission number badge. Allow a small same-row tolerance while
+    # keeping the condition constrained to this card and its progress anchors.
+    conditions=[i for i in items if float(i.score)>=.85 and 590<_center(i)[0]<1080 and y-15<_center(i)[1]<y+80 and _text(i) not in ('目标进行度','达成报酬','新!') and '后开放下一个主线关卡' not in _text(i) and not re.fullmatch(r'[?？]+',_text(i))]
     progress=[i for i in items if float(i.score)>=.85 and _text(i)=='目标进行度' and 590<_center(i)[0]<800 and y+60<_center(i)[1]<y+130]
     count=[i for i in items if float(i.score)>=.85 and re.fullmatch(r'\d+/\d+',_text(i)) and 580<_center(i)[0]<1000 and y+95<_center(i)[1]<y+150]
     if not conditions or len(progress)!=1 or len(count)!=1:return None
@@ -652,7 +787,12 @@ def _eventMap(items):
     positive=[i for i in items if float(i.score)>=.85]
     close=[i for i in positive if _text(i)=='关闭' and _center(i)[0]<220 and _center(i)[1]<100]
     reward=[i for i in positive if _text(i)=='活动报酬' and _center(i)[0]>1100 and _center(i)[1]<100]
-    ap=[i for i in positive if re.fullmatch(r'ap[0-9o]+',_text(i)) and 750<_center(i)[0]<1000 and 180<_center(i)[1]<600]
+    # The compact AP badge on the CN world map is occasionally OCR-scored
+    # just below the general .85 action threshold (observed .825).  For map
+    # classification only, accept this localized cue at .80 because it is
+    # corroborated by the event timer, reward control, close control, and a
+    # numbered locked main-story row.  This does not authorize an AP action.
+    ap=[i for i in items if float(i.score)>=.80 and re.fullmatch(r'ap[0-9o]+',_text(i)) and 750<_center(i)[0]<1000 and 180<_center(i)[1]<600]
     story=[i for i in positive if _text(i)=='无战斗' and _center(i)[0]>1100 and 100<_center(i)[1]<600]
     # This identifies the area list even when its decorated title momentarily
     # disappears from OCR. It does not authorize selecting any absent title.

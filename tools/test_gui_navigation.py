@@ -154,6 +154,11 @@ class CnApTests(unittest.TestCase):
             self.assertEqual(self.detector().getAp(),127)
         for masked in ([('127173',.99)]*2,[('127/73',.99),('127/73',.84)],[('127/73',.99),('12/73',.99)]):
             with patch.object(OCR.EN,'ocr_single_line',side_effect=[('127173',.95)]*2+masked),self.assertRaises(fgoKernel.ScriptStop):self.detector().getAp()
+    def test_world_map_masked_edge_needs_complete_and_inset_agreement(self):
+        from fgoDetect import OCR
+        with patch.object(OCR.EN,'ocr_single_line',side_effect=[('127173',.95)]*2+[('127/73*:',.92)]*2+[('127/73',.99)]*2):self.assertEqual(self.detector().getAp(),127)
+        for inset in ([('127/7',.99)]*2,[('127/73',.84)]*2):
+            with patch.object(OCR.EN,'ocr_single_line',side_effect=[('127173',.95)]*2+[('127/73*:',.92)]*2+inset),self.assertRaises(fgoKernel.ScriptStop):self.detector().getAp()
     def detector(self):
         from fgoDetect import XDetectCN
         d=XDetectCN.__new__(XDetectCN);d.im=numpy.zeros((720,1280,3),numpy.uint8);return d
