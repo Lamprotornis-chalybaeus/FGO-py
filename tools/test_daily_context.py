@@ -152,6 +152,13 @@ class TerminalDirectoryProofTests(unittest.TestCase):
             with patch.object(nav.OCR.ZHS,'detect_and_ocr',return_value=[span]),patch.object(nav.OCR.ZHS,'ocr_single_line',side_effect=answers):
                 rows=nav.labels(Page())
             self.assertEqual(bool(nav.unique(rows,'菜单',(1080,590,1280,710))),expected)
+    def test_menu_text_margin_recovers_tight_crop_without_threshold_change(self):
+        span=SimpleNamespace(text='菜单',score=.792,box=[[1148,633],[1225,633],[1225,673],[1148,673]])
+        page=Page();original=page._crop
+        with patch.object(page,'_crop',side_effect=original) as crop,patch.object(nav.OCR.ZHS,'detect_and_ocr',return_value=[span]),patch.object(nav.OCR.ZHS,'ocr_single_line',side_effect=[('通知',.99)]*2+[('菜单',.991),('菜单',.990)]):
+            rows=nav.labels(page)
+        crop.assert_any_call((1138,625,1238,680))
+        self.assertGreater(nav.unique(rows,'菜单',(1080,590,1280,710)).score,.98)
     def test_weak_known_title_needs_two_agreeing_local_scales(self):
         rows=[label('通知',70,25,80,35),nav.Label('冬木',(863,224,952,275),.805),MENU]
         p=Page(rows)

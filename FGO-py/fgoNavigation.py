@@ -147,7 +147,10 @@ def labels(detect):
             break
     weakMenus=[i for i in result if compact(i.text)=='菜单' and 1080<i.center[0]<1280 and 590<i.center[1]<710 and i.score<.8]
     if len(weakMenus)==1:
-        item=weakMenus[0];line=detect._crop(item.box)
+        # Real fixed MENU text scored .79 when cropped to its OCR box,
+        # but .99 at both scales with actual surrounding button pixels.
+        # Keep the same .85 independent-read threshold and unique proposal.
+        item=weakMenus[0];line=detect._crop((1138,625,1238,680))
         a,sa=OCR.ZHS.ocr_single_line(line)
         b,sb=OCR.ZHS.ocr_single_line(cv2.resize(line,None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC))
         if min(sa,sb)>=.85 and compact(a)==compact(b)=='菜单':
