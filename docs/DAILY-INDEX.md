@@ -43,3 +43,35 @@ Private measurements and local screenshots remain outside the repository. See th
 The context/leading-edge follow-up preserves the original suite and passes 580 tests, with three existing local-integration skips. Six live starting contexts (terminal, event map, friends, shop, formation menu and Free Quest) reach the same indexed target with zero sequential fallbacks, unchanged cache bytes, zero battles and unchanged AP. A fresh complete scan verifies all 75 actual titles in baseline order, with no unresolved gaps: 53 captures/full OCR calls, 715 local OCR calls, 51 scrollbar drags, one list-to-top normalization gesture and one targeted edge check.
 
 The scan took 179.16 seconds, compared with the prior 160.45–172.72-second runs and the 245.99-second sequential baseline. The extra top-edge proof accounts for an additional acquisition/gesture; timings vary with local rendering and OCR. The earlier 74-title proposal was rejected before cache publication by the independent local accuracy gate, and its missing leading-card evidence produced a regression and the bounded top-card fix above. No cached or fabricated title supplied that missing card.
+
+
+## 2026-10-07 scrollbar-control acceptance
+
+The scan first establishes actual overlap with bounded 120–220 pixel content
+steps. Calibrated scrollbar moves begin only after sufficient stable overlap
+samples. A moved frame with missing continuity has at most two bounded reverse
+overlap recoveries. OCR repositioning cannot manufacture endpoint proof: if it
+moves backwards, a finite forward recovery must restore order before adding
+the frame, and the actual recovered thumb must reach the bottom again.
+No-progress inputs have bounded recalculated-input/content recovery; a
+confirmed endpoint is still mandatory. No title is generated from neighbors
+or cached names. All accepted titles retain independent own-AP proof.
+
+Three fresh complete scans passed and returned to the real top:
+
+| Refresh | Acquisitions | Seconds | Sequential fallbacks |
+| --- | ---: | ---: | ---: |
+| 1 | 22 | 90.16 | 0 |
+| 2 | 20 | 84.89 | 0 |
+| 3 | 20 | 85.88 | 0 |
+
+Five indexed positions (top, quarter, middle, three quarters, bottom), A→B→C
+index reuse and Terminal/Free Quest/support-list normalization back to DAILY
+all passed without sequential fallback. One actual indexed daily battle and
+one subsequent source-integration daily battle completed result/return.
+Index locations still require fresh title/AP confirmation before readiness.
+
+The verified weak-menu case had approximately .79 OCR from a tight text box;
+the fixed surrounding button band produced approximately .99 at both scales.
+The correction changes crop context, not the .85 local threshold or the
+independent MENU-template requirement. It is covered by a synthetic regression.

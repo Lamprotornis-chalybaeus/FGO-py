@@ -1,5 +1,6 @@
 # CN development status
 
+Current archive acceptance: see the dated 2026-10-07 section below; earlier baselines and test counts are historical.
 Status: **Development / Experimental**. Development branch: `cn-dev` on the fork; battle-cycle state machine merged into `cn-dev` by fast-forward to `5e6b212c6b28f801f9836f80b5bebb4f68a47fea`; retained fix branch: `fix/battle-cycle-state-machine`. Last feature baseline: `2db97ad2c90f10d88f9091b12d0b5a55c54c5c1e`. Upstream baseline: `7b0cb32ff8ee8207715f4ea1084c1a86b5412d1f` (v21.1.1).
 
 ## Implemented
@@ -61,3 +62,49 @@ Offline validation: 456 cases, 453 executed successfully and the original three 
 **Latest candidate code HEAD `f28705f9aefac3bf318f5525ef4c07e81b0f116b` completed and passed the fresh post-hardening gate: clean1 PASS, continuous5 PASS, continuous10 PASS.** Latest sixteen battles: wins=16, defeats=0, Fused=0, FlowTimeout=0, duplicate turn=0; started/completed statistics agree and each queue ends empty. Template zero-AP smoke PASS: a real existing private template was confirmed in three fresh frames, followed by one 80ms touch reaching FORMATION, then a safe return without starting a quest. AP change was zero. Three initial entries used FORMATION and thirteen CN repeats took the direct route. This latest gate supersedes the earlier pending acceptance requirement. Repeated bond-level-up instances and the template/direct-route combination remain offline-only coverage. The operator's local report retains the exact revision and per-battle transitions; private images, templates and raw traces are not published.
 
 The battle-cycle state machine was merged into `cn-dev` by fast-forward to `5e6b212c6b28f801f9836f80b5bebb4f68a47fea`. The fix branch is retained; master remains unchanged. This follow-up changes Markdown only. Zero apples, quartz, AP recovery and revival are required. A failed stage stops later stages. Longer-term stability remains under observation.
+
+
+## 2026-10-07 archive acceptance (current; earlier snapshots are historical)
+
+Battle progress candidate `5604635e2f41689ab438be1447b7b8551c34f95d` passed a fresh clean single battle and five
+uninterrupted repeated Fuyuki X-C battles. The user explicitly cancelled the
+ten-battle stage for this round; it is not reported as tested. Both gates used
+the existing party and first-support policy, with no fruit, quartz, AP item or
+revival. Final gate counters: started=6, completed=6, wins=6, defeats=0;
+Fused=0, FlowTimeout=0, duplicate outer AI turns=0. Each stage returned to a
+positively recognized quest list. Queue/counter invariants also pass offline.
+
+P0: **mitigated / awaiting longer-term observation**, not permanently fixed.
+Historical support, formation/start, result, continuous-route, bond-overlay and
+animation-watchdog failures remain relevant evidence and are retained above.
+
+The old battle watchdog counted from completed turn inputs even through real
+animation/loading progress. `BattleProgressTracker` now separates a 60-second
+no-progress stall from a 180-second phase hard bound and the unchanged
+30-minute battle hard bound. Fresh state changes, positively gated loading
+signatures and meaningful sampled battlefield motion renew only the stall
+clock. Pixel noise, repeated acquisitions and background motion cannot extend
+the phase hard bound. Existing outer turn-episode rearm and AI strategy are
+preserved. Failure diagnostics identify the current turn, phase, last positive
+state and last physical input; sampled pixels/signatures stay in memory.
+
+A recovered already-entered daily battle won, then exposed a separate 20-second
+post-friend sub-wait. Actual quest-list return loading took approximately
+24 seconds. The fix allows one dismissal and a bounded 30-second stall / up to
+45-second wait, always capped by the existing 60-second settlement parent.
+Persistent loading still stops. No input retry was added.
+
+An ensuing daily integration battle won but exposed a clipped CN bond-level-up
+label/footer, which the observer classified UNKNOWN until its bounded stall.
+The result-only follow-up `c5a19a53ff13e39e5c71e9ae2d7dcaf419b95ca7` adds four fixed-label context proofs at the
+unchanged .85 threshold. Local static evidence, synthetic positive/negative
+regressions, recovery of that existing result and fresh daily smoke validate
+this additional path. The six X-C gates above predate this narrow detector
+follow-up; battle AI/tracker/turn-rearm code did not change afterwards.
+
+Offline acceptance: **626 cases, 623 passed and 3 existing local-integration
+skips**; compileall, whitespace checks and AI strategy AST preservation pass.
+Source integration smoke located one indexed daily quest and completed one
+battle/result/return without AP restoration. Candidate portable self-check
+passed with frozen GUI subsystem, zero battles and zero device operations.
+Private raw evidence is excluded from Git, CI artifacts and release assets.
