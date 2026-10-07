@@ -34,11 +34,12 @@ class World:
         d._dailyVerifiedAP={**getattr(d,'_dailyVerifiedAP',{}),**{q._title_key(e.title):e.discovered_position[2]+75 for e in result}}
         return result
     def swipe(self,d,up,distance=180):
-        indexed.count('scrollSwipes');self.swipes.append(up)
+        self.swipes.append(up)
         if not self.stalled:self.top=max(99,min(535,self.top+(-distance if up else distance)/self.scale))
     def drag(self,start,end):
         self.drags.append((start,end))
-        self.top=max(99,min(535,self.top+(end[1]-start[1]) if start[0]==1258 else self.top+(start[1]-end[1])/self.scale))
+        if not self.stalled:
+            self.top=max(99,min(535,self.top+(end[1]-start[1]) if start[0]==1258 else self.top+(start[1]-end[1])/self.scale))
     @contextmanager
     def patched(self,**extra):
         with TemporaryDirectory() as temp,ExitStack() as stack:

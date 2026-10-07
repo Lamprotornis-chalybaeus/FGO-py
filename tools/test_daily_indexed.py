@@ -66,6 +66,28 @@ class ScanTests(unittest.TestCase):
     def test_forward_complete_and_restore_top(self):
         with World().patched() as w:
             result=indexed.scan();self.assertEqual(len(result['entries']),w.n);self.assertTrue(result['complete']);self.assertEqual(w.top,99);self.assertFalse(any(w.swipes));w.touch.assert_not_called()
+    def test_scan_recovers_single_swallowed_input_without_outer_stall_counter(self):
+        with World().patched() as w:
+            original=q._swipe_input_only;calls=[]
+            def swallow_first(d,up,distance=180):
+                calls.append((up,distance))
+                if len(calls)>1:return original(d,up,distance)
+            with patch.object(q,'_swipe_input_only',side_effect=swallow_first):result=indexed.scan()
+            self.assertTrue(result['complete']);self.assertEqual(len(result['entries']),w.n)
+            self.assertEqual(result['metrics']['noProgressAttempts'],1)
+            self.assertEqual(result['metrics']['recoveredNoProgress'],1)
+            self.assertEqual(len(calls),len(w.swipes)+1);w.touch.assert_not_called()
+    def test_full_scan_recovers_one_swallowed_scrollbar_drag(self):
+        with World().patched() as w:
+            original=q._menuScrollbarDrag;calls=[]
+            def swallow_first(start,end):
+                calls.append((start,end))
+                if len(calls)>1:return original(start,end)
+            with patch.object(q,'_menuScrollbarDrag',side_effect=swallow_first):result=indexed.scan()
+            self.assertTrue(result['complete']);self.assertEqual(len(result['entries']),w.n)
+            self.assertGreaterEqual(result['metrics']['noProgressAttempts'],1)
+            self.assertGreaterEqual(result['metrics']['recoveredNoProgress'],1)
+            self.assertGreater(len(calls),1);w.touch.assert_not_called()
     def test_scan_over_ten_pages(self):
         with World(40).patched() as w:
             result=indexed.scan();self.assertGreater(len(w.swipes)+len(w.drags),10);self.assertEqual(len(result['entries']),40)
@@ -80,8 +102,8 @@ class ScanTests(unittest.TestCase):
     def test_stalled_forward_scan_refuses_partial(self):
         with World().patched() as w:
             w.stalled=True
-            with self.assertRaisesRegex(q.ScriptStop,'未向末端'):indexed.scan()
-            self.assertEqual(len(w.swipes),1)
+            with self.assertRaisesRegex(q.ScriptStop,'连续三次无进展且未到列表末端'):indexed.scan()
+            self.assertEqual(len(w.swipes),2)
     def test_reuses_only_calibration_not_cached_observations(self):
         with World().patched() as w:
             first=indexed.scan();second=indexed.scan();self.assertTrue(second['reusedCalibration']);self.assertEqual(len(second['entries']),w.n)

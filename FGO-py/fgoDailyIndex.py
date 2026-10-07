@@ -45,6 +45,10 @@ class DailyScanMetrics:
     microAdjustments:int=0
     quantizedAccepts:int=0
     scrollRecoveries:int=0
+    noProgressAttempts:int=0
+    recoveredNoProgress:int=0
+    contentFallbacks:int=0
+    endpointRecoveries:int=0
     fallbacks:int=0
     elapsedSeconds:float=0
 
@@ -58,6 +62,10 @@ class DailyScrollResult:
     continuity:bool|None=None
     quantized:bool=False
     corrections:int=0
+    attempts:int=1
+    recovered_no_progress:bool=False
+    used_content_fallback:bool=False
+    reached_endpoint:bool=False
 
 @dataclass(frozen=True)
 class DailyIndexRecord:

@@ -36,13 +36,90 @@ class AdvanceScanTests(unittest.TestCase):
         self.assertTrue(result.continuity);self.assertAlmostEqual(result.error,-6,delta=1)
         self.assertEqual(len(w.drags),1)
 
-    def test_stalled_thumb_fails_even_if_same_content_overlaps(self):
-        w=World();acc=w.calibrated()
-        with w.patched() as world,patch.object(q,'_menuScrollbarDrag') as drag:
+    def test_first_drag_no_move_second_recalculated_drag_moves(self):
+        w=World();acc=w.calibrated();calls=[]
+        def swallow_first(start,end):
+            calls.append((start,end))
+            if len(calls)>1:w.drag(start,end)
+        with w.patched() as world,patch.object(q,'_menuScrollbarDrag',side_effect=swallow_first):
+            d=world.capture();entries=world.entries(d);metrics=DailyScanMetrics()
+            with indexed.measuring(metrics):
+                d,new,result=indexed.advanceScan(d,entries,acc,time.monotonic()+10,100,target_thumb=112)
+            self.assertTrue(result.continuity);self.assertEqual(result.attempts,2)
+            self.assertTrue(result.recovered_no_progress);self.assertFalse(result.used_content_fallback)
+            self.assertEqual(metrics.noProgressAttempts,1);self.assertEqual(metrics.recoveredNoProgress,1)
+            self.assertEqual(len(calls),2);self.assertEqual(len(world.swipes),0);world.touch.assert_not_called()
+
+    def test_two_drag_misses_recover_with_one_content_swipe(self):
+        w=World();acc=w.calibrated();calls=[]
+        def swallow(start,end):calls.append((start,end))
+        with w.patched() as world,patch.object(q,'_menuScrollbarDrag',side_effect=swallow):
+            d=world.capture();entries=world.entries(d);metrics=DailyScanMetrics()
+            with indexed.measuring(metrics):
+                d,new,result=indexed.advanceScan(d,entries,acc,time.monotonic()+10,100,target_thumb=112)
+            self.assertTrue(result.continuity);self.assertEqual(result.attempts,3)
+            self.assertTrue(result.recovered_no_progress);self.assertTrue(result.used_content_fallback)
+            self.assertEqual(metrics.noProgressAttempts,2);self.assertEqual(metrics.contentFallbacks,1)
+            self.assertEqual(len(calls),2);self.assertEqual(len(world.swipes),1);world.touch.assert_not_called()
+
+    def test_no_progress_at_confirmed_bottom_returns_endpoint(self):
+        w=World();acc=w.calibrated();w.top=533.;prior=w.capture();prior_entries=w.entries(prior)
+        acc.add_frame(prior_entries,(533.,573.),999,prior._dailyVerifiedAP,forward=True);w.top=535.
+        with w.patched() as world:
+            d=world.capture();entries=world.entries(d);metrics=DailyScanMetrics()
+            with indexed.measuring(metrics):
+                d,new,result=indexed.advanceScan(d,entries,acc,time.monotonic()+10,100,target_thumb=535)
+            self.assertTrue(result.reached_endpoint);self.assertEqual(result.moved,0)
+            self.assertEqual(len(world.swipes),0);world.touch.assert_not_called()
+
+    def test_first_missed_drag_near_bottom_uses_strict_endpoint_recovery(self):
+        w=World();acc=w.calibrated();w.top=533.;prior=w.capture();prior_entries=w.entries(prior)
+        acc.add_frame(prior_entries,(533.,573.),999,prior._dailyVerifiedAP,forward=True);calls=[]
+        def swallow_once(start,end):
+            calls.append((start,end))
+            if len(calls)>1:w.drag(start,end)
+        with w.patched() as world,patch.object(q,'_menuScrollbarDrag',side_effect=swallow_once):
+            d=world.capture();entries=world.entries(d);metrics=DailyScanMetrics()
+            with indexed.measuring(metrics):
+                d,new,result=indexed.advanceScan(d,entries,acc,time.monotonic()+10,100,target_thumb=535)
+            self.assertTrue(result.reached_endpoint);self.assertTrue(result.recovered_no_progress)
+            self.assertEqual(metrics.endpointRecoveries,1);self.assertEqual(len(world.swipes),0)
+            world.touch.assert_not_called()
+
+    def test_three_no_progress_attempts_fail_without_publishing_partial_scan(self):
+        w=World();w.stalled=True;acc=w.calibrated();calls=[]
+        with w.patched() as world,patch.object(q,'_menuScrollbarDrag',side_effect=lambda *a:calls.append(a)):
+            d=world.capture();entries=world.entries(d);metrics=DailyScanMetrics()
+            with indexed.measuring(metrics):
+                with self.assertRaisesRegex(q.ScriptStop,'连续三次无进展且未到列表末端'):
+                    indexed.advanceScan(d,entries,acc,time.monotonic()+10,100,target_thumb=112)
+            self.assertEqual(len(calls),2);self.assertEqual(len(world.swipes),1)
+            self.assertEqual(metrics.noProgressAttempts,3);world.touch.assert_not_called()
+
+    def test_content_fallback_must_still_pass_continuity_or_recover(self):
+        w=World();acc=w.calibrated();calls=[]
+        with w.patched() as world,patch.object(q,'_menuScrollbarDrag',side_effect=lambda *a:calls.append(a)),\
+             patch.object(indexed,'_continuous',return_value=False) as continuity:
             d=world.capture();entries=world.entries(d)
-            with self.assertRaisesRegex(q.ScriptStop,'未向末端移动'):
-                indexed.advanceScan(d,entries,acc,time.monotonic()+10,100,target_thumb=139)
-            drag.assert_called_once();world.touch.assert_not_called()
+            with self.assertRaisesRegex(q.ScriptStop,'相邻屏连续覆盖未恢复'):
+                indexed.advanceScan(d,entries,acc,time.monotonic()+10,100,target_thumb=112)
+            self.assertGreaterEqual(continuity.call_count,2)
+            self.assertGreaterEqual(len(calls),2);self.assertEqual(len(world.swipes),1);world.touch.assert_not_called()
+
+    def test_no_progress_retries_read_and_publish_one_candidate_frame(self):
+        w=World();acc=w.calibrated();calls=[];reads=[]
+        def swallow_first(start,end):
+            calls.append((start,end))
+            if len(calls)>1:w.drag(start,end)
+        original=indexed._readPage
+        def read_once(frame,n):
+            reads.append((id(frame.im),n));return original(frame,n)
+        with w.patched() as world,patch.object(q,'_menuScrollbarDrag',side_effect=swallow_first),\
+             patch.object(indexed,'_readPage',side_effect=read_once):
+            d=world.capture();entries=world.entries(d)
+            result=indexed.advanceScan(d,entries,acc,time.monotonic()+10,100,target_thumb=112)
+            self.assertEqual(len(reads),1);self.assertEqual(reads[0][1],100)
+            self.assertEqual(result[2].attempts,2);world.touch.assert_not_called()
 
     def test_large_skip_recovers_to_last_verified_card(self):
         w=World();acc=w.calibrated();calls=[]

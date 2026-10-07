@@ -213,41 +213,184 @@ def dragTo(target,deadline,detect=None):
     """Compatibility wrapper; ordinary positioning is approximate, never an endpoint proof."""
     return seekApprox(target,deadline,detect)[0]
 
+def _freshScrollState(deadline,expected_height):
+    """Re-read a stopped gesture with a fresh DAILY proof and stable geometry."""
+    import fgoQuickQuest as q
+    _checkDeadline(deadline);d=capture();safe(d);thumb=q._scrollbar(d.im)
+    if abs((thumb[1]-thumb[0])-expected_height)>2:
+        raise ScriptStop('每日任务滚动条几何发生变化，已停止恢复')
+    return d,thumb
+
+def _nearBottom(thumb):
+    gap=574.-thumb[1]
+    return 0<gap<=3
+
 def advanceScan(d,entries,acc,deadline,frame_index,*,target_thumb=None,target_absolute_y=None,
                 target_local_y=185,distance=280):
     """Advance one screen and accept the observed position only with forward continuity."""
     import fgoQuickQuest as q
-    safe(d);previous=q._scrollbar(d.im);previous_top=previous[0]
+    safe(d);previous=q._scrollbar(d.im);previous_top=previous[0];height=previous[1]-previous[0]
+    original_target=None if target_thumb is None else float(target_thumb)
+    attempts=1;recovered_no_progress=False;used_content_fallback=False
+    reached_endpoint=False;endpoint_attempted=False
     if target_thumb is None:
-        q._swipe_input_only(d,False,distance);d=capture();safe(d)
+        q._swipe_input_only(d,False,distance);count('scrollSwipes');d=capture();safe(d)
         observed=q._scrollbar(d.im);result=DailyScrollResult(float(observed[0]),float(observed[0]),0.,
                 float(observed[0]-previous_top),'scan-swipe')
     else:
-        requested=float(target_thumb);bottom_top=575.-(previous[1]-previous[0])
+        requested=original_target;bottom_top=575.-height
         if requested>=bottom_top-.1:
-            d,result=seekEndpoint('bottom',deadline,d)
-            result=replace(result,requested_thumb=requested,error=result.actual_thumb-requested,mode='scan-endpoint')
+            d,result=_moveThumb(bottom_top,'scan-endpoint',deadline,d)
+            result=replace(result,requested_thumb=requested,error=result.actual_thumb-requested)
         else:
             d,result=seekApprox(requested,deadline,d,absolute_y=target_absolute_y,
                                 scroll_scale=acc.scroll_scale,local_y=target_local_y,mode='scan')
         observed=q._scrollbar(d.im)
+
+    observed=q._scrollbar(d.im);moved=observed[0]-previous_top
+    if observed[1]>=574:
+        reached_endpoint=True
+    elif moved<=.5:
+        # A single swallowed/settling input is not evidence that the list is
+        # stuck. Re-capture before any retry so page, geometry and thumb are
+        # independently re-confirmed.
+        count('noProgressAttempts')
+        stalled_top=observed[0]
+        d,fresh_thumb=_freshScrollState(deadline,height)
+        observed=fresh_thumb;moved=observed[0]-previous_top
+        logger.info('[DailyScroll] no-progress stage=1 captured=%.1f fresh=%.1f unchanged=%s bottom=%s',
+                    stalled_top,observed[0],abs(observed[0]-stalled_top)<=.5,observed[1]>=574)
+        if observed[1]>=574:
+            reached_endpoint=True
+        elif moved>.5:
+            # The first gesture landed after its immediate capture.
+            recovered_no_progress=True;count('recoveredNoProgress')
+        else:
+            # Near the endpoint, use the strict endpoint detector before
+            # spending the bounded content-swipe fallback.
+            if _nearBottom(observed):
+                attempts=2;endpoint_attempted=True
+                try:
+                    d,endpoint_result=seekEndpoint('bottom',deadline,d)
+                    observed=q._scrollbar(d.im);moved=observed[0]-previous_top
+                    if observed[1]>=574:
+                        reached_endpoint=True
+                        recovered_no_progress=True;count('recoveredNoProgress');count('endpointRecoveries')
+                        target=original_target if original_target is not None else endpoint_result.requested_thumb
+                        result=replace(endpoint_result,requested_thumb=target,
+                                       actual_thumb=observed[0],error=observed[0]-target,
+                                       mode='scan-endpoint')
+                except ScriptStop as error:
+                    if '每日任务列表底部端点未能正向确认' not in str(error):raise
+                    d,observed=_freshScrollState(deadline,height);moved=observed[0]-previous_top
+                    if observed[1]>=574:reached_endpoint=True
+                    elif moved>.5:
+                        recovered_no_progress=True;count('recoveredNoProgress')
+            if not reached_endpoint and moved<=.5:
+                # One recalculated scrollbar attempt. _moveThumb derives the
+                # input from the fresh thumb and current drag-gain estimate.
+                attempts=2
+                if not _nearBottom(observed):
+                    if original_target is None:
+                        retry_target=min(575.-height,observed[0]+8.)
+                        d,retry_result=_moveThumb(retry_target,'scan-retry',deadline,d,tolerance=.5)
+                    else:
+                        d,retry_result=seekApprox(original_target,deadline,d,absolute_y=target_absolute_y,
+                            scroll_scale=acc.scroll_scale,local_y=target_local_y,mode='scan-retry')
+                    observed=q._scrollbar(d.im);moved=observed[0]-previous_top
+                    if observed[1]>=574:
+                        reached_endpoint=True;recovered_no_progress=True;count('recoveredNoProgress')
+                    elif moved>.5:
+                        recovered_no_progress=True;count('recoveredNoProgress');result=retry_result
+                    else:
+                        count('noProgressAttempts')
+                        stalled_top=observed[0]
+                        d,observed=_freshScrollState(deadline,height);moved=observed[0]-previous_top
+                        logger.info('[DailyScroll] no-progress stage=2 captured=%.1f fresh=%.1f unchanged=%s bottom=%s',
+                                    stalled_top,observed[0],abs(observed[0]-stalled_top)<=.5,observed[1]>=574)
+                        if observed[1]>=574:
+                            reached_endpoint=True;recovered_no_progress=True;count('recoveredNoProgress')
+                        elif moved>.5:
+                            recovered_no_progress=True;count('recoveredNoProgress')
+                if not reached_endpoint and _nearBottom(observed) and not endpoint_attempted:
+                    endpoint_attempted=True
+                    try:
+                        d,endpoint_result=seekEndpoint('bottom',deadline,d)
+                        observed=q._scrollbar(d.im);moved=observed[0]-previous_top
+                        if observed[1]>=574:
+                            reached_endpoint=True
+                            recovered_no_progress=True;count('recoveredNoProgress');count('endpointRecoveries')
+                            target=original_target if original_target is not None else endpoint_result.requested_thumb
+                            result=replace(endpoint_result,requested_thumb=target,actual_thumb=observed[0],
+                                           error=observed[0]-target,mode='scan-endpoint')
+                    except ScriptStop as error:
+                        if '每日任务列表底部端点未能正向确认' not in str(error):raise
+                        d,observed=_freshScrollState(deadline,height);moved=observed[0]-previous_top
+                        if observed[1]>=574:
+                            reached_endpoint=True;recovered_no_progress=True;count('recoveredNoProgress')
+                        elif moved>.5:
+                            recovered_no_progress=True;count('recoveredNoProgress')
+            if not reached_endpoint and moved<=.5:
+                # Last bounded alternative: move the list content once, then
+                # require a fresh thumb movement and the usual card continuity.
+                attempts=3;used_content_fallback=True;count('contentFallbacks')
+                fallback_start=observed[0]
+                q._swipe_input_only(d,False,max(120,min(180,int(distance/2))));count('scrollSwipes')
+                d=capture();safe(d);observed=q._scrollbar(d.im)
+                if abs((observed[1]-observed[0])-height)>2:
+                    raise ScriptStop('每日任务滚动条几何发生变化，已停止恢复')
+                moved=observed[0]-previous_top
+                if observed[1]>=574:
+                    reached_endpoint=True;recovered_no_progress=True;count('recoveredNoProgress')
+                elif observed[0]-fallback_start>.5:
+                    recovered_no_progress=True;count('recoveredNoProgress')
+                else:
+                    count('noProgressAttempts')
+                    stalled_top=observed[0]
+                    d,observed=_freshScrollState(deadline,height);moved=observed[0]-previous_top
+                    logger.info('[DailyScroll] no-progress stage=3 captured=%.1f fresh=%.1f unchanged=%s bottom=%s',
+                                stalled_top,observed[0],abs(observed[0]-stalled_top)<=.5,observed[1]>=574)
+                    if observed[1]>=574:
+                        reached_endpoint=True;recovered_no_progress=True;count('recoveredNoProgress')
+                    elif observed[0]-fallback_start>.5:
+                        recovered_no_progress=True;count('recoveredNoProgress')
+                if not reached_endpoint and moved<=.5:
+                    raise ScriptStop('每日任务滚动连续三次无进展且未到列表末端，未发布列表')
+
     d,new_entries=_readPage(d,frame_index);observed=q._scrollbar(d.im)
-    moved=observed[0]-previous_top;continuity=_continuous(acc,new_entries,observed)
-    if moved<=.5 and result.mode=='scan-endpoint' and observed[1]<574:
-        # A page observation can itself perform bounded OCR recovery and move
-        # away from the bottom. Re-establish the strict endpoint once, then
-        # read the endpoint frame; never publish the intervening stale page.
+    moved=observed[0]-previous_top
+    if reached_endpoint and observed[1]<574:
+        # OCR page confirmation may perform bounded recovery. Re-establish the
+        # endpoint and read that endpoint page before the caller can publish.
         d,retry=seekEndpoint('bottom',deadline,d);d,new_entries=_readPage(d,frame_index);observed=q._scrollbar(d.im)
-        moved=observed[0]-previous_top;continuity=_continuous(acc,new_entries,observed)
-        result=replace(retry,requested_thumb=result.requested_thumb,actual_thumb=observed[0],
-                       error=observed[0]-result.requested_thumb,mode='scan-endpoint',corrections=1)
-        count('scrollRecoveries')
-    if moved<=.5:raise ScriptStop('每日任务滚动条未向末端移动，未发布列表')
+        moved=observed[0]-previous_top
+        if observed[1]<574:raise ScriptStop('每日任务底部端点复核后丢失，未发布列表')
+        count('endpointRecoveries')
+        result=replace(retry,requested_thumb=original_target if original_target is not None else retry.requested_thumb,
+                       actual_thumb=observed[0],error=observed[0]-(original_target if original_target is not None else retry.requested_thumb),
+                       mode='scan-endpoint')
+    reached_endpoint=observed[1]>=574
+    continuity=_continuous(acc,new_entries,observed)
+    if moved<=.5 and not reached_endpoint:
+        raise ScriptStop('每日任务滚动连续三次无进展且未到列表末端，未发布列表')
     if moved>.5 and continuity:
         result=replace(result,actual_thumb=observed[0],error=observed[0]-result.requested_thumb,moved=moved,
-                       continuity=True,corrections=result.corrections)
-        logger.info('[DailyScroll] mode=%s requested=%.1f actual=%.1f error=%.1f moved=%.1f overlap=PASS continuity=PASS accepted=True',
-                    result.mode,result.requested_thumb,result.actual_thumb,result.error,result.moved)
+                       continuity=True,corrections=max(result.corrections,attempts-1),attempts=attempts,
+                       recovered_no_progress=recovered_no_progress,used_content_fallback=used_content_fallback,
+                       reached_endpoint=reached_endpoint)
+        logger.info('[DailyScroll] mode=%s requested=%.1f actual=%.1f error=%.1f moved=%.1f overlap=PASS continuity=PASS accepted=True attempts=%s noProgressRetry=%s recovered=%s contentFallback=%s reachedEndpoint=%s',
+                    result.mode,result.requested_thumb,result.actual_thumb,result.error,result.moved,result.attempts,
+                    max(0,result.attempts-1),result.recovered_no_progress,result.used_content_fallback,result.reached_endpoint)
+        return d,new_entries,result
+    if reached_endpoint and moved<=.5:
+        if not continuity:
+            raise ScriptStop('每日任务底部页与上一屏内容不连续，未发布列表')
+        result=replace(result,actual_thumb=observed[0],error=observed[0]-result.requested_thumb,moved=0.,
+                       continuity=continuity,attempts=attempts,recovered_no_progress=recovered_no_progress,
+                       used_content_fallback=used_content_fallback,reached_endpoint=True)
+        logger.info('[DailyScroll] mode=%s requested=%.1f actual=%.1f error=%.1f moved=0.0 overlap=PASS continuity=PASS accepted=True attempts=%s noProgressRetry=%s recovered=%s contentFallback=%s reachedEndpoint=True',
+                    result.mode,result.requested_thumb,result.actual_thumb,result.error,result.attempts,
+                    max(0,result.attempts-1),result.recovered_no_progress,result.used_content_fallback)
         return d,new_entries,result
     old_keys=acc.frame_order[-1][1] if acc.frame_order else []
     old_last=old_keys[-1] if old_keys else None
@@ -262,7 +405,7 @@ def advanceScan(d,entries,acc,deadline,frame_index,*,target_thumb=None,target_ab
                                   scroll_scale=acc.scroll_scale,local_y=desired_y,mode='scan-recovery')
         else:
             # Before calibration exists, bounded reverse content swipes restore a known overlap.
-            q._swipe_input_only(d,True,max(60,int(distance/(2**(retry+1)))));d=capture();safe(d)
+            q._swipe_input_only(d,True,max(60,int(distance/(2**(retry+1)))));count('scrollSwipes');d=capture();safe(d)
             thumb=q._scrollbar(d.im)
             recovery=DailyScrollResult(float(thumb[0]),float(thumb[0]),0.,float(thumb[0]-observed[0]),'scan-recovery')
         recovery_count+=1;d,new_entries=_readPage(d,frame_index);observed=q._scrollbar(d.im)
@@ -271,9 +414,12 @@ def advanceScan(d,entries,acc,deadline,frame_index,*,target_thumb=None,target_ab
             count('scrollRecoveries')
             result=replace(recovery,requested_thumb=recovery.requested_thumb,actual_thumb=observed[0],
                            error=observed[0]-recovery.requested_thumb,moved=moved,mode='scan-recovery',
-                           continuity=True,corrections=recovery_count)
-            logger.info('[DailyScroll] mode=scan-recovery requested=%.1f actual=%.1f error=%.1f moved=%.1f overlap=PASS continuity=PASS accepted=True corrections=%s',
-                        result.requested_thumb,result.actual_thumb,result.error,result.moved,recovery_count)
+                           continuity=True,corrections=recovery_count,attempts=attempts,
+                           recovered_no_progress=recovered_no_progress,used_content_fallback=used_content_fallback,
+                           reached_endpoint=False)
+            logger.info('[DailyScroll] mode=scan-recovery requested=%.1f actual=%.1f error=%.1f moved=%.1f overlap=PASS continuity=PASS accepted=True corrections=%s attempts=%s noProgressRetry=%s recovered=%s contentFallback=%s reachedEndpoint=False',
+                    result.requested_thumb,result.actual_thumb,result.error,result.moved,recovery_count,result.attempts,
+                    max(0,result.attempts-1),result.recovered_no_progress,result.used_content_fallback)
             return d,new_entries,result
     raise ScriptStop('每日任务相邻屏连续覆盖未恢复，未发布完整列表')
 
@@ -446,7 +592,7 @@ def scan():
     with measuring(metrics):
         d=capture()
         if not q._isDailyPage(d):q.openDailyPageCN();d=capture()
-        safe(d);d,_=seekEndpoint('top',deadline,d);stride=280;stable=0;stalled=0;n=0
+        safe(d);d,_=seekEndpoint('top',deadline,d);stride=280;stable=0;n=0
         firstPage=_readScanTop(d,n,deadline);d=firstPage[0];pending_entries=firstPage[1]
         while True:
             _checkDeadline(deadline);entries=pending_entries;thumb=q._scrollbar(d.im)
@@ -481,8 +627,7 @@ def scan():
                 d,pending_entries,_=advanceScan(d,entries,acc,deadline,n,
                     target_thumb=thumb[0]+shift/acc.scroll_scale,target_absolute_y=anchor_absolute,target_local_y=target_local)
             else:d,pending_entries,_=advanceScan(d,entries,acc,deadline,n,distance=stride)
-            new=q._scrollbar(d.im);stalled=stalled+1 if new[0]<=thumb[0]+1 else 0
-            if stalled>=3:raise ScriptStop('每日任务滚动条连续未向末端移动，未发布不完整列表')
+            # advanceScan is the sole owner of bounded no-progress handling.
         if not acc.scroll_scale:raise ScriptStop('每日任务没有足够重叠样本校准滚动条比例，未发布完整列表')
         top_key=min(acc.absolute,key=acc.absolute.get)
         first_observation=acc.observations_by_title[top_key][0]
