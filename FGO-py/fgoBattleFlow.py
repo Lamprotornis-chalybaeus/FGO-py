@@ -136,7 +136,12 @@ class BattleFlow:
     def fail(self,exception,kind,expected,elapsed,*,from_state=None):
         evidence=self.observation.evidence if self.observation else ()
         summary=self.trace.failure(kind,expected,elapsed,evidence,from_state or getattr(self,'waitFrom',None))
-        raise exception(f'Flow {kind}: from={summary["from"]} expected={"|".join(summary["expected"])} elapsed={elapsed:.2f} last_input={summary["last_input"]} evidence={evidence}')
+        context=''
+        if 'turn' in summary:
+            context=(f' battle={summary["battle_sequence"]} turn={summary["turn"]} phase={summary["phase"]}'
+                     f' last_positive={summary["last_positive_state"]} sinceProgress={summary["elapsed_since_progress"]:.2f}'
+                     f' phaseElapsed={summary["elapsed_since_turn_input"]:.2f} last_physical_input={summary["last_physical_input"]}')
+        raise exception(f'Flow {kind}: from={summary["from"]} expected={"|".join(summary["expected"])} elapsed={elapsed:.2f} last_input={summary["last_input"]} evidence={evidence}{context}')
     def waitForFlowState(self,expected,*,timeout,transition_name,allowed_intermediate=(),on_skill_error=None,accept=None,stall_timeout=None,progress_signature=None):
         expected=set(expected);allowed=set(allowed_intermediate);start=self.clock()
         if self.deadline is not None:timeout=min(timeout,max(0,self.deadline-start))

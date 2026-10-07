@@ -35,6 +35,7 @@ from fgoImageListener import ImageListener
 from fgoFriendTemplates import FriendTemplateStore
 from fgoBattleFlow import BattleCycle,BattleFlow,BattleFlowState,FriendSelectionResult,FlowTimeout
 from fgoFlowTrace import FlowTrace
+from fgoBattleProgress import BattleProgressTracker
 from fgoProgress import BattleCompleted
 from fgoPaths import paths
 from fgoLogging import getLogger,logit
@@ -551,16 +552,24 @@ class Battle:
         self.turnProc=turnClass()
     totalTimeout=30*60
     unknownTimeout=60
+    phaseHardTimeout=180
     def __call__(self):
         self.start=time.time();self.defeated=False
         self.flow=getattr(self,'flow',None) or BattleFlow(lambda:Detect(0,0),schedule,
             trace=FlowTrace(root=paths.logRoot/'flow'),network=handleNetworkError)
         flow=self.flow;S=BattleFlowState
-        deadline=flow.clock()+self.totalTimeout;progress=flow.clock()
+        deadline=flow.clock()+self.totalTimeout
+        tracker=BattleProgressTracker(clock=flow.clock,stall_timeout=self.unknownTimeout,phase_hard_timeout=self.phaseHardTimeout)
         previousDeadline=flow.deadline;flow.deadline=deadline
         token=_activeBattleFlow.set(flow)
         inputToken=INPUT_OBSERVER.set(flow.deviceInput)
-        lastProgressState=flow.trace.state
+        previousContext=flow.trace.battle_context
+        progressLogged=-float('inf')
+        def progressEvent(event):
+            nonlocal progressLogged
+            flow.trace.battle_context=tracker.snapshot()
+            if event and (event not in {'loading_progress','unknown_visual_progress'} or flow.clock()-progressLogged>=5):
+                flow.trace.battleProgress(event,tracker.snapshot());progressLogged=flow.clock()
         # Only outer observations after the complete skill/card phase may
         # rearm. Nested skill animations cannot create another AI turn.
         turnArmed=True
@@ -568,6 +577,9 @@ class Battle:
         try:
             while flow.clock()<deadline:
                 observation=flow.observe();state=observation.state
+                progressEvent(tracker.observe(observation,flow.detect))
+                if state not in {S.BATTLE_RESULT,S.DEFEATED} and tracker.hard_expired():
+                    flow.fail(FlowTimeout,'TIMEOUT battle phase',{S.TURN_BEGIN,S.BATTLE_RESULT,S.DEFEATED},flow.clock()-tracker.phase_started,from_state=tracker.last_positive_state)
                 if state==S.UNKNOWN and not turnArmed:
                     capture=observation.capture_sequence
                     if capture is not None and capture!=departureCapture:
@@ -580,15 +592,13 @@ class Battle:
                 if state==S.TURN_BEGIN and turnArmed:
                     turnArmed=False
                     unknownDeparture=0;departureCapture=None
-                    self.turn+=1;progress=flow.clock();lastProgressState=state.name
+                    self.turn+=1;progressEvent(tracker.mark_turn_begin(self.turn))
                     try:self.turnProc(self.turn)
                     except BattlePhaseEnded as ended:state=ended.state
                     else:
-                        # Completed skill/card inputs are real progress. The
-                        # unchanged 60s unknown wait begins after those inputs,
-                        # while the whole-battle deadline never moves.
-                        progress=flow.clock()
-                        logger.info('[FLOW][PROGRESS] turn inputs complete; waiting for next positive battle state')
+                        # Only the complete skill/card phase starts a new wait
+                        # budget. Animation renews stall, never phase/total hard limits.
+                        progressEvent(tracker.mark_turn_input_complete(self.turn))
                 if state==S.BATTLE_RESULT:
                     logger.info('Battle Finished');return True
                 if state==S.DEFEATED:
@@ -598,17 +608,19 @@ class Battle:
                     schedule.checkKizunaReisou()
                     flow.action('close_special_battle_modal',lambda:fgoDevice.device.press('\x1B'))
                     flow.waitForFlowState({S.TURN_BEGIN,S.BATTLE_RESULT,S.DEFEATED},timeout=30,transition_name='battle modal close',allowed_intermediate={S.SPECIAL_MODAL})
-                    progress=flow.clock()
+                    progressEvent(tracker.progress("battle_modal_recovered"))
                 elif state==S.NETWORK_ERROR:
                     flow.waitForFlowState({S.TURN_BEGIN,S.BATTLE_RESULT,S.DEFEATED},timeout=45,transition_name='battle network recovery')
-                    progress=flow.clock()
+                    progressEvent(tracker.progress("battle_network_recovered"))
                 elif state not in {S.TURN_BEGIN,S.UNKNOWN,S.LOADING,S.BATTLE_RESULT,S.DEFEATED}:
-                    flow.fail(FlowTimeout,'UNEXPECTED battle state',{S.TURN_BEGIN,S.BATTLE_RESULT,S.DEFEATED},flow.clock()-progress)
-                if flow.clock()-progress>=self.unknownTimeout:
-                    flow.fail(FlowTimeout,'TIMEOUT battle progress',{S.TURN_BEGIN,S.BATTLE_RESULT,S.DEFEATED},flow.clock()-progress,from_state=lastProgressState)
+                    flow.fail(FlowTimeout,'UNEXPECTED battle state',{S.TURN_BEGIN,S.BATTLE_RESULT,S.DEFEATED},flow.clock()-tracker.last_meaningful_progress)
+                flow.trace.battle_context=tracker.snapshot()
+                if tracker.stalled():
+                    flow.fail(FlowTimeout,'STALL battle progress',{S.TURN_BEGIN,S.BATTLE_RESULT,S.DEFEATED},flow.clock()-tracker.last_meaningful_progress,from_state=tracker.last_positive_state)
                 schedule.sleep(.2)
-            flow.fail(FlowTimeout,'TIMEOUT battle total',{S.BATTLE_RESULT,S.DEFEATED},self.totalTimeout,from_state=lastProgressState)
+            flow.fail(FlowTimeout,'TIMEOUT battle total',{S.BATTLE_RESULT,S.DEFEATED},self.totalTimeout,from_state=tracker.last_positive_state)
         finally:
+            flow.trace.battle_context=previousContext
             flow.deadline=previousDeadline
             INPUT_OBSERVER.reset(inputToken)
             _activeBattleFlow.reset(token)

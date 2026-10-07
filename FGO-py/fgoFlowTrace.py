@@ -23,7 +23,7 @@ class FlowTrace:
         self.root=Path(root) if root is not None else None
         self.records=[];self.state='UNKNOWN';self.since=clock()
         self.last_input='';self.battle_sequence=0;self.frames=[];self.last_evidence=()
-        self.prebattle=None;self.last_physical_input=''
+        self.prebattle=None;self.last_physical_input='';self.battle_context=None
     def record(self,state,evidence=(),action=''):
         name=getattr(state,'name',str(state));now=self.clock()
         if name==self.state and not action and tuple(evidence)==self.last_evidence:return
@@ -35,6 +35,11 @@ class FlowTrace:
         self.last_evidence=tuple(evidence)
         self.logger.info('[FLOW][流程] %s → %s (%.2fs) action=%s evidence=%s battle=%s',row.from_state,row.to_state,row.elapsed,action or '-',row.evidence,row.battle_sequence)
         if name!=self.state:self.state=name;self.since=now
+    def battleProgress(self,event,context):
+        self.battle_context=context
+        self.record(self.state,self.last_evidence,event)
+        self.logger.info('[BATTLE][PROGRESS] battle=%s turn=%s phase=%s %s; stall reset',
+                         self.battle_sequence,context['turn'],context['phase'],event)
     def beginFormationStart(self):
         # Narrow authorization: positive FORMATION, one recorded start action,
         # expected TURN_BEGIN. Other UNKNOWN screens remain forbidden.
@@ -82,7 +87,12 @@ class FlowTrace:
             self.frames=(self.frames+[(image.copy(),getattr(state,'name',str(state)) in safe)])[-2:]
     def failure(self,kind,expected,elapsed,evidence=(),from_state=None):
         summary={'kind':kind,'from':from_state or self.state,'last_observed':self.state,'expected':sorted(getattr(s,'name',str(s)) for s in expected),'elapsed':elapsed,'last_input':self.last_input,'last_physical_input':self.last_physical_input,'evidence':tuple(evidence),'battle_sequence':self.battle_sequence}
+        if self.battle_context:summary.update(self.battle_context)
         self.logger.error('[FLOW][%s] from=%s expected=%s elapsed=%.2f last_input=%s evidence=%s',kind,summary['from'],'|'.join(summary['expected']),elapsed,self.last_input,tuple(evidence))
+        if self.battle_context:
+            self.logger.error('[BATTLE][FAILURE] battle=%s turn=%s phase=%s last_positive=%s sinceProgress=%.2f phaseElapsed=%.2f last_physical_input=%s',
+                self.battle_sequence,summary['turn'],summary['phase'],summary['last_positive_state'],
+                summary['elapsed_since_progress'],summary['elapsed_since_turn_input'],self.last_physical_input)
         if self.root is None:return summary
         try:
             folder=self.root/datetime.fromtimestamp(self.wall()).strftime('%Y%m%d-%H%M%S-%f')
