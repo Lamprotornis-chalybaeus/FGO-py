@@ -201,9 +201,9 @@ class BattleCycle:
                 self.flow.action('continue',lambda:self.main.press('K'))
                 observation=self.flow.waitForFlowState({S.FRIEND,S.FRIEND_EMPTY,S.FORMATION,S.AP_EMPTY,S.SKILL_CAST_FAILED},timeout=45,transition_name='continue exit',allowed_intermediate={S.CONTINUE})
             elif state==S.AP_EMPTY:
-                restored=self.flow.action('ap_policy',self.main.eatApple)
+                restored=self.flow.action('ap_policy',lambda:self.main.eatApple(self.flow))
                 if not restored:self.main.completionReason='Ap Empty';return False
-                observation=self.flow.waitForFlowState({S.FRIEND,S.FRIEND_EMPTY,S.FORMATION},timeout=45,transition_name='AP policy',allowed_intermediate={S.AP_EMPTY})
+                observation=self.flow.waitForFlowState({S.QUEST_READY,S.FRIEND,S.FRIEND_EMPTY,S.FORMATION},timeout=45,transition_name='AP policy',allowed_intermediate={S.AP_EMPTY})
             elif state in {S.FRIEND,S.FRIEND_EMPTY}:
                 self.main.chooseFriend(flow=self.flow,continued=continued)
                 observation=self.flow.observation

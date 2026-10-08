@@ -1,7 +1,7 @@
 """Synthetic fixed-label regressions from a local CN master-level screenshot."""
 import unittest
 from unittest.mock import patch
-from test_cn_result_pages import CNResultPageTests
+import test_cn_result_pages as result_tests
 from fgoDetect import OCR
 from test_battle_cycle import kernel
 from test_battle_flow import Clock,frame
@@ -9,8 +9,8 @@ from fgoBattleFlow import BattleCycle,BattleFlow,FlowTimeout
 from fgoFlowTrace import FlowTrace
 
 class MasterLevelTests(unittest.TestCase):
-    detect=CNResultPageTests.detect
-    read=CNResultPageTests.read
+    detect=result_tests.CNResultPageTests.detect
+    read=result_tests.CNResultPageTests.read
     labelsBase={(490,20,775,110):('战斗结果',.978),(480,625,815,690):('请点击游戏界面',.988),
                 (500,85,1220,235):('等级提升',.985),(680,270,930,315):('御主等级',.997)}
     def page(self,labels):
@@ -22,6 +22,9 @@ class MasterLevelTests(unittest.TestCase):
     def test_level_label_alone_is_not_result(self):self.assertIsNone(self.page({(500,85,1220,235):('等级提升',.99)}))
     def test_missing_master_label_is_not_level_overlay(self):
         labels=dict(self.labelsBase);labels.pop((680,270,930,315));self.assertIsNone(self.page(labels))
+    def test_unconfirmed_level_overlay_blocks_background_exp(self):
+        labels=dict(self.labelsBase);labels.pop((680,270,930,315));labels[(635,175,860,245)]=('获得经验值',.99)
+        self.assertIsNone(self.page(labels))
     def test_each_independent_label_is_required(self):
         for rect in self.labelsBase:
             labels=dict(self.labelsBase);labels[rect]=(labels[rect][0],.84)

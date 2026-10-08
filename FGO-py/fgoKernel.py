@@ -26,6 +26,7 @@ from contextvars import ContextVar
 import fgoDevice
 from fgoAutomation import automationOwner,NETWORK_ERROR_EVENT,GUARDIAN_STOP,INPUT_OBSERVER
 import fgoFriendPolicy
+import fgoApRecovery
 import fgoNavigation
 from itertools import permutations
 from functools import wraps
@@ -730,6 +731,9 @@ class Main:
         event=BattleCompleted(self.completedAttempts,self.startedBattles,self.defeats,battleResult['turn'],battleResult['time'],won,deepcopy(self.result),deepcopy(battleResult))
         if self.onProgress:self.onProgress(event)
     def prepare(self):
+        if XDetect.region=='CN':
+            fgoApRecovery.validateResourceCN(self.appleKind)
+            fgoApRecovery.ensureNotUncertain(fgoDevice.device)
         self.resetCounters();self.flow=self.makeFlow()
     def resetCounters(self):
         self.start=time.time()
@@ -747,7 +751,8 @@ class Main:
             'completionReason':self.completionReason,
         }
     @logit(logger,logging.INFO)
-    def eatApple(self):
+    def eatApple(self,flow=None):
+        if XDetect.region=='CN':return fgoApRecovery.restoreApCN(self,flow or self.makeFlow(),fgoDevice.device)
         if not self.appleTotal:return fgoDevice.device.press('Z')
         if self.appleKind==3:fgoDevice.device.perform('V',(600,))
         fgoDevice.device.perform('W4K48'[self.appleKind]+'L',(600,1200))

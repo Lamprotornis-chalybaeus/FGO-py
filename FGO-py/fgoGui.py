@@ -106,12 +106,12 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
             ('closeToTray',self.MENU_CONTROL_TRAY,None),
             ('stayOnTop',self.MENU_CONTROL_STAYONTOP,lambda x:(self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint,x),self.show())),
             ('notifyEnable',self.MENU_CONTROL_NOTIFY,None),
-            (0,self.CBB_APPLE,lambda x:setattr(self.operation,'appleKind',x)),
+            ('appleKind',self.CBB_APPLE,lambda x:setattr(self.operation,'appleKind',x)),
             ('quickFarmBattleLimit',self.TXT_BATTLELIMIT,None),
             ('friendMaxRefresh',self.TXT_FRIENDREFRESH,None),
             (0,self.TXT_APPLE,lambda x:setattr(self.operation,'appleTotal',x)),
         ):
-            value=self.config.get(key,key)
+            value=self.config.get(key,0 if key=='appleKind' else key)
             getattr(ui,{QAction:'toggled',QCheckBox:'toggled',QSpinBox:'valueChanged',QComboBox:'currentIndexChanged'}[type(ui)])[type(value)].connect(lambda x,task=((lambda x,key=key:self.config.__setitem__(key,x),)if key else())+((lambda x,callback=callback:callback(x),)if callable(callback)else()):[i(x)for i in task])
             getattr(ui,{QAction:'setChecked',QCheckBox:'setChecked',QSpinBox:'setValue',QComboBox:'setCurrentIndex'}[type(ui)])(value)
         self.CBB_QUICKMODE.setCurrentIndex(fgoQuickFarm.modeIndex(self.config.get('quickFarmMode','current')))
@@ -137,6 +137,7 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         if config.get('guiLayoutVersion',0)<self.GUI_LAYOUT_VERSION:
             self.compactWindow()
         self.config['guiLayoutVersion']=self.GUI_LAYOUT_VERSION
+        self.updateRecoveryResourceOptions()
     def compactWindow(self):
         if self.isVisible():self.showNormal()
         else:self.setWindowState(Qt.WindowState.WindowNoState)
@@ -219,7 +220,22 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         except BaseException:
             self._runActive=False
             logger.exception('Could not start automation worker')
+    def updateRecoveryResourceOptions(self):
+        cn=fgoKernel.XDetect.region=='CN'
+        item=self.CBB_APPLE.model().item(4)
+        if item is not None:item.setEnabled(not cn)
+        if cn and self.CBB_APPLE.currentIndex()==4:
+            self.statusBar().showMessage(fgoKernel.fgoApRecovery.FORBIDDEN+'；请显式重新选择合法资源')
+    def validateRecoveryResource(self):
+        self.updateRecoveryResourceOptions()
+        if fgoKernel.XDetect.region=='CN':
+            try:fgoKernel.fgoApRecovery.validateResourceCN(self.CBB_APPLE.currentIndex())
+            except fgoKernel.ScriptStop as e:
+                QMessageBox.critical(self,'FGO-py',str(e)+'；请显式重新选择合法资源')
+                return False
+        return True
     def flush(self):
+        self.updateRecoveryResourceOptions()
         self.TXT_APPLE.setValue(self.operation.appleTotal)
         cur=self.LST_QUEST.currentRow()
         self.LST_QUEST.clear()
@@ -337,6 +353,7 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
             raise
         fgoDevice.device=candidate
         self.LBL_DEVICE.setText(candidate.name)
+        self.updateRecoveryResourceOptions()
         self.MENU_CONTROL_MAPKEY.setChecked(False)
         self.statusBar().clearMessage()
     def initializeDevice(self):
@@ -432,6 +449,7 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
             self.LBL_EVENT_STATUS.setText('正在识别当前活动状态……')
             self.runFunc(lambda:fgoEventProgress.progress(self.TXT_EVENT_LIMIT.value(),self.CBB_EVENT_STORYMODE.currentData() or 'pause',self.CKB_EVENT_REWARD.isChecked(),self.operation.friendPolicy,self.operation.friendMaxRefresh))
             return
+        if not self.validateRecoveryResource():return
         fgoQuickFarm.applyBattleLimit(fgoKernel.schedule,self.TXT_BATTLELIMIT.value())
         if mode=='current':
             operation=fgoKernel.Operation(appleTotal=self.operation.appleTotal,appleKind=self.operation.appleKind,battleClass=fgoKernel.Battle,friendPolicy=self.operation.friendPolicy,friendMaxRefresh=self.operation.friendMaxRefresh,onProgress=self.currentProgressCallback())
@@ -452,11 +470,13 @@ class MainWindow(QMainWindow,Ui_fgoMainWindow):
         self.CBB_FRIENDPOLICY.setStatusTip(tips[policy])
     def openFriendTemplates(self):FriendTemplateDialog(fgoKernel.friendImg,self).exec()
     def runMain(self):
+        if not self.validateRecoveryResource():return
         self.operation.battleClass=fgoKernel.Battle
         if self.operation:self.runFunc(fgoGuiOperation.GuiQueueOperation(self.operation,self.operation,self.operation.battleClass,onNavigation=self.signalNavigation.emit,onProgress=self.signalProgress.emit,runLimit=self.TXT_BATTLELIMIT.value()))
         else:self.runFunc(fgoKernel.Main(self.operation.appleTotal,self.operation.appleKind,fgoKernel.Battle,self.operation.friendPolicy,self.operation.friendMaxRefresh,onProgress=self.currentProgressCallback()))
     def runBattle(self):self.runFunc(fgoKernel.Battle())
     def runClassic(self):
+        if not self.validateRecoveryResource():return
         if not Teamup(self).exec():return
         battleClass=lambda:fgoKernel.Battle(fgoKernel.ClassicTurn)
         if self.operation:self.runFunc(fgoGuiOperation.GuiQueueOperation(self.operation,self.operation,battleClass,onNavigation=self.signalNavigation.emit,onProgress=self.signalProgress.emit,runLimit=self.TXT_BATTLELIMIT.value()))
