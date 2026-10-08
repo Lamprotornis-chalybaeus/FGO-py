@@ -12,6 +12,7 @@ from fgoDetect import XDetectCN,OCR
 class RecoveryTests(unittest.TestCase):
     def setUp(self):
         self.guard=patch.object(ap,'_uncertainDevices',set());self.guard.start();self.addCleanup(self.guard.stop)
+        self.ready=patch.object(ap,'CONFIRMATION_PRODUCER_READY',True);self.ready.start();self.addCleanup(self.ready.stop)
     def scenario(self,kind=0,budget=1,fail=False,unknown_ap=False):
         clock=Clock();phase=['SELECTOR'];inputs=[]
         def read():
@@ -36,6 +37,14 @@ class RecoveryTests(unittest.TestCase):
     def restore(self,scenario):
         main,flow,device,inputs,patches=scenario
         with patches[0],patches[1],patches[2],patches[3]:return ap.restoreApCN(main,flow,device)
+    def test_unimplemented_confirmation_disables_live_path_before_any_input(self):
+        s=self.scenario()
+        with patch.object(ap,'CONFIRMATION_PRODUCER_READY',False):
+            with self.assertRaisesRegex(kernel.ScriptStop,'尚未实机验证'):self.restore(s)
+        self.assertEqual(s[3],[]);self.assertEqual(s[0].appleTotal,1)
+        s[2].swipe.assert_not_called()
+    def test_default_confirmation_has_no_guessed_positive_producer(self):
+        self.assertIsNone(ap.confirmation(Mock(),0))
     def test_budget_zero_no_input(self):
         s=self.scenario(budget=0);self.assertFalse(self.restore(s));self.assertEqual(s[3],[])
     def test_gold_success_decrements_after_positive_success(self):
@@ -65,6 +74,15 @@ class RecoveryTests(unittest.TestCase):
         other=kernel.Main(1,0)
         with self.assertRaisesRegex(kernel.ScriptStop,ap.UNVERIFIED):ap.restoreApCN(other,s[1],s[2])
         self.assertEqual(len(s[3]),2);self.assertEqual(other.appleTotal,1)
+    def test_reconnecting_same_named_device_cannot_repeat_uncertain_spend(self):
+        s=self.scenario(fail=True);s[2].name='synthetic-device'
+        with self.assertRaises(kernel.ScriptStop):self.restore(s)
+        with self.assertRaisesRegex(kernel.ScriptStop,ap.UNVERIFIED):ap.ensureNotUncertain(SimpleNamespace(name='synthetic-device'))
+    def test_operation_blocks_quartz_before_navigation(self):
+        op=kernel.Operation([((1,0,2,0),1)],appleTotal=1,appleKind=4,wait=False)
+        with patch.object(kernel.XDetect,'region','CN'),patch.object(kernel,'goto') as goto:
+            with self.assertRaisesRegex(kernel.ScriptStop,ap.FORBIDDEN):op()
+            goto.assert_not_called()
     def test_success_can_deduct_quest_cost_before_ap_read(self):
         s=self.scenario();original=s[1].reader
         def read():

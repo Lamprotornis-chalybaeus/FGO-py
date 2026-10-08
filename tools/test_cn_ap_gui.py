@@ -29,6 +29,13 @@ class RecoveryGuiTests(unittest.TestCase):
             window=self.window(4);window.CBB_APPLE.setCurrentIndex(1)
             self.assertTrue(window.validateRecoveryResource());self.assertEqual(window.operation.appleKind,1)
             self.assertEqual(window.config['appleKind'],1)
+    def test_old_json_config_four_survives_real_loader(self):
+        import json,tempfile
+        from pathlib import Path
+        from fgoConfig import Config
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'old-config.json';path.write_text(json.dumps({'appleKind':4}),encoding='utf-8')
+            config=Config(str(path));self.assertEqual(config.appleKind,4)
     def test_non_cn_retains_fifth_item(self):
         with patch.object(startup.gui.fgoKernel.XDetect,'region','JP'):
             window=self.window(4);self.assertTrue(window.CBB_APPLE.model().item(4).isEnabled())

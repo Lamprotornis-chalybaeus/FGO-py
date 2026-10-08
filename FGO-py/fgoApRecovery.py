@@ -12,10 +12,17 @@ FORBIDDEN='CN自动恢复禁止使用此资源；圣晶石自动消费被硬禁'
 UNVERIFIED='AP恢复未获得正向确认；未重复消费资源'
 RESOURCES=('gold','silver','bronze','copper')
 RESOURCE_LABELS=('黄金果实','白银果实','青铜果实','赤铜果实')
+# No real confirmation capture is available yet. Keep the incomplete protocol
+# disabled before selection; synthetic success tests do not enable live spending.
+CONFIRMATION_PRODUCER_READY=False
 _uncertainDevices=set()
 
+def deviceKey(device):
+    name=getattr(device,'name',None)
+    return ('device',name) if isinstance(name,str) and name else ('object',id(device))
+
 def ensureNotUncertain(device):
-    if id(device) in _uncertainDevices:raise ScriptStop(UNVERIFIED)
+    if deviceKey(device) in _uncertainDevices:raise ScriptStop(UNVERIFIED)
 
 @dataclass(frozen=True)
 class RecoveryConfirmation:
@@ -70,6 +77,7 @@ def restoreApCN(main,flow,device):
     validateResourceCN(main.appleKind)
     ensureNotUncertain(device)
     if main.appleTotal<=0:return False
+    if not CONFIRMATION_PRODUCER_READY:raise ScriptStop('CN恢复确认页尚未实机验证；未选择或消费资源')
     if getattr(main,'_cnApRecoveryPending',False):raise ScriptStop(UNVERIFIED)
     kind=main.appleKind;budget=main.appleTotal
     end=min(flow.clock()+35,flow.deadline if flow.deadline is not None else float('inf'))
@@ -98,7 +106,7 @@ def restoreApCN(main,flow,device):
     repeated=resourceTarget(flow.detect,kind)
     if repeated is None or max(abs(a-b) for a,b in zip(repeated,target))>3:raise ScriptStop('AP恢复资源位置不稳定；未选择资源')
     main._cnApRecoveryPending=True
-    _uncertainDevices.add(id(device))
+    _uncertainDevices.add(deviceKey(device))
     flow.action('ap_select_'+RESOURCES[kind],lambda:device.touch(target,duration=.08))
     confirmed=wait(lambda d:confirmation(d,kind),10)
     flow.observe()
@@ -115,7 +123,7 @@ def restoreApCN(main,flow,device):
     _,after=wait(success,20)
     main.appleTotal=budget-1
     main._cnApRecoveryPending=False
-    _uncertainDevices.discard(id(device))
+    _uncertainDevices.discard(deviceKey(device))
     main.apRecoveryLog=getattr(main,'apRecoveryLog',[])+[dict(resource=RESOURCES[kind],beforeAP=before,afterAP=after,budgetBefore=budget,budgetAfter=main.appleTotal,verified=True)]
     logger.warning('[APRecovery] resource=%s beforeAP=%s afterAP=%s budget=%d->%d verified=True',RESOURCES[kind],before if before is not None else 'unknown',after if after is not None else 'unknown',budget,main.appleTotal)
     return True
