@@ -133,3 +133,47 @@ Source integration smoke located one indexed daily quest and completed one
 battle/result/return without AP restoration. Candidate portable self-check
 passed with frozen GUI subsystem, zero battles and zero device operations.
 Private raw evidence is excluded from Git, CI artifacts and release assets.
+
+## 2026-10-08 Master Level Up follow-up / AP recovery pending
+
+Development branch: `fix/cn-master-level-ap-recovery`, based on archived
+`cn-dev` `ff57402723d58bf3c002858f6f42ff63794ed906`. This follow-up is not
+merged or deployed as an r2 snapshot. The previous snapshot remains immutable.
+
+The newly reproduced settlement timeout was a missing CN `MASTER_LEVEL_UP`
+producer, not an apple failure. Four independent fixed OCR labels (battle
+result, level-up banner, master level and tap-to-continue footer) are required
+at the unchanged .85 confidence floor. The foreground overlay takes priority
+over background MASTER_EXP. Settlement advances it once and waits read-only
+for departure; no fixed result ordering or repeated dismissal is introduced.
+
+Three fresh daily extreme battles won with no defeat, Fused or FlowTimeout.
+The third naturally displayed MASTER_LEVEL_UP; its positive producer, one
+80ms result-next input and successful remaining settlement were confirmed
+in the local trace. The initial user-supplied overlay had already been
+dismissed before this work, so it was not claimed as an existing-result rescue.
+The detector code is identical across these three runtime revisions.
+
+AP recovery is a separate **incomplete, fail-closed candidate**. CN resource
+identity, bounded protocol, success-only budget decrement, old-config handling
+and GUI/core fifth-resource blocking have synthetic regression coverage.
+The real confirmation producer is not implemented. An explicit disabled
+capability guard stops before any selection or spending until it is supplied
+from actual evidence. Mocked recovery success is not real resource acceptance.
+Non-CN retains its legacy path. See [AP-RECOVERY.md](AP-RECOVERY.md).
+
+The current extreme quest costs 20 AP during the half-AP campaign. A natural
+master-level refill made genuine AP exhaustion unreachable within the user's
+revised maximum of eight total entries, including the restored battle. Live
+testing stopped after three entries as instructed. Natural AP_EMPTY, one gold
+consumption, budget 1->0 and the restored battle remain **NOT RUN**. Merge,
+formal portable replacement and the r2 tag/release are withheld. No apples,
+quartz, restoration items or revival resources were used by this automation.
+Private screenshots/traces remain local; public tests contain synthetic data.
+Event WIP, daily indexed navigation, AI strategy and drop removal are unchanged.
+
+
+Offline validation for this unmerged follow-up: **670 cases, 667 passed and
+three existing local-integration skips**. Compileall, whitespace checks and
+baseline AI strategy AST preservation pass. Branch CI is checked separately;
+these offline results do not complete the missing real AP recovery gate.
