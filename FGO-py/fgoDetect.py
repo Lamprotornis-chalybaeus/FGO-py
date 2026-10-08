@@ -248,7 +248,9 @@ class XDetectCN(XDetectBase):
                 # Distinguish the overlay so one dismissal can reveal BOND;
                 # a persistent overlay still cannot authorize another input.
                 # These exact alternate glyphs were observed by CN OCR.
-                if (label((460,85,1260,230)) in {'牵绊等级提升','牵纤等级提升'}
+                if (label((500,85,1220,235))=='等级提升'
+                    and label((680,270,930,315))=='御主等级'):page='MASTER_LEVEL_UP'
+                elif (label((460,85,1260,230)) in {'牵绊等级提升','牵纤等级提升'}
                     and label((630,275,1100,345)) in {'与从者的牵绊加深了','与从者的牵纤加深了'}):page='BOND_LEVEL_UP'
                 elif label((75,160,420,215)) in {'与从者的牵','与从者的牵绊'}:page='BOND'
                 elif label((635,175,860,245))=='获得经验值':page='MASTER_EXP'
