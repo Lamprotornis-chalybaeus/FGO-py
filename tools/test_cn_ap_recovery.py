@@ -30,11 +30,12 @@ class RecoveryTests(unittest.TestCase):
         device=SimpleNamespace(touch=touch,swipe=Mock())
         patches=[patch.object(ap,'isResourceSelector',side_effect=lambda d:d.phase=='SELECTOR'),
                  patch.object(ap,'resourceTarget',side_effect=lambda d,k:(650,330) if d.phase=='SELECTOR' else None),
-                 patch.object(ap,'confirmation',side_effect=lambda d,k:ap.RecoveryConfirmation(k,(890,570)) if d.phase=='CONFIRM' else None)]
+                 patch.object(ap,'confirmation',side_effect=lambda d,k:ap.RecoveryConfirmation(k,(890,570)) if d.phase=='CONFIRM' else None),
+                 patch.object(ap,'safeAp',side_effect=lambda d:None if unknown_ap else d.getAp())]
         return main,flow,device,inputs,patches
     def restore(self,scenario):
         main,flow,device,inputs,patches=scenario
-        with patches[0],patches[1],patches[2]:return ap.restoreApCN(main,flow,device)
+        with patches[0],patches[1],patches[2],patches[3]:return ap.restoreApCN(main,flow,device)
     def test_budget_zero_no_input(self):
         s=self.scenario(budget=0);self.assertFalse(self.restore(s));self.assertEqual(s[3],[])
     def test_gold_success_decrements_after_positive_success(self):
@@ -107,6 +108,10 @@ class RecoveryTests(unittest.TestCase):
         with patch.object(kernel.XDetect,'region','CN'),patch.object(main,'makeFlow') as make:
             with self.assertRaisesRegex(kernel.ScriptStop,ap.FORBIDDEN):main.prepare()
             make.assert_not_called()
+    def test_unrelated_fraction_is_not_logged_as_ap(self):
+        d=Mock()
+        with patch.object(ap,'label',return_value='队伍消耗'):self.assertIsNone(ap.safeAp(d))
+        d.getAp.assert_not_called()
     def test_non_cn_legacy_input_and_budget_unchanged(self):
         main=kernel.Main(1,0)
         with patch.object(kernel.XDetect,'region','JP'),patch.object(kernel.fgoDevice.device,'perform') as perform:

@@ -60,6 +60,9 @@ def confirmation(d,kind):
     return None
 
 def safeAp(d):
+    # Support/formation layouts can contain unrelated fractions. Only read
+    # AP when its own fixed caption is positively visible. Otherwise unknown.
+    if label(d,(180,660,237,688))!='行动力':return None
     try:return d.getAp()
     except ScriptStop:return None
 
